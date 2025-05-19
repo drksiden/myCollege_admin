@@ -1,0 +1,45 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react/jsx-runtime", // Для нового JSX трансформера (React 17+)
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:jsx-a11y/recommended",
+    "plugin:prettier/recommended" // Включает eslint-plugin-prettier и eslint-config-prettier. Должен быть последним!
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "project": "./tsconfig.json" // Путь к вашему tsconfig.json, если используется
+  },
+  "plugins": [
+    "react",
+    "@typescript-eslint"
+    // "prettier" уже включен через "plugin:prettier/recommended"
+  ],
+  "settings": {
+    "react": {
+      "version": "detect" // Автоматически определять версию React
+    }
+  },
+  "rules": {
+    // Здесь можно переопределить или добавить свои правила ESLint
+    // Например, если вы хотите, чтобы Prettier ошибки просто предупреждали, а не фейлили сборку:
+    // "prettier/prettier": "warn",
+    "react/prop-types": "off", // Отключаем, так как используем TypeScript для типов
+    "@typescript-eslint/explicit-module-boundary-types": "off", // Можно включить для большей строгости
+    "no-unused-vars": "off", // Используем @typescript-eslint/no-unused-vars
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+  },
+  "ignorePatterns": ["node_modules/", "dist/", "build/", ".eslintrc.cjs", "vite.config.ts"] // Добавьте сюда файлы, которые не нужно линтить
+}
