@@ -1,6 +1,6 @@
 // import type { ReactNode } from 'react';
 import React from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext'; // Убедитесь, что путь правильный
 import {
@@ -15,6 +15,7 @@ import {
 const Sidebar: React.FC = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // Для определения активной ссылки
 
   const handleLogout = async () => {
     await logout();
@@ -58,17 +59,20 @@ const Sidebar: React.FC = () => {
       </div>
       <div className="flex-1">
         <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-          {navItems.map((item) => (
-            <Link
-              key={item.label}
-              to={item.to}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
-              // activeClassName="bg-muted text-primary" // TODO: Сделать активный класс
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = location.pathname.startsWith(item.to);
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all duration-150 ease-in-out hover:text-primary hover:bg-primary/10
+                            ${isActive ? 'bg-primary/10 text-primary font-semibold' : ''}`}
+              >
+                {item.icon}
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
       <div className="mt-auto p-4">
