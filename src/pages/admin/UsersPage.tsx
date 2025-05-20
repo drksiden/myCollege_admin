@@ -1,11 +1,10 @@
 // src/pages/admin/UsersPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
+import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
-  SortingState,
   useReactTable,
   getPaginationRowModel,
 } from '@tanstack/react-table';
@@ -18,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// import { Input } from '@/components/ui/input'; // Пока не используется
 import {
   ArrowUpDown,
   MoreHorizontal,
@@ -33,15 +32,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Checkbox } from '@/components/ui/checkbox';
-import { functions } from '@/lib/firebase'; // Импортируем настроенный Firebase functions instance
+// import { Checkbox } from '@/components/ui/checkbox'; // Пока не используется
+import { functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
-import { Skeleton } from '@/components/ui/skeleton'; // Для скелетонов таблицы
+import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion'; // Для анимаций
+import { motion /*, AnimatePresence */ } from 'framer-motion'; // AnimatePresence пока не используется
 
-// Тип данных для пользователя (должен соответствовать данным из Cloud Function)
 export type User = {
   id: string;
   firstName: string;
@@ -53,7 +51,6 @@ export type User = {
   groupName?: string;
 };
 
-// Компонент для скелета строки таблицы
 const TableRowSkeleton: React.FC<{ columnsCount: number }> = ({
   columnsCount,
 }) => (
@@ -71,13 +68,12 @@ const UsersPage: React.FC = () => {
   const [data, setData] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // const [rowSelection, setRowSelection] = useState({});
 
   const fetchUsers = async () => {
     setLoading(true);
     setError(null);
     try {
-      const listUsersFunction = httpsCallable(functions, 'listUsers'); // Указываем имя нашей Cloud Function
+      const listUsersFunction = httpsCallable(functions, 'listUsers');
       const result = await listUsersFunction();
       const resultData = result.data as {
         success: boolean;
@@ -92,10 +88,17 @@ const UsersPage: React.FC = () => {
           resultData.message || 'Не удалось получить список пользователей.'
         );
       }
-    } catch (err: any) {
+    } catch (err: unknown) { // Изменили any на unknown
       console.error('Ошибка при загрузке пользователей:', err);
-      setError(err.message || 'Произошла ошибка при загрузке данных.');
-      setData([]); // Очищаем данные в случае ошибки
+      let errorMessage = 'Произошла ошибка при загрузке данных.';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      // Для более специфичных ошибок Firebase:
+      // import { FirebaseError } from 'firebase/app';
+      // if (err instanceof FirebaseError && err.code) { /* ... */ }
+      setError(errorMessage);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -107,10 +110,8 @@ const UsersPage: React.FC = () => {
 
   const columns = useMemo<ColumnDef<User>[]>(
     () => [
-      // ... (колонки остаются как в предыдущем примере, можно добавить/изменить)
-      // Например, для ФИО:
       {
-        accessorKey: 'fullName', // Можно создать accessor fn
+        accessorKey: 'fullName',
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -121,8 +122,10 @@ const UsersPage: React.FC = () => {
           </Button>
         ),
         cell: ({ row }) =>
-          `${row.original.lastName} ${row.original.firstName} ${row.original.patronymic || ''}`,
-        sortingFn: 'alphanumeric', // Или кастомная функция сортировки
+          `${row.original.lastName} ${row.original.firstName} ${
+            row.original.patronymic || ''
+          }`,
+        sortingFn: 'alphanumeric',
       },
       {
         accessorKey: 'email',
@@ -133,12 +136,13 @@ const UsersPage: React.FC = () => {
         header: 'Роль',
         cell: ({ row }) => {
           const role = row.getValue('role') as User['role'];
-          // TODO: Заменить на Badge
-          return role === 'student'
-            ? 'Студент'
-            : role === 'teacher'
-              ? 'Преподаватель'
-              : 'Администратор';
+          // TODO: Заменить на Badge из Shadcn UI
+          switch (role) {
+            case 'student': return 'Студент';
+            case 'teacher': return 'Преподаватель';
+            case 'admin': return 'Администратор';
+            default: return role;
+          }
         },
       },
       {
@@ -168,12 +172,17 @@ const UsersPage: React.FC = () => {
                     Просмотреть
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    // TODO: Реализовать открытие формы редактирования
                     onClick={() => console.log('Edit user', user.id)}
                   >
                     Редактировать
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive hover:!bg-destructive/10"
+                    // TODO: Реализовать удаление
+                    onClick={() => console.log('Delete user', user.id)}
+                  >
                     Удалить
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -191,17 +200,14 @@ const UsersPage: React.FC = () => {
     columns,
     state: {
       sorting,
-      // rowSelection,
     },
     onSortingChange: setSorting,
-    // onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    // debugTable: true,
   });
 
-  const columnsCount = columns.length; // Для скелета
+  const columnsCount = columns.length;
 
   return (
     <motion.div
@@ -224,13 +230,12 @@ const UsersPage: React.FC = () => {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
-          <Button>
+          {/* TODO: Кнопка для открытия модального окна создания пользователя */}
+          <Button onClick={() => console.log('Открыть модальное окно создания')}>
             <UserPlusIcon className="mr-2 h-4 w-4" /> Создать пользователя
           </Button>
         </div>
       </div>
-
-      {/* TODO: Панель фильтров */}
 
       {error && (
         <Alert variant="destructive">
@@ -265,12 +270,12 @@ const UsersPage: React.FC = () => {
               ))
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <motion.tr // Анимация для строк
+                <motion.tr
                   key={row.id}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
-                  className={row.getIsSelected() ? 'bg-muted' : ''}
+                  className={row.getIsSelected() ? 'bg-muted' : ''} // getIsSelected() если будете использовать выбор строк
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="py-2.5">
@@ -292,11 +297,10 @@ const UsersPage: React.FC = () => {
           </TableBody>
         </Table>
       </div>
-      {/* Пагинация */}
       {!loading && data.length > 0 && (
         <div className="flex items-center justify-between space-x-2 py-4">
           <div className="text-sm text-muted-foreground">
-            {/* Выбрано {table.getFilteredSelectedRowModel().rows.length} из {table.getFilteredRowModel().rows.length} строк(и). */}
+            {/* Для информации о выборе строк, если будет */}
           </div>
           <div className="flex items-center space-x-2">
             <Button

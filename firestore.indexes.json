@@ -1,0 +1,79 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "teacherId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "grades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "studentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "schedule",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "teacherId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dayOfWeek",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lessonNumber",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "schedule",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dayOfWeek",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lessonNumber",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastName",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

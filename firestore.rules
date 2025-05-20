@@ -1,0 +1,123 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Функция для проверки роли администратора
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Функция для проверки роли преподавателя
+    function isTeacher() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    // Функция для проверки роли студента
+    function isStudent() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    // Функция для проверки, аутентифицирован ли пользователь
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // --- Пользователи (users) ---
+    match /users/{userId} {
+      // Все аутентифицированные могут читать общую информацию о пользователях (например, для списков)
+      // Конкретные поля (например, email для не-владельца) можно ограничивать через клиентское приложение
+      allow read: if isAuthenticated();
+      // Пользователь может обновлять только свой профиль, админ может обновлять любой профиль
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Создавать пользователей (регистрация) могут все (если у вас открытая регистрация)
+      // или только админы (если админ создает учетные записи)
+      allow create: if isAuthenticated(); // Или: if isAdmin();
+      // Удалять пользователей может только админ
+      allow delete: if isAdmin();
+    }
+
+    // --- Группы (groups) ---
+    match /groups/{groupId} {
+      // Все аутентифицированные могут читать информацию о группах
+      allow read: if isAuthenticated();
+      // Создавать, обновлять и удалять группы могут только администраторы
+      allow create, update, delete: if isAdmin();
+
+      // --- Расписание подколлекция (schedule) ---
+      match /schedule/{scheduleEntryId} {
+        // Читать расписание группы могут все аутентифицированные
+        allow read: if isAuthenticated();
+        // Управлять расписанием (создавать, обновлять, удалять записи)
+        // могут администраторы и преподаватели (возможно, только "своих" групп/предметов - это можно усложнить)
+        allow write: if isAdmin() || isTeacher(); 
+        // TODO: Для учителей можно добавить проверку, что они имеют отношение к этой группе или предмету
+        // Например: if isAdmin() || (isTeacher() && get(/databases/$(database)/documents/groups/$(groupId)).data.curatorId == request.auth.uid)
+        // Или если учитель ведет предмет в этой группе (потребует чтения поля subjects в документе группы)
+      }
+    }
+
+    // --- Оценки (grades) ---
+    match /grades/{gradeId} {
+      // Студенты могут читать только свои оценки
+      // Преподаватели могут читать оценки студентов своих групп/предметов
+      // Админы могут читать все оценки
+      allow read: if isAuthenticated() && 
+                    ( (isStudent() && resource.data.studentId == request.auth.uid) || 
+                      isTeacher() || // TODO: Уточнить правило для учителей (только "свои" студенты)
+                      isAdmin() );
+      // Ставить/изменять оценки могут преподаватели и админы
+      allow write: if isTeacher() || isAdmin(); 
+      // TODO: Для учителей - только по "своим" предметам/группам
+    }
+
+    // --- Посещаемость (attendance) ---
+    match /attendance/{attendanceId} {
+      // Аналогично оценкам
+      allow read: if isAuthenticated() &&
+                    ( (isStudent() && resource.data.studentId == request.auth.uid) ||
+                      isTeacher() || // TODO: Уточнить
+                      isAdmin() );
+      allow write: if isTeacher() || isAdmin(); // TODO: Уточнить
+    }
+    
+    // --- Задания (assignments) ---
+    match /assignments/{assignmentId} {
+        allow read: if isAuthenticated();
+        // Создавать/редактировать задания могут учителя и админы
+        allow write: if isTeacher() || isAdmin();
+    }
+
+    // --- Чаты (chats) и Сообщения (messages) ---
+    match /chats/{chatId} {
+      // Участники чата могут читать и писать в него
+      allow read, write: if isAuthenticated() && request.auth.uid in resource.data.participantIds;
+      // Админ может читать все чаты (для модерации, если нужно)
+      allow get: if isAdmin(); // get - для чтения одного документа
+      // Создание чатов - зависит от логики приложения (кто может инициировать)
+      // allow create: if isAuthenticated(); 
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      // Участники чата могут читать и писать сообщения
+      allow read, write: if isAuthenticated() && 
+                           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
+      // Админ может читать все сообщения
+      allow list: if isAdmin(); // list - для чтения коллекции
+      allow get: if isAdmin();
+    }
+
+    // --- Статистика (statistics) ---
+    // (Ваши правила были хороши, можно оставить или адаптировать)
+    match /statistics/{statDoc} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // --- Общее правило (если нужно что-то не покрытое выше) ---
+    // Оно уже есть у вас, но лучше делать правила более гранулярными
+    // match /{document=**} {
+    //   allow read: if request.auth != null;
+    // }
+  }
+}

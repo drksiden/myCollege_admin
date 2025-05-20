@@ -12,7 +12,7 @@ if (admin.apps.length === 0) {
 }
 const db = admin.firestore();
 
-setGlobalOptions({ region: 'europe-west1' }); // Используйте ваш регион
+setGlobalOptions({ region: 'asia-east1' }); // Используйте ваш регион
 
 interface SubjectData {
   subjectName: string;
