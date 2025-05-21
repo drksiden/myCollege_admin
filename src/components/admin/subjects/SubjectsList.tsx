@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Subject {
   id: string;
@@ -26,20 +27,42 @@ interface Subject {
   description: string;
   teacherId: string;
   teacherName: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface SubjectsListProps {
   subjects: Subject[];
-  onEdit?: (subject: Subject) => void;
-  onDelete?: (subjectId: string) => void;
+  onEdit: (subject: Subject) => void;
+  onDelete: (subjectId: string) => void;
+  loading?: boolean;
 }
 
 export const SubjectsList: React.FC<SubjectsListProps> = ({
   subjects,
   onEdit,
   onDelete,
+  loading = false,
 }) => {
   const [subjectToDelete, setSubjectToDelete] = React.useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+    );
+  }
+
+  if (subjects.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        Нет доступных предметов
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-md border">
@@ -59,11 +82,11 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
               <TableCell>{subject.description}</TableCell>
               <TableCell>{subject.teacherName}</TableCell>
               <TableCell>
-                <div className="flex items-center gap-2">
+                <div className="flex gap-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => onEdit?.(subject)}
+                    onClick={() => onEdit(subject)}
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -94,7 +117,7 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
             <AlertDialogAction
               onClick={() => {
                 if (subjectToDelete) {
-                  onDelete?.(subjectToDelete);
+                  onDelete(subjectToDelete);
                   setSubjectToDelete(null);
                 }
               }}

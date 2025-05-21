@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { SubjectsList } from '@/components/admin/subjects/SubjectsList';
 import { SubjectFormDialog } from '@/components/admin/subjects/SubjectForm';
 import { toast } from 'sonner';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 interface Subject {
   id: string;
@@ -12,72 +13,105 @@ interface Subject {
   description: string;
   teacherId: string;
   teacherName: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-// Временные данные для демонстрации
-const mockSubjects: Subject[] = [
-  {
-    id: '1',
-    name: 'Математический анализ',
-    description: 'Курс математического анализа для первого курса',
-    teacherId: 'teacher1',
-    teacherName: 'Иванов И.И.',
-  },
-  {
-    id: '2',
-    name: 'Программирование',
-    description: 'Основы программирования на Python',
-    teacherId: 'teacher2',
-    teacherName: 'Петров П.П.',
-  },
-];
-
-const mockTeachers = [
-  { id: 'teacher1', name: 'Иванов И.И.' },
-  { id: 'teacher2', name: 'Петров П.П.' },
-  { id: 'teacher3', name: 'Сидоров С.С.' },
-];
+interface Teacher {
+  id: string;
+  firstName: string;
+  lastName: string;
+  patronymic?: string;
+}
 
 const SubjectsPage: React.FC = () => {
-  const [subjects, setSubjects] = useState<Subject[]>(mockSubjects);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | undefined>();
+  const [loading, setLoading] = useState(true);
+
+  const functions = getFunctions();
+
+  // Загрузка предметов
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const getSubjectsFn = httpsCallable(functions, 'getSubjects');
+        const result = await getSubjectsFn();
+        const { subjects } = result.data as { subjects: Subject[] };
+        setSubjects(subjects);
+      } catch (error) {
+        console.error('Error fetching subjects:', error);
+        toast.error('Ошибка при загрузке предметов');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSubjects();
+  }, []);
+
+  // Загрузка преподавателей
+  useEffect(() => {
+    const fetchTeachers = async () => {
+      try {
+        const getTeachersFn = httpsCallable(functions, 'getTeachers');
+        const result = await getTeachersFn();
+        const { teachers } = result.data as { teachers: Teacher[] };
+        setTeachers(teachers);
+      } catch (error) {
+        console.error('Error fetching teachers:', error);
+        toast.error('Ошибка при загрузке преподавателей');
+      }
+    };
+
+    fetchTeachers();
+  }, []);
 
   const handleEdit = (subject: Subject) => {
     setSelectedSubject(subject);
     setIsFormOpen(true);
   };
 
-  const handleDelete = (subjectId: string) => {
-    setSubjects((prev) => prev.filter((subject) => subject.id !== subjectId));
-    toast.success('Предмет удален');
+  const handleDelete = async (subjectId: string) => {
+    try {
+      const deleteSubjectFn = httpsCallable(functions, 'deleteSubject');
+      await deleteSubjectFn({ id: subjectId });
+      setSubjects(prev => prev.filter(subject => subject.id !== subjectId));
+      toast.success('Предмет удален');
+    } catch (error) {
+      console.error('Error deleting subject:', error);
+      toast.error('Ошибка при удалении предмета');
+    }
   };
 
-  const handleSubjectSubmit = (data: Omit<Subject, 'id' | 'teacherName'>) => {
-    if (selectedSubject) {
-      // Обновление существующего предмета
-      const teacher = mockTeachers.find((t) => t.id === data.teacherId);
-      setSubjects((prev) =>
-        prev.map((subject) =>
-          subject.id === selectedSubject.id
-            ? { ...subject, ...data, teacherName: teacher?.name || '' }
-            : subject
-        )
-      );
-      toast.success('Предмет обновлен');
-    } else {
-      // Добавление нового предмета
-      const teacher = mockTeachers.find((t) => t.id === data.teacherId);
-      const newSubject: Subject = {
-        id: Date.now().toString(),
-        ...data,
-        teacherName: teacher?.name || '',
-      };
-      setSubjects((prev) => [...prev, newSubject]);
-      toast.success('Предмет добавлен');
+  const handleSubjectSubmit = async (data: Omit<Subject, 'id' | 'teacherName' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      if (selectedSubject) {
+        // Обновление существующего предмета
+        const updateSubjectFn = httpsCallable(functions, 'updateSubject');
+        const result = await updateSubjectFn({
+          id: selectedSubject.id,
+          ...data
+        });
+        const { subject } = result.data as { subject: Subject };
+        setSubjects(prev => prev.map(s => s.id === subject.id ? subject : s));
+        toast.success('Предмет обновлен');
+      } else {
+        // Добавление нового предмета
+        const createSubjectFn = httpsCallable(functions, 'createSubject');
+        const result = await createSubjectFn(data);
+        const { subject } = result.data as { subject: Subject };
+        setSubjects(prev => [...prev, subject]);
+        toast.success('Предмет добавлен');
+      }
+      setIsFormOpen(false);
+      setSelectedSubject(undefined);
+    } catch (error) {
+      console.error('Error saving subject:', error);
+      toast.error('Ошибка при сохранении предмета');
     }
-    setIsFormOpen(false);
-    setSelectedSubject(undefined);
   };
 
   return (
@@ -100,6 +134,7 @@ const SubjectsPage: React.FC = () => {
         subjects={subjects}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        loading={loading}
       />
 
       <SubjectFormDialog
@@ -112,7 +147,7 @@ const SubjectsPage: React.FC = () => {
         }}
         onSubjectSubmitSuccess={handleSubjectSubmit}
         initialData={selectedSubject}
-        teachers={mockTeachers}
+        teachers={teachers}
       />
     </motion.div>
   );

@@ -1,16 +1,16 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
@@ -18,63 +18,78 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 
-const formSchema = z.object({
-  name: z.string().min(1, "Введите название предмета"),
-  description: z.string().min(1, "Введите описание предмета"),
-  teacherId: z.string().min(1, "Выберите преподавателя"),
-});
+interface Subject {
+  id: string;
+  name: string;
+  description: string;
+  teacherId: string;
+  teacherName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-type SubjectFormValues = z.infer<typeof formSchema>;
+interface Teacher {
+  id: string;
+  firstName: string;
+  lastName: string;
+  patronymic?: string;
+}
 
 interface SubjectFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubjectSubmitSuccess: (data: SubjectFormValues) => void;
-  initialData?: SubjectFormValues;
-  teachers: Array<{ id: string; name: string }>;
+  onSubjectSubmitSuccess: (data: Omit<Subject, 'id' | 'teacherName' | 'createdAt' | 'updatedAt'>) => void;
+  initialData?: Subject;
+  teachers: Teacher[];
 }
 
-export function SubjectFormDialog({
+const formSchema = z.object({
+  name: z.string().min(1, 'Название обязательно'),
+  description: z.string().min(1, 'Описание обязательно'),
+  teacherId: z.string().min(1, 'Выберите преподавателя'),
+});
+
+export const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
   open,
   onOpenChange,
   onSubjectSubmitSuccess,
   initialData,
   teachers,
-}: SubjectFormDialogProps) {
-  const [isLoading, setIsLoading] = useState(false);
+}) => {
+  const [isLoading, setIsLoading] = React.useState(false);
 
-  const form = useForm<SubjectFormValues>({
+  const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: initialData?.name || "",
-      description: initialData?.description || "",
-      teacherId: initialData?.teacherId || "",
+      name: initialData?.name || '',
+      description: initialData?.description || '',
+      teacherId: initialData?.teacherId || '',
     },
   });
 
-  const onSubmit = async (data: SubjectFormValues) => {
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
       onSubjectSubmitSuccess(data);
       onOpenChange(false);
       form.reset();
     } catch (error: unknown) {
-      console.error("Error submitting form:", error);
+      console.error('Error submitting form:', error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Произошла ошибка при сохранении предмета"
+          : 'Произошла ошибка при сохранении предмета'
       );
     } finally {
       setIsLoading(false);
@@ -86,10 +101,10 @@ export function SubjectFormDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
-            {initialData ? "Редактировать предмет" : "Добавить предмет"}
+            {initialData ? 'Редактировать предмет' : 'Добавить предмет'}
           </DialogTitle>
           <DialogDescription>
-            Заполните форму для {initialData ? "изменения" : "создания"} предмета
+            Заполните форму для {initialData ? 'изменения' : 'создания'} предмета
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +159,9 @@ export function SubjectFormDialog({
                     <SelectContent>
                       {teachers.map((teacher) => (
                         <SelectItem key={teacher.id} value={teacher.id}>
-                          {teacher.name}
+                          {`${teacher.lastName} ${teacher.firstName} ${
+                            teacher.patronymic || ''
+                          }`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -163,7 +180,7 @@ export function SubjectFormDialog({
                 Отмена
               </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Сохранение..." : "Сохранить"}
+                {isLoading ? 'Сохранение...' : 'Сохранить'}
               </Button>
             </div>
           </form>
@@ -171,4 +188,4 @@ export function SubjectFormDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}; 

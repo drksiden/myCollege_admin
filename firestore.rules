@@ -3,89 +3,95 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Функция для проверки роли администратора
-    function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    // Функция для проверки роли преподавателя
-    function isTeacher() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
-    }
-
-    // Функция для проверки роли студента
-    function isStudent() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
-    }
-
-    // Функция для проверки, аутентифицирован ли пользователь
+    // Вспомогательные функции
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    // --- Пользователи (users) ---
-    match /users/{userId} {
-      // Все аутентифицированные могут читать общую информацию о пользователях (например, для списков)
-      // Конкретные поля (например, email для не-владельца) можно ограничивать через клиентское приложение
-      allow read: if isAuthenticated();
-      // Пользователь может обновлять только свой профиль, админ может обновлять любой профиль
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      // Создавать пользователей (регистрация) могут все (если у вас открытая регистрация)
-      // или только админы (если админ создает учетные записи)
-      allow create: if isAuthenticated(); // Или: if isAdmin();
-      // Удалять пользователей может только админ
-      allow delete: if isAdmin();
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isTeacher() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+    
+    function isStudent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
     }
 
-    // --- Группы (groups) ---
-    match /groups/{groupId} {
-      // Все аутентифицированные могут читать информацию о группах
-      allow read: if isAuthenticated();
-      // Создавать, обновлять и удалять группы могут только администраторы
-      allow create, update, delete: if isAdmin();
+    // Функция для проверки, является ли пользователь куратором группы
+    function isGroupCurator(groupId) {
+      return request.auth != null && 
+        get(/databases/$(database)/documents/groups/$(groupId)).data.curatorId == request.auth.uid;
+    }
 
-      // --- Расписание подколлекция (schedule) ---
-      match /schedule/{scheduleEntryId} {
-        // Читать расписание группы могут все аутентифицированные
+    // Функция для проверки, является ли пользователь преподавателем предмета в группе
+    function isGroupTeacher(groupId) {
+      let group = get(/databases/$(database)/documents/groups/$(groupId)).data;
+      return request.auth != null && 
+        group.subjects.hasAny([{'teacherId': request.auth.uid}]);
+    }
+
+    // Правила для коллекции users
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Правила для коллекции groups
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isTeacher();
+      
+      // Правила для подколлекции schedule
+      match /schedule/{scheduleId} {
         allow read: if isAuthenticated();
-        // Управлять расписанием (создавать, обновлять, удалять записи)
-        // могут администраторы и преподаватели (возможно, только "своих" групп/предметов - это можно усложнить)
-        allow write: if isAdmin() || isTeacher(); 
-        // TODO: Для учителей можно добавить проверку, что они имеют отношение к этой группе или предмету
-        // Например: if isAdmin() || (isTeacher() && get(/databases/$(database)/documents/groups/$(groupId)).data.curatorId == request.auth.uid)
-        // Или если учитель ведет предмет в этой группе (потребует чтения поля subjects в документе группы)
+        allow write: if isAdmin() || isTeacher();
       }
+    }
+
+    // Правила для коллекции subjects
+    match /subjects/{subjectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isTeacher();
     }
 
     // --- Оценки (grades) ---
     match /grades/{gradeId} {
       // Студенты могут читать только свои оценки
-      // Преподаватели могут читать оценки студентов своих групп/предметов
+      // Преподаватели могут читать оценки студентов своих групп
       // Админы могут читать все оценки
       allow read: if isAuthenticated() && 
-                    ( (isStudent() && resource.data.studentId == request.auth.uid) || 
-                      isTeacher() || // TODO: Уточнить правило для учителей (только "свои" студенты)
-                      isAdmin() );
-      // Ставить/изменять оценки могут преподаватели и админы
-      allow write: if isTeacher() || isAdmin(); 
-      // TODO: Для учителей - только по "своим" предметам/группам
+        (isAdmin() || 
+         isTeacher() || 
+         (isStudent() && resource.data.studentId == request.auth.uid));
+      // Ставить/изменять оценки могут преподаватели своих групп и админы
+      allow write: if isAdmin() || isTeacher();
     }
 
     // --- Посещаемость (attendance) ---
     match /attendance/{attendanceId} {
-      // Аналогично оценкам
-      allow read: if isAuthenticated() &&
-                    ( (isStudent() && resource.data.studentId == request.auth.uid) ||
-                      isTeacher() || // TODO: Уточнить
-                      isAdmin() );
-      allow write: if isTeacher() || isAdmin(); // TODO: Уточнить
+      // Студенты могут читать только свою посещаемость
+      // Преподаватели могут читать посещаемость своих групп
+      // Админы могут читать всю посещаемость
+      allow read: if isAuthenticated() && 
+        (isAdmin() || 
+         isTeacher() || 
+         (isStudent() && resource.data.studentId == request.auth.uid));
+      // Отмечать посещаемость могут преподаватели своих групп и админы
+      allow write: if isAdmin() || isTeacher();
     }
-    
+
     // --- Задания (assignments) ---
     match /assignments/{assignmentId} {
-        allow read: if isAuthenticated();
-        // Создавать/редактировать задания могут учителя и админы
-        allow write: if isTeacher() || isAdmin();
+      // Читать задания могут все аутентифицированные
+      allow read: if isAuthenticated();
+      // Создавать/редактировать задания могут преподаватели своих групп и админы
+      allow write: if isAdmin() || isTeacher();
     }
 
     // --- Чаты (chats) и Сообщения (messages) ---
