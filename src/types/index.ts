@@ -30,12 +30,14 @@ export interface Teacher {
 }
 
 export interface Student {
-  id: string;
-  userId: string;
-  groupId: string;
+  id: string;                 // Firestore document ID
+  userId: string;             // Reference to the User document's uid
+  groupId: string;            // ID of the group (for now, a string ID)
   enrollmentDate: Timestamp;
   status: 'active' | 'inactive' | 'graduated';
-  studentId: string;
+  studentCardId: string;      // Номер студенческого (Student ID card number)
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Group {
@@ -50,11 +52,11 @@ export interface Group {
 }
 
 export interface Subject {
-  id: string;
+  id: string;                 // Firestore document ID
   name: string;
-  description?: string;
-  credits: number;
-  hours: number;
+  description: string;        // Made required as per task
+  hoursPerSemester: number;   // Renamed from hours and clarified purpose
+  type: 'lecture' | 'practice' | 'laboratory'; // Added as per task
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -67,13 +69,15 @@ export interface Lesson {
   subjectId: string;
   teacherId: string;
   room: string;
-  type: string;
+  type: 'lecture' | 'practice' | 'laboratory';
 }
 
 export interface Schedule {
-  id: string;
+  id: string;                 // Firestore document ID
   groupId: string;
-  lessons: Lesson[];
+  semester: number;           // e.g., 1 or 2 for a typical semester system
+  year: number;               // e.g., 2023 (academic year start)
+  lessons: Lesson[];          // Array of Lesson objects
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -82,16 +86,22 @@ export interface Journal {
   id: string;
   groupId: string;
   subjectId: string;
-  teacherId: string;
+  teacherId: string;      // Teacher Profile Document ID
   semester: number;
   year: number;
-  entries: {
-    date: Timestamp;
-    studentId: string;
-    attendance: 'present' | 'absent' | 'late';
-    grade?: number;
-    comment?: string;
-  }[];
+  entries: JournalEntry[]; // Array of journal entries
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// New interface for Journal Entries
+export interface JournalEntry {
+  // id: string; // Not using a separate ID for sub-collection items for now
+  date: Timestamp;        // Date of the class/entry
+  studentId: string;      // Student Profile Document ID
+  attendance: 'present' | 'absent' | 'late';
+  grade?: number;         // Optional grade for this entry
+  comment?: string;       // Optional comment
 }
 
 export interface Grade {

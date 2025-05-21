@@ -5,14 +5,17 @@ import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 
-// Конфигурация Firebase из консоли
+// Firebase configuration keys.
+// These should be stored in your .env.local file (see .env.local.example)
+// Find these keys in your Firebase project console:
+// Project settings > General > Your apps > Firebase SDK snippet > Config
 const firebaseConfig = {
-  apiKey: "AIzaSyC1dGgjrn9_RWpFIf5wjHsX2wkUdKOnZ80",
-  authDomain: "mycollege-8c0c5.firebaseapp.com",
-  projectId: "mycollege-8c0c5",
-  storageBucket: "mycollege-8c0c5.appspot.com",
-  messagingSenderId: "109234567890",
-  appId: "1:109234567890:web:1234567890abcdef"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 // Инициализируем Firebase приложение
@@ -24,12 +27,42 @@ const db = getFirestore(app);
 const functions = getFunctions(app, "us-central1");
 const storage = getStorage(app);
 
-if (import.meta.env.DEV) {
-  // Подключение к эмуляторам Firebase
-  connectFirestoreEmulator(db, "localhost", 8080);
-  connectAuthEmulator(auth, "http://localhost:9099");
-  connectFunctionsEmulator(functions, "localhost", 5001);
-  connectStorageEmulator(storage, "localhost", 9199);
+// Connect to Firebase emulators if running in a development environment (e.g., localhost)
+// Ensure your emulators are running for this to work!
+// Firebase Auth Emulator: firebase emulators:start --only auth
+// Firebase Firestore Emulator: firebase emulators:start --only firestore
+// Firebase Functions Emulator: firebase emulators:start --only functions
+// Firebase Storage Emulator: firebase emulators:start --only storage
+if (import.meta.env.DEV && location.hostname === 'localhost') {
+  try {
+    connectAuthEmulator(auth, 'http://localhost:9099');
+    console.log('Firebase Auth connected to local emulator on port 9099');
+  } catch (error) {
+    console.error('Error connecting Auth to emulator:', error);
+  }
+
+  try {
+    connectFirestoreEmulator(db, 'localhost', 8080);
+    console.log('Firebase Firestore connected to local emulator on port 8080');
+  } catch (error) {
+    console.error('Error connecting Firestore to emulator:', error);
+  }
+
+  try {
+    connectFunctionsEmulator(functions, "localhost", 5001);
+    console.log('Firebase Functions connected to local emulator on port 5001');
+  } catch (error) {
+    console.error('Error connecting Functions to emulator:', error);
+  }
+
+  try {
+    connectStorageEmulator(storage, "localhost", 9199);
+    console.log('Firebase Storage connected to local emulator on port 9199');
+  } catch (error) {
+    console.error('Error connecting Storage to emulator:', error);
+  }
+} else {
+  console.log('Firebase connected to production services. Emulators not used.');
 }
 
-export { auth, db, functions, storage, app }; // Экспортируем storage
+export { auth, db, functions, storage, app };

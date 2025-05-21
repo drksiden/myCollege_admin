@@ -3,146 +3,233 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Вспомогательные функции
+    // --- Helper Functions ---
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    function isAdmin() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+    // It's generally safer and more common to get the current user's data directly
+    // without passing userId, as request.auth.uid is the most reliable source for the current user.
+    function currentUserData() {
+      // Ensure request.auth is not null before trying to access uid.
+      // This check should be done by isAuthenticated() before calling functions that use currentUserData().
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
-    function isTeacher() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
-    }
-    
-    function isStudent() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
-    }
-    
-    function isOwner(userId) {
+
+    function isSignedInUser(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Функция для проверки, является ли пользователь куратором группы
-    function isGroupCurator(groupId) {
-      return request.auth != null && 
-        get(/databases/$(database)/documents/groups/$(groupId)).data.curatorId == request.auth.uid;
+    function isAdmin() {
+      return isAuthenticated() && currentUserData().role == 'admin';
     }
 
-    // Функция для проверки, является ли пользователь преподавателем предмета в группе
-    function isGroupTeacher(groupId) {
-      let group = get(/databases/$(database)/documents/groups/$(groupId)).data;
-      return request.auth != null && 
-        group.subjects.hasAny([{'teacherId': request.auth.uid}]);
+    function isTeacher() {
+      return isAuthenticated() && currentUserData().role == 'teacher';
     }
 
-    // Правила для пользователей
+    function isStudent() {
+      return isAuthenticated() && currentUserData().role == 'student';
+    }
+    
+    // Validates that only specified fields are being changed during an update.
+    // Also ensures 'createdAt' is not modified and 'updatedAt' is allowed.
+    function isUpdatingAllowedFields(allowedFieldsToUpdate) {
+      let incomingData = request.resource.data;
+      let existingData = resource.data;
+      
+      // All fields that are allowed to be part of the diff.
+      // 'updatedAt' can always be updated.
+      let permittedDiffFields = allowedFieldsToUpdate.concat(['updatedAt']);
+      
+      // Check if any fields *other* than those permitted are being changed.
+      let affectedKeys = incomingData.diff(existingData).affectedKeys();
+      let allChangesArePermitted = affectedKeys.hasOnly(permittedDiffFields);
+      
+      // Ensure 'createdAt' field is not being changed if it exists.
+      let createdAtUnchanged = true;
+      if (existingData.keys().hasAny(['createdAt'])) {
+        createdAtUnchanged = incomingData.createdAt == existingData.createdAt;
+      }
+      
+      return allChangesArePermitted && createdAtUnchanged;
+    }
+
+    // Validates fields upon creation.
+    // Ensures all required fields are present and only allowed fields are included.
+    // 'createdAt' and 'updatedAt' are expected to be set by serverTimestamp or client.
+    function isCreatingWithAllowedFields(requiredFields, optionalFields) {
+        let incomingData = request.resource.data;
+        let allPotentiallyAllowed = requiredFields.concat(optionalFields).concat(['createdAt', 'updatedAt']);
+        
+        let hasAllRequiredFields = incomingData.keys().hasAll(requiredFields);
+        let hasOnlyAllowedFields = incomingData.keys().hasOnly(allPotentiallyAllowed);
+        
+        return hasAllRequiredFields && hasOnlyAllowedFields;
+    }
+
+    // --- Collection Rules ---
+
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAdmin() || isOwner(userId);
+      allow read: if isAuthenticated() && (isAdmin() || isSignedInUser(userId));
+      
+      // Firestore document creation, not Firebase Auth user creation.
+      // Typically done by admin or backend. If user creates their own doc after signup,
+      // rule might be: isSignedInUser(userId) && request.resource.data.role == 'student' (or 'teacher')
+      // and other fields are validated. For now, admin only.
+      allow create: if isAdmin(); 
+      
+      // Admins can update any field.
+      // Users can update their own firstName, lastName.
+      // teacherId/studentId linking is critical:
+      // - If admin links: this rule is fine.
+      // - If user links themselves (e.g. creating their own profile):
+      //   Then this needs to allow updating teacherId/studentId by owner,
+      //   but ONLY if it's currently null or matches a specific pattern (more complex).
+      //   For now, assume admin or controlled client logic handles linking, and this allows self-update of name.
+      allow update: if isAdmin() || 
+                     (isSignedInUser(userId) && 
+                      isUpdatingAllowedFields(['firstName', 'lastName'])); 
+                      // Removed teacherId/studentId from direct user update for stricter control.
+                      // These should be updated by admin or a specific process (e.g. profile creation).
+
       allow delete: if isAdmin();
     }
 
-    // Правила для учителей
-    match /teachers/{teacherId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || 
-        (isTeacher() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teacherId == teacherId);
+    match /teachers/{teacherProfileId} {
+      allow read: if isAuthenticated(); 
+
+      // Admin can create any teacher profile.
+      // A user with 'teacher' role can create their own profile if:
+      // 1. The profile's 'userId' field matches their auth UID.
+      // 2. Their user document's 'teacherId' field is not already set or matches this new profile ID (to prevent multiple profiles).
+      //    This second part is hard to enforce atomically in rules alone without a transaction.
+      //    A simpler rule is to allow creation if userId matches, and rely on client/backend to update users.teacherId.
+      allow create: if isAdmin() || 
+                     (isTeacher() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      isCreatingWithAllowedFields(
+                        ['userId', 'specialization', 'experience', 'education', 'subjects', 'groups', 'firstName', 'lastName', 'email'], // firstName, lastName, email are denormalized from User doc
+                        ['phone', 'middleName']
+                      ));
+                      // After creation, a function or client should update users/$(request.auth.uid).teacherId to teacherProfileId.
+
+      // Admin can update any field.
+      // A teacher can update specific fields of their own profile.
+      // Assumes `currentUserData().teacherId` correctly stores this `teacherProfileId`.
+      allow update: if isAdmin() || 
+                     (isTeacher() && 
+                      currentUserData().teacherId == teacherProfileId &&
+                      isUpdatingAllowedFields(['specialization', 'experience', 'education', 'subjects', 'groups', 'phone', 'middleName', 'firstName', 'lastName', 'email'])); 
+                      // Also allow updating denormalized fields if they change.
+      
+      allow delete: if isAdmin(); 
     }
 
-    // Правила для студентов
-    match /students/{studentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || 
-        (isStudent() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId);
+    match /students/{studentProfileId} {
+      allow read: if isAuthenticated(); // Allow all authenticated to read for now.
+                      // Can be restricted: isAdmin() ||
+                      // (isStudent() && currentUserData().studentId == studentProfileId) || // Own profile
+                      // (isTeacher() && teacherHasAccessToStudent(studentProfileId)) // Complex: check group membership
+
+      // Admin can create. Student profile creation is usually an admin task.
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['userId', 'groupId', 'enrollmentDate', 'status', 'studentCardId'],
+                        []
+                      );
+                      // After creation, users/$(request.resource.data.userId).studentId should be updated.
+
+      // Student profiles are generally managed by admins.
+      allow update: if isAdmin(); 
+                      // If students could update parts: || (isStudent() && currentUserData().studentId == studentProfileId && isUpdatingAllowedFields([...]))
+      
+      allow delete: if isAdmin(); 
     }
 
-    // Правила для групп
-    match /groups/{groupId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // Правила для предметов
     match /subjects/{subjectId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if isAuthenticated(); 
+      allow create, update, delete: if isAdmin(); 
     }
 
-    // Правила для расписания
+    match /groups/{groupId} {
+      allow read: if isAuthenticated(); 
+                      // More restrictive examples:
+                      // (isStudent() && get(/databases/$(database)/documents/students/$(currentUserData().studentId)).data.groupId == groupId)
+                      // (isTeacher() && currentUserData().groups.hasAny([groupId])) // if teacher doc has a 'groups' array of group IDs.
+                                                                                // The current Teacher type has this.
+      
+      // Group creation, student list modification, and deletion are admin tasks.
+      // Student list (array of student profile IDs) on a group is managed by admin via client.
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['name', 'year', 'specialization'],
+                        ['students', 'scheduleId'] // students array and scheduleId are optional at creation
+                      );
+      allow update: if isAdmin(); // Admin manages all fields including student list and scheduleId linking.
+      allow delete: if isAdmin();
+    }
+
     match /schedules/{scheduleId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if isAuthenticated(); 
+                      // Similar to groups, could be restricted based on user's group schedule.
+                      // (isStudent() && get(/databases/$(database)/documents/groups/$(get(/databases/$(database)/documents/students/$(currentUserData().studentId)).data.groupId)).data.scheduleId == scheduleId)
+
+      // Admin manages schedules and their lessons array.
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['groupId', 'semester', 'year'],
+                        ['lessons'] // lessons array is optional at creation
+                      );
+      allow update: if isAdmin(); // Admin updates metadata and lessons array
+      allow delete: if isAdmin();
     }
 
-    // Правила для журнала
     match /journals/{journalId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
-    }
+      function isAssignedTeacherToJournal(journalDoc) {
+        // journalDoc is the resource.data or request.resource.data
+        return isTeacher() && journalDoc.teacherId == currentUserData().teacherId;
+      }
 
-    // Правила для оценок
-    match /grades/{gradeId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
-    }
-
-    // --- Посещаемость (attendance) ---
-    match /attendance/{attendanceId} {
-      // Студенты могут читать только свою посещаемость
-      // Преподаватели могут читать посещаемость своих групп
-      // Админы могут читать всю посещаемость
       allow read: if isAuthenticated() && 
-        (isAdmin() || 
-         isTeacher() || 
-         (isStudent() && resource.data.studentId == request.auth.uid));
-      // Отмечать посещаемость могут преподаватели своих групп и админы
-      allow write: if isAdmin() || isTeacher();
+                   (isAdmin() || 
+                    isAssignedTeacherToJournal(resource.data) || 
+                    (isStudent() && 
+                     get(/databases/$(database)/documents/students/$(currentUserData().studentId)).data.groupId == resource.data.groupId));
+      
+      allow create: if isAdmin() || 
+                     (isTeacher() && 
+                      request.resource.data.teacherId == currentUserData().teacherId && // Teacher creating journal for themselves
+                      isCreatingWithAllowedFields(
+                        ['groupId', 'subjectId', 'teacherId', 'semester', 'year'],
+                        ['entries'] // entries usually starts empty
+                      )); 
+                     
+      allow update: if isAdmin() || 
+                     (isAssignedTeacherToJournal(resource.data) && // Teacher assigned to this journal
+                      isUpdatingAllowedFields(['entries'])); // Teacher can only update entries array.
+                                                             // Metadata changes by admin.
+      
+      allow delete: if isAdmin();
     }
-
-    // --- Задания (assignments) ---
-    match /assignments/{assignmentId} {
-      // Читать задания могут все аутентифицированные
-      allow read: if isAuthenticated();
-      // Создавать/редактировать задания могут преподаватели своих групп и админы
-      allow write: if isAdmin() || isTeacher();
-    }
-
-    // --- Чаты (chats) и Сообщения (messages) ---
-    match /chats/{chatId} {
-      // Участники чата могут читать и писать в него
-      allow read, write: if isAuthenticated() && request.auth.uid in resource.data.participantIds;
-      // Админ может читать все чаты (для модерации, если нужно)
-      allow get: if isAdmin(); // get - для чтения одного документа
-      // Создание чатов - зависит от логики приложения (кто может инициировать)
-      // allow create: if isAuthenticated(); 
-    }
-
-    match /chats/{chatId}/messages/{messageId} {
-      // Участники чата могут читать и писать сообщения
-      allow read, write: if isAuthenticated() && 
-                           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
-      // Админ может читать все сообщения
-      allow list: if isAdmin(); // list - для чтения коллекции
-      allow get: if isAdmin();
-    }
-
-    // --- Статистика (statistics) ---
-    // (Ваши правила были хороши, можно оставить или адаптировать)
-    match /statistics/{statDoc} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    // --- Общее правило (если нужно что-то не покрытое выше) ---
-    // Оно уже есть у вас, но лучше делать правила более гранулярными
-    // match /{document=**} {
-    //   allow read: if request.auth != null;
-    // }
   }
 }
+```
+
+**Key Changes and Refinements in this Version:**
+
+*   **`currentUserData()` simplified:** No longer takes `userId` as it always refers to `request.auth.uid`.
+*   **`isUpdatingAllowedFields()` refined:** Clarified logic for `affectedKeys` and handling of `createdAt`.
+*   **`isCreatingWithAllowedFields()` helper added:** For validating fields upon document creation.
+*   **User Profile Linking (`teacherId`, `studentId` on User doc):**
+    *   Removed `teacherId` and `studentId` from fields users can update on their own `/users/{userId}` document. This linking should be a more controlled process, likely admin-driven or as part of a specific profile creation flow that might involve callable functions for atomicity.
+*   **Teacher/Student Profile Creation:**
+    *   Rules for teachers creating their own profiles (`/teachers/{teacherProfileId}`) now include validation of initial fields using `isCreatingWithAllowedFields`.
+    *   Student profile creation (`/students/{studentProfileId}`) is restricted to admins by default, as this is more common. The rule includes field validation.
+*   **Teacher/Student Profile Updates:**
+    *   Teachers can update denormalized fields (`firstName`, `lastName`, `email`) on their own teacher profile, assuming these were copied during profile creation.
+*   **Group/Schedule Read Access:** Maintained as `isAuthenticated()` for simplicity, with comments indicating how more restrictive rules could be structured. Implementing highly granular read access based on complex relationships (e.g., teacher assigned to a subject within a group's schedule) can make rules very complex and sometimes slow. Often, a balance is struck where read access is a bit broader, and client-side logic filters or UI prevents access to non-relevant data.
+*   **Journal Update for Teachers:** Explicitly restricted to only the `entries` array and `updatedAt`. Metadata changes (group, subject, teacher, semester, year) for a journal are admin-only after creation.
+*   **Field Validation on Create:** Added `isCreatingWithAllowedFields` checks to `create` operations for profiles, groups, schedules, and journals to ensure required fields are present and no unexpected fields are added.
+
+These rules provide a robust starting point. Testing with the Firebase Emulator Suite is essential to ensure they behave as expected for all user roles and operations. Remember that security rules are default-deny, so any path or operation not explicitly allowed will be denied.
