@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form'; // Removed Controller as not strictly needed for these inputs
+import React, { useState, useEffect } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ import { db } from '@/lib/firebase';
 import { addOrUpdateJournalEntriesForDate, removeJournalEntriesForDate } from '@/lib/firebaseService/journalService';
 import { getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Journal, JournalEntry, Student, User, Group } from '@/types';
+import type { Journal, JournalEntry, Student, Group } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import {
   AlertDialog,
@@ -47,24 +47,37 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
-
+// Form schema for a single journal entry row
 const journalEntryRowSchema = z.object({
-  studentId: z.string(), 
-  studentName: z.string(), 
+  studentId: z.string(),
+  studentName: z.string(),
   attendance: z.enum(['present', 'absent', 'late']),
-  grade: z.string().optional().transform((val) => (val === "" || val === undefined ? undefined : Number(val)))
-           .refine((val) => val === undefined || (val >= 0 && val <= 100), { message: "Grade must be 0-100" })
-           .nullable(),
-  comment: z.string().max(200, "Comment too long").optional().nullable(),
+  grade: z.string().optional().transform((val) => {
+    if (val === "" || val === undefined) return undefined;
+    const num = Number(val);
+    return isNaN(num) ? undefined : num;
+  }).refine((val) => val === undefined || (val >= 0 && val <= 100), {
+    message: "Grade must be between 0 and 100"
+  }),
+  comment: z.string().optional().transform(val => val === "" ? undefined : val),
 });
 
+// Form schema for the entire form
 const manageEntriesSchema = z.object({
   selectedDate: z.date({ required_error: "Please select a date." }),
   entries: z.array(journalEntryRowSchema),
 });
 
-export type ManageEntriesFormValues = z.infer<typeof manageEntriesSchema>;
+type ManageEntriesFormValues = z.infer<typeof manageEntriesSchema>;
 
 interface StudentWithUserData extends Student {
   fullName?: string;
@@ -72,8 +85,8 @@ interface StudentWithUserData extends Student {
 
 interface ManageJournalEntriesViewProps {
   journal: Journal;
-  group: Group | null; 
-  onEntriesUpdated: () => void; 
+  group: Group | null;
+  onEntriesUpdated: () => void;
   className?: string;
 }
 
@@ -83,7 +96,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   onEntriesUpdated,
   className,
 }) => {
-  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [studentsInGroup, setStudentsInGroup] = useState<StudentWithUserData[]>([]);
   const [isStudentDataLoading, setIsStudentDataLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -92,11 +105,16 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   const form = useForm<ManageEntriesFormValues>({
     resolver: zodResolver(manageEntriesSchema),
     defaultValues: {
-      selectedDate: startOfDay(new Date()), 
+      selectedDate: startOfDay(new Date()),
       entries: [],
     },
   });
-  const { fields, replace, control } = useFieldArray({ control: form.control, name: "entries" });
+
+  const { fields, replace } = useFieldArray({
+    control: form.control,
+    name: "entries"
+  });
+
   const selectedDate = form.watch("selectedDate");
 
   useEffect(() => {
@@ -111,11 +129,11 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         const studentProfiles = await getStudentsInGroupDetails(db, group.students);
         const userIds = studentProfiles.map(s => s.userId);
         if (userIds.length === 0) {
-            setStudentsInGroup(studentProfiles.map(sp => ({...sp, fullName: 'User data missing'})));
-            setIsStudentDataLoading(false);
-            return;
+          setStudentsInGroup(studentProfiles.map(sp => ({...sp, fullName: 'User data missing'})));
+          setIsStudentDataLoading(false);
+          return;
         }
-        const users = await getUsersFromFirestore(db); // Potentially optimize if users are already available higher up
+        const users = await getUsersFromFirestore(db);
         const userMap = new Map(users.map(u => [u.uid, u]));
 
         const studentsWithNames = studentProfiles.map(sp => ({
@@ -135,12 +153,12 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
 
   useEffect(() => {
     if (!selectedDate || studentsInGroup.length === 0) {
-      replace([]); 
+      replace([]);
       return;
     }
     const dateNormalized = startOfDay(selectedDate);
-    const entriesForDate = journal.entries.filter(entry => 
-        isEqual(startOfDay(entry.date.toDate()), dateNormalized)
+    const entriesForDate = journal.entries.filter(entry =>
+      isEqual(startOfDay(entry.date.toDate()), dateNormalized)
     );
 
     const newFormEntries = studentsInGroup.map(student => {
@@ -149,13 +167,12 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         studentId: student.id,
         studentName: student.fullName || 'Unknown Student',
         attendance: existingEntry?.attendance || 'present',
-        grade: existingEntry?.grade !== undefined && existingEntry.grade !== null ? String(existingEntry.grade) : "",
+        grade: existingEntry?.grade !== undefined ? String(existingEntry.grade) : "",
         comment: existingEntry?.comment ?? "",
       };
     });
     replace(newFormEntries);
   }, [selectedDate, journal.entries, studentsInGroup, replace]);
-
 
   const onSubmit = async (values: ManageEntriesFormValues) => {
     setIsSubmitting(true);
@@ -165,13 +182,13 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         date: dateForFirestore,
         studentId: e.studentId,
         attendance: e.attendance,
-        grade: e.grade === null || e.grade === undefined || e.grade === "" ? undefined : Number(e.grade),
-        comment: e.comment === null || e.comment === "" ? undefined : e.comment,
+        grade: e.grade,
+        comment: e.comment,
       }));
 
       await addOrUpdateJournalEntriesForDate(db, journal.id, dateForFirestore, entriesToSave);
       toast.success(`Entries for ${format(values.selectedDate, "PPP")} saved successfully.`);
-      onEntriesUpdated(); 
+      onEntriesUpdated();
     } catch (error) {
       console.error("Error saving journal entries:", error);
       toast.error("Failed to save entries.");
@@ -189,8 +206,11 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       onEntriesUpdated();
       if (selectedDate && isEqual(startOfDay(selectedDate), startOfDay(dateToDelete.toDate()))) {
         const resetEntries = studentsInGroup.map(student => ({
-            studentId: student.id, studentName: student.fullName || 'Unknown Student',
-            attendance: 'present', grade: "", comment: "",
+          studentId: student.id,
+          studentName: student.fullName || 'Unknown Student',
+          attendance: 'present' as const,
+          grade: "",
+          comment: "",
         }));
         replace(resetEntries);
       }
@@ -207,18 +227,17 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   const openDeleteConfirm = () => {
     if (selectedDate) {
       const dateNormalized = startOfDay(selectedDate);
-      const entriesExistForDate = journal.entries.some(entry => 
-          isEqual(startOfDay(entry.date.toDate()), dateNormalized)
+      const entriesExistForDate = journal.entries.some(entry =>
+        isEqual(startOfDay(entry.date.toDate()), dateNormalized)
       );
       if (!entriesExistForDate) {
-          toast.info(`No entries exist for ${format(selectedDate, "PPP")} to delete.`);
-          return;
+        toast.info(`No entries exist for ${format(selectedDate, "PPP")} to delete.`);
+        return;
       }
       setDateToDelete(Timestamp.fromDate(dateNormalized));
       setShowDeleteConfirm(true);
     }
   };
-
 
   return (
     <div className={cn("p-1 space-y-4 h-full flex flex-col", className)}>
@@ -226,69 +245,138 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b">
             <FormField control={form.control} name="selectedDate" render={({ field }) => (
-                <FormItem className="flex flex-col"><FormLabel className="mb-1">Date</FormLabel>
-                  <Popover><PopoverTrigger asChild><FormControl>
-                        <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                          {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover>
-                  <FormMessage /></FormItem>)} />
-            <div className="flex-grow"></div> 
+              <FormItem className="flex flex-col">
+                <FormLabel className="mb-1">Date</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                        {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="flex-grow"></div>
             <Button type="button" variant="destructive" onClick={openDeleteConfirm} disabled={isSubmitting || isStudentDataLoading || fields.length === 0} size="sm">
-              <Trash2 className="mr-2 h-4 w-4" /> Delete Entries for Date</Button>
+              <Trash2 className="mr-2 h-4 w-4" /> Delete Entries for Date
+            </Button>
             <Button type="submit" disabled={isSubmitting || isStudentDataLoading || fields.length === 0} size="sm">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Entries for Date</Button>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Entries for Date
+            </Button>
           </div>
         </form>
       </Form>
-      
+
       {isStudentDataLoading && <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading student list...</div>}
       {!isStudentDataLoading && studentsInGroup.length === 0 && <p className="text-muted-foreground text-center py-4">No students in this group to record entries for.</p>}
-      
+
       {fields.length > 0 && !isStudentDataLoading && (
-        <ScrollArea className="flex-grow"> 
-        <Table>
-          <TableHeader><TableRow><TableHead className="w-[25%]">Student</TableHead><TableHead className="w-[20%]">Attendance</TableHead>
-              <TableHead className="w-[15%]">Grade</TableHead><TableHead className="w-[40%]">Comment</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {fields.map((item, index) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium py-2 align-top">
-                  {form.watch(`entries.${index}.studentName`)}
-                  <input type="hidden" {...form.register(`entries.${index}.studentId`)} />
-                </TableCell>
-                <TableCell className="py-1 align-top">
-                  <FormField control={control} name={`entries.${index}.attendance`} render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                        <FormControl><SelectTrigger className="h-9"><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent><SelectItem value="present">Present</SelectItem><SelectItem value="absent">Absent</SelectItem>
-                          <SelectItem value="late">Late</SelectItem></SelectContent></Select>)}/>
-                </TableCell>
-                <TableCell className="py-1 align-top">
-                  <FormField control={control} name={`entries.${index}.grade`} render={({ field }) => (
-                       <Input type="number" placeholder="0-100" {...field} 
-                              value={field.value ?? ""}
-                              onChange={e => field.onChange(e.target.value === '' ? null : e.target.value)} // Keep as string for form, Zod transforms
-                              className="h-9" disabled={isSubmitting} />)}/>
-                </TableCell>
-                <TableCell className="py-1 align-top">
-                  <FormField control={control} name={`entries.${index}.comment`} render={({ field }) => (
-                      <Textarea placeholder="Optional comment" {...field} 
-                                value={field.value ?? ""}
-                                className="h-9 resize-none min-h-[36px]" disabled={isSubmitting} />)}/>
-                </TableCell>
-              </TableRow>))}
-          </TableBody></Table>
+        <ScrollArea className="flex-grow">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Student</TableHead>
+                <TableHead>Attendance</TableHead>
+                <TableHead>Grade</TableHead>
+                <TableHead>Comment</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fields.map((field, index) => (
+                <TableRow key={field.id}>
+                  <TableCell>{field.studentName}</TableCell>
+                  <TableCell>
+                    <FormField
+                      control={form.control}
+                      name={`entries.${index}.attendance`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="present">Present</SelectItem>
+                              <SelectItem value="absent">Absent</SelectItem>
+                              <SelectItem value="late">Late</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <FormField
+                      control={form.control}
+                      name={`entries.${index}.grade`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              placeholder="0-100"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={e => field.onChange(e.target.value)}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <FormField
+                      control={form.control}
+                      name={`entries.${index}.comment`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Optional comment"
+                              className="resize-none"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={e => field.onChange(e.target.value)}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </ScrollArea>
       )}
-      {showDeleteConfirm && dateToDelete && (
-        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}><AlertDialogContent><AlertDialogHeader>
-              <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
-              <AlertDialogDescription>Are you sure you want to delete all journal entries for {format(dateToDelete.toDate(), "PPP")}? This action cannot be undone.</AlertDialogDescription>
-            </AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setDateToDelete(null)}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteEntriesForDate} className="bg-red-600 hover:bg-red-700" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Delete Entries</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
-    </div>);};
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Entries</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete all entries for {dateToDelete ? format(dateToDelete.toDate(), "PPP") : "this date"}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteEntriesForDate}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+};
 
 export default ManageJournalEntriesView;

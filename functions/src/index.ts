@@ -1,20 +1,12 @@
 import * as functions from "firebase-functions/v2";
-import cors from "cors";
+import { onCall } from "firebase-functions/v2/https";
+import * as admin from "firebase-admin";
+import "./firebase"; // Import Firebase initialization first
+
 import { listUsers, createUserOnServer, getStudents, getTeachers, addStudentToGroup, removeStudentFromGroup } from "./userHandlers";
 import { createGroup, listGroups, getGroup } from "./groupHandlers";
 import * as scheduleHandlers from "./scheduleHandlers";
 import * as subjectHandlers from "./subjectHandlers";
-import "./firebase"; // Import Firebase initialization
-
-// Initialize CORS middleware
-const corsHandler = cors({ origin: true });
-
-// Helper function to wrap functions with CORS
-const withCors = (handler: any) => {
-  return async (req: any, res: any) => {
-    return corsHandler(req, res, () => handler(req, res));
-  };
-};
 
 // Set global options for all functions
 functions.setGlobalOptions({ 
@@ -47,7 +39,7 @@ export const deleteSubjectFunction = subjectHandlers.deleteSubject;
 export const getSubjectsFunction = subjectHandlers.getSubjects;
 
 // Функции для управления пользователями
-export const createUser = onCall(async (request) => {
+export const createUser = onCall<{ email: string; password: string; userData: any }>(async (request) => {
   try {
     const { email, password, userData } = request.data;
     
@@ -78,22 +70,22 @@ export const createUser = onCall(async (request) => {
   }
 });
 
-export const getUserFunction = onCall(async (request) => {
+export const getUserFunction = onCall<{ uid: string }>(async (request) => {
   // ... existing code ...
 });
 
-export const deleteUserFunction = onCall(async (request) => {
+export const deleteUserFunction = onCall<{ uid: string }>(async (request) => {
   // ... existing code ...
 });
 
-export const updateUserFunction = onCall(async (request) => {
+export const updateUserFunction = onCall<{ uid: string; userData: any }>(async (request) => {
   // ... existing code ...
 });
 
-export const updateGroupFunction = onCall(async (request) => {
+export const updateGroupFunction = onCall<{ groupId: string; groupData: any }>(async (request) => {
   // ... existing code ...
 });
 
-export const deleteGroupFunction = onCall(async (request) => {
+export const deleteGroupFunction = onCall<{ groupId: string }>(async (request) => {
   // ... existing code ...
 });

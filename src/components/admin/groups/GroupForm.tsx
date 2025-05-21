@@ -19,22 +19,17 @@ import {
   updateGroup,
   getGroup,
 } from '@/lib/firebaseService/groupService';
-// Group type is not explicitly imported as it's inferred or handled by service
 
 // Zod schema for the form
 const groupSchema = z.object({
   name: z.string().min(1, 'Group name is required').max(100, 'Name too long'),
-  // Ensure year is treated as a number. Default browser behavior for type="number" can be tricky.
-  year: z.preprocess(
-    (val) => (typeof val === 'string' ? parseInt(val, 10) : val),
-    z.number({ invalid_type_error: 'Year must be a number' })
-     .min(new Date().getFullYear() - 10, `Year too old`) 
-     .max(new Date().getFullYear() + 5, `Year too far in future`)
-  ),
+  year: z.number()
+    .min(new Date().getFullYear() - 10, `Year too old`) 
+    .max(new Date().getFullYear() + 5, `Year too far in future`),
   specialization: z.string().min(1, 'Specialization is required').max(100, 'Specialization too long'),
 });
 
-export type GroupFormValues = z.infer<typeof groupSchema>;
+type GroupFormValues = z.infer<typeof groupSchema>;
 
 interface GroupFormProps {
   mode: 'create' | 'edit';
@@ -100,12 +95,11 @@ const GroupForm: React.FC<GroupFormProps> = ({
     try {
       const groupData = {
         name: values.name,
-        year: values.year, // Already a number due to Zod preprocessing & schema
+        year: values.year,
         specialization: values.specialization,
       };
 
       if (mode === 'create') {
-        // students and scheduleId will be initialized by the service
         await createGroup(db, groupData);
         toast.success('Group created successfully!');
       } else if (mode === 'edit' && groupId) {
@@ -114,9 +108,10 @@ const GroupForm: React.FC<GroupFormProps> = ({
       }
       onFormSubmitSuccess();
       if (mode === 'create') form.reset(); // Reset only on create
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error submitting group form:', error);
-      toast.error(error.message || 'Failed to save group.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save group.';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -149,10 +144,14 @@ const GroupForm: React.FC<GroupFormProps> = ({
             <FormItem>
               <FormLabel>Enrollment Year</FormLabel>
               <FormControl>
-                {/* Ensure input type is number, but rely on RHF and Zod for state management */}
-                <Input type="number" placeholder="e.g., 2023" {...field} disabled={isLoading} 
-                       onChange={e => field.onChange(e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                       value={field.value ?? ''} />
+                <Input 
+                  type="number" 
+                  placeholder="e.g., 2023" 
+                  {...field} 
+                  disabled={isLoading} 
+                  onChange={e => field.onChange(Number(e.target.value))}
+                  value={field.value}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
