@@ -1,21 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase'; // Убедитесь, что путь правильный
+import { auth } from '../lib/firebase';
 import type { ReactNode } from 'react';
-import type { User as FirebaseUser } from 'firebase/auth';
-
-interface UserProfile {
-  uid: string;
-  email: string | null;
-  firstName?: string;
-  lastName?: string;
-  role?: 'student' | 'teacher' | 'admin'; // Добавляем роль
-  // ... другие поля из вашей коллекции users
-}
+import type { User } from '../types';
+import { getUser, createUser } from '../services/firestore';
+import { Timestamp } from 'firebase/firestore';
 
 interface AuthContextType {
-  currentUser: UserProfile | null;
+  currentUser: User | null;
   isAdmin: boolean;
   loading: boolean;
   logout: () => Promise<void>;
@@ -26,45 +18,49 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (firebaseUser: FirebaseUser | null) => {
-        if (firebaseUser) {
-          // Пользователь аутентифицирован, получаем его профиль из Firestore
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
+      if (firebaseUser) {
+        // Получаем профиль пользователя из Firestore
+        const userProfile = await getUser(firebaseUser.uid);
 
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data() as Omit<
-              UserProfile,
-              'uid' | 'email'
-            >; // Типизируем данные
-            const userProfile: UserProfile = {
+        if (userProfile) {
+          setCurrentUser(userProfile);
+          setIsAdmin(userProfile.role === 'admin');
+          console.log('[AuthContext] Пользователь найден в Firestore:', userProfile);
+        } else {
+          // Автоматически создаём профиль, если его нет (только для DEV/эмулятора!)
+          if (import.meta.env.DEV) {
+            const newUser: Omit<User, 'createdAt' | 'updatedAt'> = {
               uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              ...userData,
+              email: firebaseUser.email || '',
+              firstName: '',
+              lastName: '',
+              role: 'admin',
             };
-            setCurrentUser(userProfile);
-            setIsAdmin(userProfile.role === 'admin'); // Проверяем роль
+            await createUser(newUser);
+            const now = Timestamp.now();
+            setCurrentUser({ ...newUser, createdAt: now, updatedAt: now });
+            setIsAdmin(true);
+            console.warn('[AuthContext] Автоматически создан профиль пользователя в Firestore.');
           } else {
-            // Случай, если пользователь есть в Auth, но нет в Firestore (не должно происходить при правильной регистрации)
-            console.warn('User exists in Auth but not in Firestore DB.');
+            console.warn('[AuthContext] User exists in Auth but not in Firestore DB. UID:', firebaseUser.uid);
             setCurrentUser(null);
             setIsAdmin(false);
           }
-        } else {
-          // Пользователь не аутентифицирован
-          setCurrentUser(null);
-          setIsAdmin(false);
         }
-        setLoading(false);
+      } else {
+        // Пользователь не аутентифицирован
+        setCurrentUser(null);
+        setIsAdmin(false);
       }
-    );
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, []);

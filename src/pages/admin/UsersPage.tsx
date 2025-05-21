@@ -1,129 +1,50 @@
 // src/pages/admin/UsersPage.tsx
-import React, { useEffect, useMemo, useState } from 'react';
-import type { ColumnDef, SortingState } from '@tanstack/react-table';
+import React, { useEffect, useState } from 'react';
 import {
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-  getPaginationRowModel,
-} from '@tanstack/react-table';
-import {
+  Box,
+  Paper,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
-  TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-// import { Input } from '@/components/ui/input'; // Пока не используется
-import {
-  ArrowUpDown,
-  MoreHorizontal,
-  UserPlusIcon,
-  RefreshCw,
-  Trash2,
-  Pencil,
-  Eye,
-} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-// import { Checkbox } from '@/components/ui/checkbox'; // Пока не используется
-import { functions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
-import { motion /*, AnimatePresence */ } from 'framer-motion'; // AnimatePresence пока не используется
-import { UserFormDialog } from '@/components/admin/users/UserForm'; // Импортируем нашу форму
-import { Toaster, toast } from "sonner"; 
-import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  patronymic?: string;
-  role: 'admin' | 'teacher' | 'student';
-  teacherDetails?: {
-    department: string;
-    qualification: string;
-  };
-  studentDetails?: {
-    groupId: string;
-    studentId: string;
-  };
-}
-
-const TableRowSkeleton: React.FC<{ columnsCount: number }> = ({
-  columnsCount,
-}) => (
-  <TableRow>
-    {Array.from({ length: columnsCount }).map((_, index) => (
-      <TableCell key={index}>
-        <Skeleton className="h-5 w-full" />
-      </TableCell>
-    ))}
-  </TableRow>
-);
+  Typography,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
+  Chip,
+} from '@mui/material';
+import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import type { User } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { UserFormDialog } from '@/components/admin/users/UserForm';
 
 const UsersPage: React.FC = () => {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const { isAdmin } = useAuth();
 
   const fetchUsers = async () => {
-    setLoading(true);
-    setError(null);
     try {
-      const listUsersFunction = httpsCallable(functions, 'listUsers');
-      const result = await listUsersFunction();
-      const resultData = result.data as {
-        success: boolean;
-        users?: User[];
-        message?: string;
-      };
-
-      if (resultData.success && resultData.users) {
-        setData(resultData.users);
-      } else {
-        throw new Error(
-          resultData.message || 'Не удалось получить список пользователей.'
-        );
-      }
-    } catch (err: unknown) {
-      console.error('Ошибка при загрузке пользователей:', err);
-      let errorMessage = 'Произошла ошибка при загрузке данных.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      // Для более специфичных ошибок Firebase:
-      // import { FirebaseError } from 'firebase/app';
-      // if (err instanceof FirebaseError && err.code) { /* ... */ }
-      setError(errorMessage);
-      setData([]);
+      const usersCollection = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersCollection);
+      const usersList = usersSnapshot.docs.map(doc => ({
+        ...doc.data(),
+        uid: doc.id,
+      })) as User[];
+      setUsers(usersList);
+    } catch (error) {
+      console.error('Error fetching users:', error);
     } finally {
       setLoading(false);
     }
@@ -134,285 +55,151 @@ const UsersPage: React.FC = () => {
   }, []);
 
   const handleUserCreatedOrUpdated = () => {
-    fetchUsers(); // Обновляем список
+    fetchUsers();
   };
 
-  const openEditUserDialog = (user: User) => {
-    setEditingUser(user); // Сохраняем данные пользователя для редактирования
-    setIsUserFormOpen(true); // Открываем тот же диалог
-  };
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
 
-  const closeUserDialog = () => {
-    setIsUserFormOpen(false);
-    setEditingUser(null); // Сбрасываем редактируемого пользователя
-  }
-
-  const handleDeleteUser = async (user: User) => {
     try {
-      const deleteUserFunction = httpsCallable(functions, 'deleteUser');
-      const result = await deleteUserFunction({ userId: user.id });
-      const resultData = result.data as { success: boolean; message: string };
-
-      if (resultData.success) {
-        toast.success(resultData.message);
-        fetchUsers();
-      } else {
-        throw new Error(resultData.message);
-      }
-    } catch (err: unknown) {
-      console.error('Ошибка при удалении пользователя:', err);
-      let errorMessage = 'Произошла ошибка при удалении пользователя.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      toast.error(errorMessage);
+      await deleteDoc(doc(db, 'users', userToDelete.uid));
+      await fetchUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
     } finally {
       setUserToDelete(null);
     }
   };
 
-  const columns = useMemo<ColumnDef<User>[]>(
-    () => [
-      {
-        accessorKey: 'fullName',
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            ФИО
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: ({ row }) =>
-          `${row.original.lastName} ${row.original.firstName} ${
-            row.original.patronymic || ''
-          }`,
-        sortingFn: 'alphanumeric',
-      },
-      {
-        accessorKey: 'email',
-        header: 'Email',
-      },
-      {
-        accessorKey: 'role',
-        header: 'Роль',
-        cell: ({ row }) => {
-          const role = row.original.role;
-          return (
-            <Badge variant={role === 'admin' ? 'destructive' : role === 'teacher' ? 'default' : 'secondary'}>
-              {role === 'admin' ? 'Администратор' : role === 'teacher' ? 'Преподаватель' : 'Студент'}
-            </Badge>
-          );
-        },
-      },
-      {
-        accessorKey: 'studentDetails',
-        header: 'Группа',
-        cell: ({ row }) => row.original.studentDetails?.groupId || '—',
-      },
-      {
-        id: 'actions',
-        header: () => <div className="text-right">Действия</div>,
-        cell: ({ row }) => {
-          const user = row.original;
-          return (
-            <div className="text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <span className="sr-only">Открыть меню</span>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onClick={() => console.log('View user', user.id)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Просмотреть
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Редактировать
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive hover:!bg-destructive/10"
-                    onClick={() => setUserToDelete(user)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Удалить
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        },
-      },
-    ],
-    []
-  );
+  const getRoleColor = (role: User['role']) => {
+    switch (role) {
+      case 'admin':
+        return 'error';
+      case 'teacher':
+        return 'primary';
+      case 'student':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
 
-  const table = useReactTable({
-    data,
-    columns,
-    state: {
-      sorting,
-    },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-  });
+  if (!isAdmin) {
+    return (
+      <Box p={3}>
+        <Typography variant="h5" color="error">
+          Доступ запрещен. Требуются права администратора.
+        </Typography>
+      </Box>
+    );
+  }
 
-  const columnsCount = columns.length;
+  if (loading) {
+    return (
+      <Box p={3}>
+        <Typography>Загрузка...</Typography>
+      </Box>
+    );
+  }
 
   return (
-    <><Toaster richColors position="top-right" /><motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="flex flex-col gap-4"
-    >
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-          Пользователи
-        </h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={fetchUsers}
-            disabled={loading}
-            title="Обновить список"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          {/* TODO: Кнопка для открытия модального окна создания пользователя */}
-          <Button onClick={() => { setEditingUser(null); setIsUserFormOpen(true); }}>
-            <UserPlusIcon className="mr-2 h-4 w-4" /> Создать пользователя
-          </Button>
-        </div>
-      </div>
+    <Box p={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">Управление пользователями</Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => {
+            setEditingUser(null);
+            setIsUserFormOpen(true);
+          }}
+        >
+          Добавить пользователя
+        </Button>
+      </Box>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Ошибка!</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="rounded-md border bg-card">
+      <TableContainer component={Paper}>
         <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell>Имя</TableCell>
+              <TableCell>Фамилия</TableCell>
+              <TableCell>Email</TableCell>
+              <TableCell>Роль</TableCell>
+              <TableCell>Дата создания</TableCell>
+              <TableCell>Действия</TableCell>
+            </TableRow>
+          </TableHead>
           <TableBody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRowSkeleton key={i} columnsCount={columnsCount} />
-              ))
-            ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <motion.tr
-                  key={row.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                  className={row.getIsSelected() ? 'bg-muted' : ''} // getIsSelected() если будете использовать выбор строк
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2.5">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </motion.tr>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columnsCount} className="h-24 text-center">
-                  Нет данных.
+            {users.map((user) => (
+              <TableRow key={user.uid}>
+                <TableCell>{user.firstName}</TableCell>
+                <TableCell>{user.lastName}</TableCell>
+                <TableCell>{user.email}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.role}
+                    color={getRoleColor(user.role)}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  {user.createdAt.toDate().toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => {
+                      setEditingUser(user);
+                      setIsUserFormOpen(true);
+                    }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => setUserToDelete(user)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
-            )}
+            ))}
           </TableBody>
         </Table>
-      </div>
-      {!loading && data.length > 0 && (
-        <div className="flex items-center justify-between space-x-2 py-4">
-          <div className="text-sm text-muted-foreground">
-            Всего пользователей: {data.length}
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              Назад
-            </Button>
-            <span className="text-sm">
-              Стр. {table.getState().pagination.pageIndex + 1} из{' '}
-              {table.getPageCount()}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              Вперед
-            </Button>
-          </div>
-        </div>
-      )}
-    </motion.div><UserFormDialog
-        key={editingUser ? editingUser.id : 'new-user'}
+      </TableContainer>
+
+      <UserFormDialog
         open={isUserFormOpen}
-        onOpenChange={closeUserDialog}
+        onOpenChange={(open) => {
+          setIsUserFormOpen(open);
+          setEditingUser(null);
+        }}
         onUserSubmitSuccess={handleUserCreatedOrUpdated}
         initialData={editingUser || undefined}
       />
 
-      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить пользователя?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Это действие нельзя отменить. Пользователь будет удален из системы.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => userToDelete && handleDeleteUser(userToDelete)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Удалить
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog></>
+      <Dialog
+        open={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+      >
+        <DialogTitle>Удалить пользователя?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Вы уверены, что хотите удалить пользователя {userToDelete?.firstName} {userToDelete?.lastName}?
+            Это действие нельзя отменить.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUserToDelete(null)}>Отмена</Button>
+          <Button onClick={handleDeleteUser} color="error" variant="contained">
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 

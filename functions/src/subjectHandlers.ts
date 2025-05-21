@@ -24,7 +24,10 @@ interface UpdateSubjectData extends CreateSubjectData {
 }
 
 // Получение списка предметов
-export const getSubjects = onCall(async (request: CallableRequest): Promise<{ success: boolean; subjects: Subject[]; message?: string }> => {
+export const getSubjects = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest): Promise<{ success: boolean; subjects: Subject[]; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
@@ -48,7 +51,10 @@ export const getSubjects = onCall(async (request: CallableRequest): Promise<{ su
 });
 
 // Создание нового предмета
-export const createSubject = onCall(async (request: CallableRequest<CreateSubjectData>): Promise<{ success: boolean; subject: Subject; message?: string }> => {
+export const createSubject = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<CreateSubjectData>): Promise<{ success: boolean; subject: Subject; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
@@ -97,7 +103,10 @@ export const createSubject = onCall(async (request: CallableRequest<CreateSubjec
 });
 
 // Обновление предмета
-export const updateSubject = onCall(async (request: CallableRequest<UpdateSubjectData>): Promise<{ success: boolean; subject: Subject; message?: string }> => {
+export const updateSubject = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<UpdateSubjectData>): Promise<{ success: boolean; subject: Subject; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
@@ -152,7 +161,10 @@ export const updateSubject = onCall(async (request: CallableRequest<UpdateSubjec
 });
 
 // Удаление предмета
-export const deleteSubject = onCall(async (request: CallableRequest<{ id: string }>): Promise<{ success: boolean; message: string }> => {
+export const deleteSubject = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<{ id: string }>): Promise<{ success: boolean; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }

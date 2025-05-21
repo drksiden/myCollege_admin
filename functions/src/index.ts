@@ -1,47 +1,50 @@
-import * as admin from "firebase-admin";
-import { setGlobalOptions } from "firebase-functions/v2";
-import { onCall } from 'firebase-functions/v2/https';
+import * as functions from "firebase-functions/v2";
+import cors from "cors";
+import { listUsers, createUserOnServer, getStudents, getTeachers, addStudentToGroup, removeStudentFromGroup } from "./userHandlers";
+import { createGroup, listGroups, getGroup } from "./groupHandlers";
+import * as scheduleHandlers from "./scheduleHandlers";
+import * as subjectHandlers from "./subjectHandlers";
+import "./firebase"; // Import Firebase initialization
 
-// Инициализируем Admin SDK САМЫМ ПЕРВЫМ ДЕЙСТВИЕМ
-admin.initializeApp();
+// Initialize CORS middleware
+const corsHandler = cors({ origin: true });
 
-// Устанавливаем глобальные настройки
-setGlobalOptions({ 
+// Helper function to wrap functions with CORS
+const withCors = (handler: any) => {
+  return async (req: any, res: any) => {
+    return corsHandler(req, res, () => handler(req, res));
+  };
+};
+
+// Set global options for all functions
+functions.setGlobalOptions({ 
   region: "us-central1"
 });
 
-// Импортируем функции из обработчиков
-import * as userHandlers from "./userHandlers";
-import * as groupHandlers from "./groupHandlers";
-import * as scheduleHandlers from "./scheduleHandlers";
-import * as subjectHandlers from "./subjectHandlers";
+// Export user functions
+export const listUsersFunction = listUsers;
+export const createUserOnServerFunction = createUserOnServer;
+export const getStudentsFunction = getStudents;
+export const getTeachersFunction = getTeachers;
+export const addStudentToGroupFunction = addStudentToGroup;
+export const removeStudentFromGroupFunction = removeStudentFromGroup;
 
-// Реэкспортируем все функции
-export const createUserOnServer = userHandlers.createUserOnServer;
-export const listUsers = userHandlers.listUsers;
-export const updateUser = userHandlers.updateUser;
-export const deleteUser = userHandlers.deleteUser;
-export const getUser = userHandlers.getUser;
+// Export group functions
+export const createGroupFunction = createGroup;
+export const listGroupsFunction = listGroups;
+export const getGroupFunction = getGroup;
 
-export const createGroup = groupHandlers.createGroup;
-export const listGroups = groupHandlers.listGroups;
-export const updateGroup = groupHandlers.updateGroup;
-export const deleteGroup = groupHandlers.deleteGroup;
-export const getGroup = groupHandlers.getGroup;
-export const addStudentToGroup = groupHandlers.addStudentToGroup;
-export const removeStudentFromGroup = groupHandlers.removeStudentFromGroup;
+// Export schedule functions
+export const createScheduleFunction = scheduleHandlers.createSchedule;
+export const updateScheduleFunction = scheduleHandlers.updateSchedule;
+export const deleteScheduleFunction = scheduleHandlers.deleteSchedule;
+export const getSchedulesFunction = scheduleHandlers.getSchedules;
 
-// Экспортируем функции расписания
-export const createScheduleItem = scheduleHandlers.createScheduleItem;
-export const updateScheduleItem = scheduleHandlers.updateScheduleItem;
-export const deleteScheduleItem = scheduleHandlers.deleteScheduleItem;
-export const getSchedule = scheduleHandlers.getSchedule;
-
-// Экспортируем функции для работы с предметами
-export const getSubjects = subjectHandlers.getSubjects;
-export const createSubject = subjectHandlers.createSubject;
-export const updateSubject = subjectHandlers.updateSubject;
-export const deleteSubject = subjectHandlers.deleteSubject;
+// Export subject functions
+export const createSubjectFunction = subjectHandlers.createSubject;
+export const updateSubjectFunction = subjectHandlers.updateSubject;
+export const deleteSubjectFunction = subjectHandlers.deleteSubject;
+export const getSubjectsFunction = subjectHandlers.getSubjects;
 
 // Функции для управления пользователями
 export const createUser = onCall(async (request) => {
@@ -75,58 +78,22 @@ export const createUser = onCall(async (request) => {
   }
 });
 
-export const getTeachers = onCall(async () => {
-  try {
-    const teachersSnapshot = await admin.firestore()
-      .collection('users')
-      .where('role', '==', 'teacher')
-      .get();
-
-    const teachers = teachersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    return { teachers };
-  } catch (error) {
-    console.error('Error getting teachers:', error);
-    throw new Error('Failed to get teachers');
-  }
+export const getUserFunction = onCall(async (request) => {
+  // ... existing code ...
 });
 
-export const getStudents = onCall(async () => {
-  try {
-    const studentsSnapshot = await admin.firestore()
-      .collection('users')
-      .where('role', '==', 'student')
-      .get();
-
-    const students = studentsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    return { students };
-  } catch (error) {
-    console.error('Error getting students:', error);
-    throw new Error('Failed to get students');
-  }
+export const deleteUserFunction = onCall(async (request) => {
+  // ... existing code ...
 });
 
-export const getGroups = onCall(async () => {
-  try {
-    const groupsSnapshot = await admin.firestore()
-      .collection('groups')
-      .get();
+export const updateUserFunction = onCall(async (request) => {
+  // ... existing code ...
+});
 
-    const groups = groupsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+export const updateGroupFunction = onCall(async (request) => {
+  // ... existing code ...
+});
 
-    return { groups };
-  } catch (error) {
-    console.error('Error getting groups:', error);
-    throw new Error('Failed to get groups');
-  }
+export const deleteGroupFunction = onCall(async (request) => {
+  // ... existing code ...
 });

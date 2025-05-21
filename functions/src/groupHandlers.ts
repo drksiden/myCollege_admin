@@ -71,8 +71,8 @@ interface UpdateGroupData {
 }
 
 export const createGroup = onCall({
-  cors: true,
-  region: "asia-northeast1"
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<CreateGroupData>): Promise<{
   message: string;
   groupId: string;
@@ -130,8 +130,8 @@ export const createGroup = onCall({
 });
 
 export const listGroups = onCall({
-  cors: true,
-  region: "asia-northeast1"
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<unknown>): Promise<{ success: boolean; groups: GroupData[]; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
@@ -158,8 +158,8 @@ export const listGroups = onCall({
 });
 
 export const getGroup = onCall({
-  cors: true,
-  region: "asia-northeast1"
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<{ groupId: string }>): Promise<{ success: boolean; group: GroupData; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
@@ -193,8 +193,8 @@ export const getGroup = onCall({
 });
 
 export const updateGroup = onCall({
-  cors: true,
-  region: "asia-northeast1"
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<{ groupId: string; data: UpdateGroupData }>): Promise<{ success: boolean; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
@@ -225,8 +225,8 @@ export const updateGroup = onCall({
 });
 
 export const deleteGroup = onCall({
-  cors: true,
-  region: "asia-northeast1"
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<{ groupId: string }>): Promise<{ success: boolean; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");

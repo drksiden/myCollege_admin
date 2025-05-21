@@ -1,98 +1,106 @@
 import * as admin from "firebase-admin";
 import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
+import { CollectionReference, DocumentData } from "firebase-admin/firestore";
 
 const db = admin.firestore();
 
-interface ScheduleItem {
+interface Lesson {
   id: string;
-  groupId: string;
-  subject: string;
-  teacherId: string;
-  teacherName: string;
   dayOfWeek: number;
   startTime: string;
   endTime: string;
+  subjectId: string;
+  teacherId: string;
   room: string;
+  type: string;
+}
+
+interface Schedule {
+  id: string;
+  groupId: string;
+  lessons: Lesson[];
   createdAt: FirebaseFirestore.Timestamp;
   updatedAt: FirebaseFirestore.Timestamp;
 }
 
-interface CreateScheduleItemData {
+interface CreateScheduleData {
   groupId: string;
-  subject: string;
-  teacherId: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  room: string;
+  lessons: Omit<Lesson, 'id'>[];
 }
 
-interface UpdateScheduleItemData {
-  subject?: string;
-  teacherId?: string;
-  dayOfWeek?: number;
-  startTime?: string;
-  endTime?: string;
-  room?: string;
+interface UpdateScheduleData {
+  groupId?: string;
+  lessons?: Omit<Lesson, 'id'>[];
 }
 
-export const createScheduleItem = onCall({
-  region: "us-central1"
-}, async (request: CallableRequest<CreateScheduleItemData>): Promise<{ success: boolean; scheduleId: string; message: string }> => {
+export const createSchedule = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<CreateScheduleData>): Promise<{ success: boolean; scheduleId: string; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
 
-  const { groupId, subject, teacherId, dayOfWeek, startTime, endTime, room } = request.data;
+  const { groupId, lessons } = request.data;
 
   // Проверяем права доступа
   const userDoc = await db.collection("users").doc(request.auth.uid).get();
   const userData = userDoc.data();
-  if (!userDoc.exists || !userData || (userData.role !== "admin" && userData.role !== "teacher")) {
+  if (!userDoc.exists || !userData || userData.role !== "admin") {
     throw new HttpsError("permission-denied", "Нет прав для создания расписания.");
   }
 
   try {
-    // Получаем данные преподавателя
-    const teacherDoc = await db.collection("users").doc(teacherId).get();
-    const teacherData = teacherDoc.data();
-    if (!teacherDoc.exists || !teacherData) {
-      throw new HttpsError("not-found", "Преподаватель не найден.");
+    // Проверяем существование группы
+    const groupDoc = await db.collection("groups").doc(groupId).get();
+    if (!groupDoc.exists) {
+      throw new HttpsError("not-found", "Группа не найдена.");
     }
 
-    const teacherName = `${teacherData.lastName} ${teacherData.firstName} ${teacherData.patronymic || ''}`.trim();
+    // Проверяем существование предметов и преподавателей
+    for (const lesson of lessons) {
+      const [subjectDoc, teacherDoc] = await Promise.all([
+        db.collection("subjects").doc(lesson.subjectId).get(),
+        db.collection("teachers").doc(lesson.teacherId).get()
+      ]);
 
-    // Создаем элемент расписания
-    const scheduleData: Omit<ScheduleItem, 'id'> = {
+      if (!subjectDoc.exists) {
+        throw new HttpsError("not-found", `Предмет с ID ${lesson.subjectId} не найден.`);
+      }
+      if (!teacherDoc.exists) {
+        throw new HttpsError("not-found", `Преподаватель с ID ${lesson.teacherId} не найден.`);
+      }
+    }
+
+    // Создаем расписание
+    const scheduleData: Omit<Schedule, 'id'> = {
       groupId,
-      subject,
-      teacherId,
-      teacherName,
-      dayOfWeek,
-      startTime,
-      endTime,
-      room,
+      lessons: lessons.map(lesson => ({
+        ...lesson,
+        id: crypto.randomUUID()
+      })),
       createdAt: admin.firestore.Timestamp.now(),
       updatedAt: admin.firestore.Timestamp.now()
     };
 
-    const docRef = await db.collection("schedule").add(scheduleData);
+    const docRef = await db.collection("schedules").add(scheduleData);
 
     return {
       success: true,
       scheduleId: docRef.id,
-      message: "Элемент расписания успешно создан."
+      message: "Расписание успешно создано."
     };
   } catch (error) {
-    console.error("Ошибка при создании элемента расписания:", error);
+    console.error("Ошибка при создании расписания:", error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", "Ошибка создания элемента расписания.");
+    throw new HttpsError("internal", "Ошибка создания расписания.");
   }
 });
 
-export const updateScheduleItem = onCall({
-  region: "us-central1"
-}, async (request: CallableRequest<{ scheduleId: string; data: UpdateScheduleItemData }>): Promise<{ success: boolean; message: string }> => {
+export const updateSchedule = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<{ scheduleId: string; data: UpdateScheduleData }>): Promise<{ success: boolean; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
@@ -102,41 +110,71 @@ export const updateScheduleItem = onCall({
   // Проверяем права доступа
   const userDoc = await db.collection("users").doc(request.auth.uid).get();
   const userData = userDoc.data();
-  if (!userDoc.exists || !userData || (userData.role !== "admin" && userData.role !== "teacher")) {
+  if (!userDoc.exists || !userData || userData.role !== "admin") {
     throw new HttpsError("permission-denied", "Нет прав для обновления расписания.");
   }
 
   try {
+    // Проверяем существование расписания
+    const scheduleDoc = await db.collection("schedules").doc(scheduleId).get();
+    if (!scheduleDoc.exists) {
+      throw new HttpsError("not-found", "Расписание не найдено.");
+    }
+
+    // Если обновляется группа, проверяем её существование
+    if (data.groupId) {
+      const groupDoc = await db.collection("groups").doc(data.groupId).get();
+      if (!groupDoc.exists) {
+        throw new HttpsError("not-found", "Группа не найдена.");
+      }
+    }
+
+    // Если обновляются занятия, проверяем предметы и преподавателей
+    if (data.lessons) {
+      for (const lesson of data.lessons) {
+        const [subjectDoc, teacherDoc] = await Promise.all([
+          db.collection("subjects").doc(lesson.subjectId).get(),
+          db.collection("teachers").doc(lesson.teacherId).get()
+        ]);
+
+        if (!subjectDoc.exists) {
+          throw new HttpsError("not-found", `Предмет с ID ${lesson.subjectId} не найден.`);
+        }
+        if (!teacherDoc.exists) {
+          throw new HttpsError("not-found", `Преподаватель с ID ${lesson.teacherId} не найден.`);
+        }
+      }
+    }
+
     const updateData: any = {
       ...data,
       updatedAt: admin.firestore.Timestamp.now()
     };
 
-    // Если обновляется преподаватель, обновляем его имя
-    if (data.teacherId) {
-      const teacherDoc = await db.collection("users").doc(data.teacherId).get();
-      const teacherData = teacherDoc.data();
-      if (!teacherDoc.exists || !teacherData) {
-        throw new HttpsError("not-found", "Преподаватель не найден.");
-      }
-      updateData.teacherName = `${teacherData.lastName} ${teacherData.firstName} ${teacherData.patronymic || ''}`.trim();
+    // Если обновляются занятия, добавляем ID для новых занятий
+    if (data.lessons) {
+      updateData.lessons = data.lessons.map(lesson => ({
+        ...lesson,
+        id: crypto.randomUUID()
+      }));
     }
 
-    await db.collection("schedule").doc(scheduleId).update(updateData);
+    await db.collection("schedules").doc(scheduleId).update(updateData);
 
     return {
       success: true,
-      message: "Элемент расписания успешно обновлен."
+      message: "Расписание успешно обновлено."
     };
   } catch (error) {
-    console.error("Ошибка при обновлении элемента расписания:", error);
+    console.error("Ошибка при обновлении расписания:", error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", "Ошибка обновления элемента расписания.");
+    throw new HttpsError("internal", "Ошибка обновления расписания.");
   }
 });
 
-export const deleteScheduleItem = onCall({
-  region: "us-central1"
+export const deleteSchedule = onCall({
+  region: "us-central1",
+  cors: true
 }, async (request: CallableRequest<{ scheduleId: string }>): Promise<{ success: boolean; message: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
@@ -147,27 +185,28 @@ export const deleteScheduleItem = onCall({
   // Проверяем права доступа
   const userDoc = await db.collection("users").doc(request.auth.uid).get();
   const userData = userDoc.data();
-  if (!userDoc.exists || !userData || (userData.role !== "admin" && userData.role !== "teacher")) {
+  if (!userDoc.exists || !userData || userData.role !== "admin") {
     throw new HttpsError("permission-denied", "Нет прав для удаления расписания.");
   }
 
   try {
-    await db.collection("schedule").doc(scheduleId).delete();
+    await db.collection("schedules").doc(scheduleId).delete();
 
     return {
       success: true,
-      message: "Элемент расписания успешно удален."
+      message: "Расписание успешно удалено."
     };
   } catch (error) {
-    console.error("Ошибка при удалении элемента расписания:", error);
+    console.error("Ошибка при удалении расписания:", error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", "Ошибка удаления элемента расписания.");
+    throw new HttpsError("internal", "Ошибка удаления расписания.");
   }
 });
 
-export const getSchedule = onCall({
-  region: "us-central1"
-}, async (request: CallableRequest<{ groupId: string }>): Promise<{ success: boolean; schedule: ScheduleItem[]; message?: string }> => {
+export const getSchedules = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request: CallableRequest<{ groupId?: string }>): Promise<{ success: boolean; schedules: Schedule[]; message?: string }> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Пользователь не аутентифицирован.");
   }
@@ -175,27 +214,28 @@ export const getSchedule = onCall({
   const { groupId } = request.data;
 
   try {
-    const scheduleSnapshot = await db.collection("schedule")
-      .where("groupId", "==", groupId)
-      .orderBy("dayOfWeek")
-      .orderBy("startTime")
-      .get();
+    let query: CollectionReference<DocumentData> = db.collection('schedules');
+    if (groupId) {
+      query = query.where("groupId", "==", groupId) as CollectionReference<DocumentData>;
+    }
 
-    const schedule: ScheduleItem[] = [];
-    scheduleSnapshot.forEach((doc) => {
-      schedule.push({
+    const schedulesSnapshot = await query.get();
+
+    const schedules: Schedule[] = [];
+    schedulesSnapshot.forEach((doc) => {
+      schedules.push({
         id: doc.id,
         ...doc.data()
-      } as ScheduleItem);
+      } as Schedule);
     });
 
     return {
       success: true,
-      schedule
+      schedules
     };
   } catch (error) {
-    console.error("Ошибка при получении расписания:", error);
+    console.error("Ошибка при получении расписаний:", error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", "Ошибка получения расписания.");
+    throw new HttpsError("internal", "Ошибка получения расписаний.");
   }
 }); 

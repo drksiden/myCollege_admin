@@ -1,13 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import type { ColumnDef, SortingState } from '@tanstack/react-table';
-import {
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  getFilteredRowModel,
-} from '@tanstack/react-table';
+import React, { useEffect, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -17,96 +8,54 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
-  ArrowUpDown,
-  MoreHorizontal,
-  UserPlusIcon,
-  RefreshCw,
-  Trash2,
-  Pencil,
-  Eye,
-} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Select,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { UserFormDialog } from '@/components/admin/users/UserForm';
-import { Toaster, toast } from "sonner";
-import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import type { User } from '@/pages/admin/UsersPage';
-import { httpsCallable } from 'firebase/functions';
+import { toast } from 'sonner';
 import { functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { useAuth } from '@/contexts/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { Student, User } from '@/types';
 
-const TableRowSkeleton: React.FC<{ columnsCount: number }> = ({
-  columnsCount,
-}) => (
-  <TableRow>
-    {Array.from({ length: columnsCount }).map((_, index) => (
-      <TableCell key={index}>
-        <Skeleton className="h-5 w-full" />
-      </TableCell>
-    ))}
-  </TableRow>
-);
+interface StudentWithUser extends Student {
+  user: User;
+  group?: {
+    id: string;
+    name: string;
+  };
+}
 
 const StudentsPage: React.FC = () => {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<User[]>([]);
+  const [students, setStudents] = useState<StudentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isUserFormOpen, setIsUserFormOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
-  const [globalFilter, setGlobalFilter] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<StudentWithUser | null>(null);
+  const { isAdmin } = useAuth();
 
   const fetchStudents = async () => {
-    setLoading(true);
-    setError(null);
     try {
-      const listUsersFunction = httpsCallable(functions, 'listUsers');
-      const result = await listUsersFunction();
-      const resultData = result.data as {
-        success: boolean;
-        users?: User[];
-        message?: string;
-      };
-
-      if (resultData.success && resultData.users) {
-        // Фильтруем только студентов
-        const students = resultData.users.filter(user => user.role === 'student');
-        setData(students);
-      } else {
-        throw new Error(
-          resultData.message || 'Не удалось получить список студентов.'
-        );
-      }
-    } catch (err: unknown) {
-      console.error('Ошибка при загрузке студентов:', err);
-      let errorMessage = 'Произошла ошибка при загрузке данных.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setError(errorMessage);
-      setData([]);
+      const getStudents = httpsCallable(functions, 'getStudents');
+      const result = await getStudents();
+      const data = result.data as { students: StudentWithUser[] };
+      setStudents(data.students);
+    } catch (error) {
+      console.error('Ошибка при загрузке студентов:', error);
+      toast.error('Не удалось загрузить список студентов');
     } finally {
       setLoading(false);
     }
@@ -116,290 +65,152 @@ const StudentsPage: React.FC = () => {
     fetchStudents();
   }, []);
 
-  const handleUserCreatedOrUpdated = () => {
-    fetchStudents();
-  };
-
-  const openEditUserDialog = (user: User) => {
-    setEditingUser(user);
-    setIsUserFormOpen(true);
-  };
-
-  const closeUserDialog = () => {
-    setIsUserFormOpen(false);
-    setEditingUser(null);
-  };
-
-  const handleDeleteUser = async (user: User) => {
-    try {
-      const deleteUserFunction = httpsCallable(functions, 'deleteUser');
-      const result = await deleteUserFunction({ userId: user.id });
-      const resultData = result.data as { success: boolean; message: string };
-
-      if (resultData.success) {
-        toast.success(resultData.message);
-        fetchStudents();
-      } else {
-        throw new Error(resultData.message);
-      }
-    } catch (err: unknown) {
-      console.error('Ошибка при удалении студента:', err);
-      let errorMessage = 'Произошла ошибка при удалении студента.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      toast.error(errorMessage);
-    } finally {
-      setUserToDelete(null);
-    }
-  };
-
-  const columns = useMemo<ColumnDef<User>[]>(
-    () => [
-      {
-        accessorKey: 'fullName',
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            ФИО
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: ({ row }) =>
-          `${row.original.lastName} ${row.original.firstName} ${
-            row.original.patronymic || ''
-          }`,
-        sortingFn: 'alphanumeric',
-      },
-      {
-        accessorKey: 'email',
-        header: 'Email',
-      },
-      {
-        accessorKey: 'groupName',
-        header: 'Группа',
-        cell: ({ row }) => row.original.groupName || '—',
-      },
-      {
-        id: 'actions',
-        header: () => <div className="text-right">Действия</div>,
-        cell: ({ row }) => {
-          const user = row.original;
-          return (
-            <div className="text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <span className="sr-only">Открыть меню</span>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onClick={() => console.log('View student', user.id)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Просмотреть
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Редактировать
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive hover:!bg-destructive/10"
-                    onClick={() => setUserToDelete(user)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Удалить
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        },
-      },
-    ],
-    []
-  );
-
-  const table = useReactTable({
-    data,
-    columns,
-    state: {
-      sorting,
-      globalFilter,
-    },
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
-
-  const columnsCount = columns.length;
+  if (!isAdmin) {
+    return (
+      <div className="p-4">
+        <h2 className="text-2xl font-bold text-red-500">
+          Доступ запрещен. Требуются права администратора.
+        </h2>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Toaster richColors position="top-right" />
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="flex flex-col gap-4"
-      >
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Студенты
-          </h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={fetchStudents}
-              disabled={loading}
-              title="Обновить список"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button onClick={() => { setEditingUser(null); setIsUserFormOpen(true); }}>
-              <UserPlusIcon className="mr-2 h-4 w-4" /> Добавить студента
-            </Button>
-          </div>
-        </div>
+    <div className="p-4">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">Студенты</h1>
+        <Button onClick={() => setIsDialogOpen(true)}>
+          Добавить студента
+        </Button>
+      </div>
 
-        {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Ошибка!</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <div className="flex items-center py-4">
-          <Input
-            placeholder="Поиск студентов..."
-            value={globalFilter ?? ""}
-            onChange={(event) => setGlobalFilter(event.target.value)}
-            className="max-w-sm"
-          />
-        </div>
-
-        <div className="rounded-md border bg-card">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ФИО</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Группа</TableHead>
+              <TableHead>Статус</TableHead>
+              <TableHead>Действия</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <AnimatePresence>
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRowSkeleton key={i} columnsCount={columnsCount} />
-                ))
-              ) : table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <motion.tr
-                    key={row.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.2 }}
-                    className={row.getIsSelected() ? 'bg-muted' : ''}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="py-2.5">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </motion.tr>
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><Skeleton className="h-4 w-[200px]" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+                  </TableRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={columnsCount} className="h-24 text-center">
-                    Нет данных.
-                  </TableCell>
-                </TableRow>
+                students.map((student) => (
+                  <motion.tr
+                    key={student.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="border-b"
+                  >
+                    <TableCell>{`${student.user.lastName} ${student.user.firstName}`}</TableCell>
+                    <TableCell>{student.user.email}</TableCell>
+                    <TableCell>{student.group?.name || 'Не назначена'}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        student.status === 'active' ? 'bg-green-100 text-green-800' :
+                        student.status === 'inactive' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {student.status === 'active' ? 'Активен' :
+                         student.status === 'inactive' ? 'Неактивен' :
+                         'Выпускник'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setIsDialogOpen(true);
+                          }}
+                        >
+                          Редактировать
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            // TODO: Implement delete
+                          }}
+                        >
+                          Удалить
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </motion.tr>
+                ))
               )}
-            </TableBody>
-          </Table>
-        </div>
-        {!loading && data.length > 0 && (
-          <div className="flex items-center justify-between space-x-2 py-4">
-            <div className="text-sm text-muted-foreground">
-              Всего студентов: {data.length}
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Назад
-              </Button>
-              <span className="text-sm">
-                Стр. {table.getState().pagination.pageIndex + 1} из{' '}
-                {table.getPageCount()}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Вперед
-              </Button>
-            </div>
-          </div>
-        )}
-      </motion.div>
+            </AnimatePresence>
+          </TableBody>
+        </Table>
+      </div>
 
-      <UserFormDialog
-        key={editingUser ? editingUser.id : 'new-user'}
-        open={isUserFormOpen}
-        onOpenChange={closeUserDialog}
-        onUserSubmitSuccess={handleUserCreatedOrUpdated}
-        initialData={editingUser || undefined}
-      />
-
-      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить студента?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Это действие нельзя отменить. Студент будет удален из системы.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => userToDelete && handleDeleteUser(userToDelete)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Удалить
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedStudent ? 'Редактировать студента' : 'Добавить студента'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedStudent
+                ? 'Внесите изменения в информацию о студенте'
+                : 'Заполните данные для нового студента'}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Фамилия</Label>
+                <Input id="lastName" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="firstName">Имя</Label>
+                <Input id="firstName" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="group">Группа</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите группу" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* TODO: Add groups */}
+                </SelectContent>
+              </Select>
+            </div>
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button type="submit">
+              {selectedStudent ? 'Сохранить' : 'Добавить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

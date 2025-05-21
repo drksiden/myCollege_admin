@@ -1,213 +1,185 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { toast } from "sonner";
-import { getGroups, deleteGroup } from "@/lib/firebase/functions";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useState } from 'react';
 import {
+  Box,
+  Button,
+  Paper,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
-  TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { GroupFormDialog } from "@/components/admin/groups/GroupForm";
-import { GroupStudentsDialog } from "@/components/admin/groups/GroupStudentsDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Typography,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+} from '@mui/material';
+import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import type { Group } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import GroupFormDialog from '../../components/admin/GroupFormDialog';
 
-export interface Group {
-  id: string;
-  name: string;
-  course: number;
-  specialty: string;
-  qualification: string;
-  curatorId?: string | null;
-  curatorName?: string;
-  subjects: Array<{
-    subjectName: string;
-    teacherId: string;
-    teacherName: string;
-  }>;
-  studentCount: number;
-  createdAt: {
-    seconds: number;
-    nanoseconds: number;
+const GroupsPage: React.FC = () => {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isGroupFormOpen, setIsGroupFormOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const { isAdmin } = useAuth();
+
+  const fetchGroups = async () => {
+    try {
+      const groupsCollection = collection(db, 'groups');
+      const groupsSnapshot = await getDocs(groupsCollection);
+      const groupsList = groupsSnapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as Group[];
+      setGroups(groupsList);
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+    } finally {
+      setLoading(false);
+    }
   };
-  updatedAt: {
-    seconds: number;
-    nanoseconds: number;
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
+
+  const handleGroupCreatedOrUpdated = () => {
+    fetchGroups();
   };
-}
-
-const TableRowSkeleton: React.FC<{ columnsCount: number }> = ({
-  columnsCount,
-}) => (
-  <TableRow>
-    {Array.from({ length: columnsCount }).map((_, index) => (
-      <TableCell key={index}>
-        <div className="h-4 w-full animate-pulse rounded bg-gray-200" />
-      </TableCell>
-    ))}
-  </TableRow>
-);
-
-export default function GroupsPage() {
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<Group | undefined>();
-  const [groupToDelete, setGroupToDelete] = useState<Group | undefined>();
-  const [selectedGroup, setSelectedGroup] = useState<Group | undefined>();
-
-  const { data: groups, isLoading, refetch } = useQuery({
-    queryKey: ["groups"],
-    queryFn: getGroups,
-  });
 
   const handleDeleteGroup = async () => {
     if (!groupToDelete) return;
 
     try {
-      await deleteGroup(groupToDelete.id);
-      toast.success("Группа успешно удалена");
-      refetch();
-    } catch (error: unknown) {
-      console.error("Error deleting group:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Произошла ошибка при удалении группы"
-      );
+      await deleteDoc(doc(db, 'groups', groupToDelete.id));
+      await fetchGroups();
+    } catch (error) {
+      console.error('Error deleting group:', error);
     } finally {
-      setGroupToDelete(undefined);
+      setGroupToDelete(null);
     }
   };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="container mx-auto py-10"
-    >
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Группы</h1>
-        <Button onClick={() => setIsFormOpen(true)}>Создать группу</Button>
-      </div>
+  if (!isAdmin) {
+    return (
+      <Box p={3}>
+        <Typography variant="h5" color="error">
+          Доступ запрещен. Требуются права администратора.
+        </Typography>
+      </Box>
+    );
+  }
 
-      <div className="rounded-md border">
+  if (loading) {
+    return (
+      <Box p={3}>
+        <Typography>Загрузка...</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box p={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">Управление группами</Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => {
+            setEditingGroup(null);
+            setIsGroupFormOpen(true);
+          }}
+        >
+          Добавить группу
+        </Button>
+      </Box>
+
+      <TableContainer component={Paper}>
         <Table>
-          <TableHeader>
+          <TableHead>
             <TableRow>
-              <TableHead>Название</TableHead>
-              <TableHead>Курс</TableHead>
-              <TableHead>Специальность</TableHead>
-              <TableHead>Квалификация</TableHead>
-              <TableHead>Куратор</TableHead>
-              <TableHead>Количество студентов</TableHead>
-              <TableHead>Действия</TableHead>
+              <TableCell>Название</TableCell>
+              <TableCell>Год</TableCell>
+              <TableCell>Специализация</TableCell>
+              <TableCell>Количество студентов</TableCell>
+              <TableCell>Дата создания</TableCell>
+              <TableCell>Действия</TableCell>
             </TableRow>
-          </TableHeader>
+          </TableHead>
           <TableBody>
-            {isLoading ? (
-              <>
-                <TableRowSkeleton columnsCount={7} />
-                <TableRowSkeleton columnsCount={7} />
-                <TableRowSkeleton columnsCount={7} />
-              </>
-            ) : (
-              groups?.map((group) => (
-                <TableRow key={group.id}>
-                  <TableCell>{group.name}</TableCell>
-                  <TableCell>{group.course} курс</TableCell>
-                  <TableCell>{group.specialty}</TableCell>
-                  <TableCell>{group.qualification}</TableCell>
-                  <TableCell>{group.curatorName || "Не назначен"}</TableCell>
-                  <TableCell>{group.studentCount}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedGroup(group);
-                        }}
-                      >
-                        Студенты
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditingGroup(group);
-                          setIsFormOpen(true);
-                        }}
-                      >
-                        Редактировать
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setGroupToDelete(group)}
-                      >
-                        Удалить
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
+            {groups.map((group) => (
+              <TableRow key={group.id}>
+                <TableCell>{group.name}</TableCell>
+                <TableCell>{group.year}</TableCell>
+                <TableCell>{group.specialization}</TableCell>
+                <TableCell>{group.students.length}</TableCell>
+                <TableCell>
+                  {group.createdAt.toDate().toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => {
+                      setEditingGroup(group);
+                      setIsGroupFormOpen(true);
+                    }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => setGroupToDelete(group)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
-      </div>
+      </TableContainer>
 
       <GroupFormDialog
-        open={isFormOpen}
-        onOpenChange={(open) => {
-          setIsFormOpen(open);
-          if (!open) {
-            setEditingGroup(undefined);
-          }
+        open={isGroupFormOpen}
+        onClose={() => {
+          setIsGroupFormOpen(false);
+          setEditingGroup(null);
         }}
-        initialData={editingGroup}
+        onSuccess={handleGroupCreatedOrUpdated}
+        group={editingGroup || undefined}
       />
 
-      <GroupStudentsDialog
-        open={!!selectedGroup}
-        onOpenChange={(open) => {
-          if (!open) setSelectedGroup(undefined);
-        }}
-        group={selectedGroup}
-      />
-
-      <AlertDialog
+      <Dialog
         open={!!groupToDelete}
-        onOpenChange={(open) => {
-          if (!open) setGroupToDelete(undefined);
-        }}
+        onClose={() => setGroupToDelete(null)}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Подтверждение удаления</AlertDialogTitle>
-            <AlertDialogDescription>
-              Вы уверены, что хотите удалить группу {groupToDelete?.name}? Это действие
-              нельзя отменить.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteGroup}>
-              Удалить
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </motion.div>
+        <DialogTitle>Удалить группу?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Вы уверены, что хотите удалить группу {groupToDelete?.name}?
+            Это действие нельзя отменить.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGroupToDelete(null)}>Отмена</Button>
+          <Button onClick={handleDeleteGroup} color="error" variant="contained">
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
-}
+};
+
+export default GroupsPage;

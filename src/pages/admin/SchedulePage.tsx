@@ -1,358 +1,264 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import {
+  Box,
+  Button,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+} from '@mui/material';
+import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import type { Schedule, Group, Subject, Teacher } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { ScheduleFormDialog } from '../../components/admin/ScheduleFormDialog';
 
-interface ScheduleItem {
-  id: string;
-  groupId: string;
-  subject: string;
-  teacherId: string;
-  teacherName: string;
-  dayOfWeek: number;
-  lessonNumber: number;
-  startTime: string;
-  endTime: string;
-  classroom: string;
-  lessonType: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
+const DAYS_OF_WEEK = [
+  'Понедельник',
+  'Вторник',
+  'Среда',
+  'Четверг',
+  'Пятница',
+  'Суббота',
+];
 
-interface Group {
-  id: string;
-  name: string;
-  course: number;
-  specialty: string;
-  subjects: Array<{
-    subjectName: string;
-    teacherId: string;
-    teacherName: string;
-  }>;
-}
-
-export default function SchedulePage() {
+const SchedulePage: React.FC = () => {
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
-  const [formData, setFormData] = useState({
-    subject: '',
-    teacherId: '',
-    dayOfWeek: 1,
-    lessonNumber: 1,
-    startTime: '09:00',
-    endTime: '10:30',
-    classroom: '',
-    lessonType: 'Лекция'
-  });
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
+  const [isScheduleFormOpen, setIsScheduleFormOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const { isAdmin } = useAuth();
 
-  // Загрузка групп
+  const fetchSchedules = async () => {
+    try {
+      const schedulesCollection = collection(db, 'schedules');
+      const schedulesSnapshot = await getDocs(schedulesCollection);
+      const schedulesList = schedulesSnapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as Schedule[];
+      setSchedules(schedulesList);
+    } catch (error) {
+      console.error('Error fetching schedules:', error);
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      const [groupsSnapshot, subjectsSnapshot, teachersSnapshot] = await Promise.all([
+        getDocs(collection(db, 'groups')),
+        getDocs(collection(db, 'subjects')),
+        getDocs(collection(db, 'teachers')),
+      ]);
+
+      setGroups(groupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[]);
+      setSubjects(subjectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[]);
+      setTeachers(teachersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Teacher[]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchGroups = async () => {
-      try {
-        const groupsRef = collection(db, 'groups');
-        const snapshot = await getDocs(groupsRef);
-        const groupsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Group[];
-        setGroups(groupsData);
-      } catch (error) {
-        console.error('Error fetching groups:', error);
-      }
-    };
-
-    fetchGroups();
+    fetchSchedules();
+    fetchData();
   }, []);
 
-  // Загрузка расписания
-  useEffect(() => {
-    const fetchSchedule = async () => {
-      if (!selectedGroup) return;
-
-      setLoading(true);
-      try {
-        const scheduleRef = collection(db, 'groups', selectedGroup, 'schedule');
-        const snapshot = await getDocs(scheduleRef);
-        const scheduleData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as ScheduleItem[];
-        setSchedule(scheduleData);
-      } catch (error) {
-        console.error('Error fetching schedule:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSchedule();
-  }, [selectedGroup]);
-
-  const handleEdit = (item: ScheduleItem) => {
-    setEditingItem(item);
-    setFormData({
-      subject: item.subject,
-      teacherId: item.teacherId,
-      dayOfWeek: item.dayOfWeek,
-      lessonNumber: item.lessonNumber,
-      startTime: item.startTime,
-      endTime: item.endTime,
-      classroom: item.classroom,
-      lessonType: item.lessonType
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить этот элемент расписания?')) return;
+  const handleDeleteSchedule = async () => {
+    if (!scheduleToDelete) return;
 
     try {
-      await deleteDoc(doc(db, 'groups', selectedGroup, 'schedule', id));
-      setSchedule(schedule.filter(item => item.id !== id));
+      await deleteDoc(doc(db, 'schedules', scheduleToDelete.id));
+      await fetchSchedules();
     } catch (error) {
-      console.error('Error deleting schedule item:', error);
+      console.error('Error deleting schedule:', error);
+    } finally {
+      setScheduleToDelete(null);
     }
   };
 
-  const handleScheduleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGroup) return;
-
-    const selectedGroupData = groups.find(g => g.id === selectedGroup);
-    if (!selectedGroupData) return;
-
-    const selectedSubject = selectedGroupData.subjects.find(s => s.subjectName === formData.subject);
-    if (!selectedSubject) return;
-
-    const scheduleData = {
-      ...formData,
-      groupId: selectedGroup,
-      teacherId: selectedSubject.teacherId,
-      teacherName: selectedSubject.teacherName,
-      createdAt: editingItem ? editingItem.createdAt : Timestamp.now(),
-      updatedAt: Timestamp.now()
-    };
-
-    try {
-      if (editingItem) {
-        await updateDoc(doc(db, 'groups', selectedGroup, 'schedule', editingItem.id), scheduleData);
-        setSchedule(schedule.map(item => 
-          item.id === editingItem.id ? { ...item, ...scheduleData } : item
-        ));
-      } else {
-        const docRef = await addDoc(collection(db, 'groups', selectedGroup, 'schedule'), scheduleData);
-        setSchedule([...schedule, { id: docRef.id, ...scheduleData }]);
-      }
-
-      setIsDialogOpen(false);
-      setEditingItem(null);
-      setFormData({
-        subject: '',
-        teacherId: '',
-        dayOfWeek: 1,
-        lessonNumber: 1,
-        startTime: '09:00',
-        endTime: '10:30',
-        classroom: '',
-        lessonType: 'Лекция'
-      });
-    } catch (error) {
-      console.error('Error saving schedule item:', error);
-    }
+  const handleEditSchedule = (schedule: Schedule) => {
+    setEditingSchedule(schedule);
+    setIsScheduleFormOpen(true);
   };
 
-  const getDayName = (day: number) => {
-    const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-    return days[day - 1] || '';
+  const handleScheduleCreatedOrUpdated = () => {
+    fetchSchedules();
+    setEditingSchedule(null);
   };
 
-  const getLessonTypeName = (type: string) => {
-    const types: { [key: string]: string } = {
-      'Лекция': 'Лекция',
-      'Практика': 'Практическое занятие',
-      'Лабораторная': 'Лабораторная работа',
-      'Семинар': 'Семинар'
-    };
-    return types[type] || type;
+  const getGroupName = (groupId: string) => {
+    const group = groups.find(g => g.id === groupId);
+    return group ? group.name : 'Неизвестная группа';
   };
+
+  const getSubjectName = (subjectId: string) => {
+    const subject = subjects.find(s => s.id === subjectId);
+    return subject ? subject.name : 'Неизвестный предмет';
+  };
+
+  const getTeacherName = (teacherId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    return teacher
+      ? `${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`
+      : 'Неизвестный преподаватель';
+  };
+
+  if (!isAdmin) {
+    return (
+      <Box p={3}>
+        <Typography variant="h5" color="error">
+          Доступ запрещен. Требуются права администратора.
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Box p={3}>
+        <Typography>Загрузка...</Typography>
+      </Box>
+    );
+  }
+
+  const filteredSchedules = selectedGroup
+    ? schedules.filter(schedule => schedule.groupId === selectedGroup)
+    : schedules;
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Расписание занятий</h1>
-        <Button onClick={() => setIsDialogOpen(true)}>Добавить занятие</Button>
-      </div>
+    <Box p={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">Управление расписанием</Typography>
+        <Box display="flex" gap={2}>
+          <FormControl sx={{ minWidth: 200 }}>
+            <InputLabel>Группа</InputLabel>
+            <Select
+              value={selectedGroup}
+              label="Группа"
+              onChange={(e) => setSelectedGroup(e.target.value)}
+            >
+              <MenuItem value="">Все группы</MenuItem>
+              {groups.map((group) => (
+                <MenuItem key={group.id} value={group.id}>
+                  {group.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => setIsScheduleFormOpen(true)}
+          >
+            Добавить расписание
+          </Button>
+        </Box>
+      </Box>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите группу" />
-          </SelectTrigger>
-          <SelectContent>
-            {groups.map(group => (
-              <SelectItem key={group.id} value={group.id}>
-                {group.name} - {group.specialty}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Группа</TableCell>
+              <TableCell>День недели</TableCell>
+              <TableCell>Время</TableCell>
+              <TableCell>Предмет</TableCell>
+              <TableCell>Преподаватель</TableCell>
+              <TableCell>Аудитория</TableCell>
+              <TableCell>Тип</TableCell>
+              <TableCell>Действия</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredSchedules.map((schedule) =>
+              schedule.lessons.map((lesson) => (
+                <TableRow key={lesson.id}>
+                  <TableCell>{getGroupName(schedule.groupId)}</TableCell>
+                  <TableCell>{DAYS_OF_WEEK[lesson.dayOfWeek - 1]}</TableCell>
+                  <TableCell>
+                    {lesson.startTime} - {lesson.endTime}
+                  </TableCell>
+                  <TableCell>{getSubjectName(lesson.subjectId)}</TableCell>
+                  <TableCell>{getTeacherName(lesson.teacherId)}</TableCell>
+                  <TableCell>{lesson.room}</TableCell>
+                  <TableCell>{lesson.type}</TableCell>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => handleEditSchedule(schedule)}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => setScheduleToDelete(schedule)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-        <Input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {schedule.map(item => (
-            <Card key={item.id}>
-              <CardHeader>
-                <CardTitle className="flex justify-between items-center">
-                  <span>{item.subject}</span>
-                  <div className="space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(item)}>
-                      Редактировать
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id)}>
-                      Удалить
-                    </Button>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>Преподаватель: {item.teacherName}</p>
-                <p>День: {getDayName(item.dayOfWeek)}</p>
-                <p>Пара: {item.lessonNumber}</p>
-                <p>Время: {item.startTime} - {item.endTime}</p>
-                <p>Аудитория: {item.classroom}</p>
-                <p>Тип: {getLessonTypeName(item.lessonType)}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog
+        open={!!scheduleToDelete}
+        onClose={() => setScheduleToDelete(null)}
+      >
+        <DialogTitle>Удалить расписание?</DialogTitle>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingItem ? 'Редактировать занятие' : 'Добавить занятие'}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleScheduleSubmit} className="space-y-4">
-            <Select
-              value={formData.subject}
-              onValueChange={(value) => setFormData({ ...formData, subject: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите предмет" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectedGroup && groups
-                  .find(g => g.id === selectedGroup)
-                  ?.subjects.map(subject => (
-                    <SelectItem key={subject.subjectName} value={subject.subjectName}>
-                      {subject.subjectName}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={formData.dayOfWeek.toString()}
-              onValueChange={(value) => setFormData({ ...formData, dayOfWeek: parseInt(value) })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите день недели" />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4, 5, 6].map(day => (
-                  <SelectItem key={day} value={day.toString()}>
-                    {getDayName(day)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={formData.lessonNumber.toString()}
-              onValueChange={(value) => setFormData({ ...formData, lessonNumber: parseInt(value) })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите номер пары" />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                  <SelectItem key={num} value={num.toString()}>
-                    {num} пара
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                type="time"
-                value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-              />
-              <Input
-                type="time"
-                value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-              />
-            </div>
-
-            <Input
-              placeholder="Номер аудитории"
-              value={formData.classroom}
-              onChange={(e) => setFormData({ ...formData, classroom: e.target.value })}
-            />
-
-            <Select
-              value={formData.lessonType}
-              onValueChange={(value) => setFormData({ ...formData, lessonType: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите тип занятия" />
-              </SelectTrigger>
-              <SelectContent>
-                {['Лекция', 'Практика', 'Лабораторная', 'Семинар'].map(type => (
-                  <SelectItem key={type} value={type}>
-                    {getLessonTypeName(type)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Отмена
-              </Button>
-              <Button type="submit">
-                {editingItem ? 'Сохранить' : 'Добавить'}
-              </Button>
-            </div>
-          </form>
+          <DialogContentText>
+            Вы уверены, что хотите удалить расписание для группы{' '}
+            {scheduleToDelete && getGroupName(scheduleToDelete.groupId)}?
+            Это действие нельзя отменить.
+          </DialogContentText>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScheduleToDelete(null)}>Отмена</Button>
+          <Button onClick={handleDeleteSchedule} color="error" variant="contained">
+            Удалить
+          </Button>
+        </DialogActions>
       </Dialog>
-    </div>
+
+      <ScheduleFormDialog
+        open={isScheduleFormOpen}
+        onClose={() => {
+          setIsScheduleFormOpen(false);
+          setEditingSchedule(null);
+        }}
+        onSuccess={handleScheduleCreatedOrUpdated}
+        schedule={editingSchedule || undefined}
+      />
+    </Box>
   );
-}
+};
+
+export default SchedulePage;

@@ -22,6 +22,10 @@ service cloud.firestore {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
     }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
 
     // Функция для проверки, является ли пользователь куратором группы
     function isGroupCurator(groupId) {
@@ -36,40 +40,55 @@ service cloud.firestore {
         group.subjects.hasAny([{'teacherId': request.auth.uid}]);
     }
 
-    // Правила для коллекции users
+    // Правила для пользователей
     match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAdmin() || isOwner(userId);
+      allow delete: if isAdmin();
+    }
+
+    // Правила для учителей
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || 
+        (isTeacher() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teacherId == teacherId);
+    }
+
+    // Правила для студентов
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || 
+        (isStudent() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId);
+    }
+
+    // Правила для групп
+    match /groups/{groupId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
-    // Правила для коллекции groups
-    match /groups/{groupId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
-      
-      // Правила для подколлекции schedule
-      match /schedule/{scheduleId} {
-        allow read: if isAuthenticated();
-        allow write: if isAdmin() || isTeacher();
-      }
-    }
-
-    // Правила для коллекции subjects
+    // Правила для предметов
     match /subjects/{subjectId} {
       allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Правила для расписания
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Правила для журнала
+    match /journals/{journalId} {
+      allow read: if isAuthenticated();
       allow write: if isAdmin() || isTeacher();
     }
 
-    // --- Оценки (grades) ---
+    // Правила для оценок
     match /grades/{gradeId} {
-      // Студенты могут читать только свои оценки
-      // Преподаватели могут читать оценки студентов своих групп
-      // Админы могут читать все оценки
-      allow read: if isAuthenticated() && 
-        (isAdmin() || 
-         isTeacher() || 
-         (isStudent() && resource.data.studentId == request.auth.uid));
-      // Ставить/изменять оценки могут преподаватели своих групп и админы
+      allow read: if isAuthenticated();
       allow write: if isAdmin() || isTeacher();
     }
 
