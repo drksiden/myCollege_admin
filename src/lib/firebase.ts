@@ -21,7 +21,7 @@ const app = initializeApp(firebaseConfig);
 // Получаем экземпляры сервисов
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app,"asia-northeast1"); // Укажите регион, если все ваши функции в одном регионе
+const functions = getFunctions(app,"us-central1"); // Укажите регион, если все ваши функции в одном регионе
                                                              // или если вы хотите явно указать регион для вызова функций.
                                                              // Если функции в разных регионах, то регион указывается при вызове конкретной функции.
                                                              // Для эмулятора это обычно не так критично, как для "боевого" окружения.

@@ -6,6 +6,10 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import DashboardPage from './pages/admin/DashboardPage';
 import UsersPage from './pages/admin/UsersPage'; // Создайте этот файл
 import GroupsPage from './pages/admin/GroupsPage'; // Создайте этот файл
+import StudentsPage from './pages/admin/StudentsPage';
+import TeachersPage from './pages/admin/TeachersPage';
+import SchedulePage from './pages/admin/SchedulePage';
+import SubjectsPage from './pages/admin/SubjectsPage';
 // import SchedulePage from './pages/admin/SchedulePage'; // Создайте этот файл
 import { useAuth } from './contexts/AuthContext';
 
@@ -35,8 +39,11 @@ function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="students" element={<StudentsPage />} />
+          <Route path="teachers" element={<TeachersPage />} />
           <Route path="groups" element={<GroupsPage />} />
-          {/* <Route path="schedule" element={<SchedulePage />} /> */}
+          <Route path="schedule" element={<SchedulePage />} />
+          <Route path="subjects" element={<SubjectsPage />} />
           {/* Если пользователь пытается зайти на /admin без подмаршрута, перенаправляем на дашборд */}
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>

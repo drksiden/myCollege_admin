@@ -10,6 +10,8 @@ import {
   CalendarDays,
   LogOut,
   Settings,
+  GraduationCap,
+  UserCog,
 } from 'lucide-react'; // Иконки от lucide-react
 
 const Sidebar: React.FC = () => {
@@ -32,6 +34,16 @@ const Sidebar: React.FC = () => {
       to: '/admin/users',
       icon: <Users className="h-5 w-5" />,
       label: 'Пользователи',
+    },
+    {
+      to: '/admin/students',
+      icon: <GraduationCap className="h-5 w-5" />,
+      label: 'Студенты',
+    },
+    {
+      to: '/admin/teachers',
+      icon: <UserCog className="h-5 w-5" />,
+      label: 'Преподаватели',
     },
     {
       to: '/admin/groups',

@@ -23,6 +23,9 @@ import {
   MoreHorizontal,
   UserPlusIcon,
   RefreshCw,
+  Trash2,
+  Pencil,
+  Eye,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -39,17 +42,36 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { motion /*, AnimatePresence */ } from 'framer-motion'; // AnimatePresence пока не используется
+import { UserFormDialog } from '@/components/admin/users/UserForm'; // Импортируем нашу форму
+import { Toaster, toast } from "sonner"; 
+import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
-export type User = {
+export interface User {
   id: string;
+  email: string;
   firstName: string;
   lastName: string;
   patronymic?: string;
-  email: string;
-  role: 'student' | 'teacher' | 'admin';
-  groupId?: string;
-  groupName?: string;
-};
+  role: 'admin' | 'teacher' | 'student';
+  teacherDetails?: {
+    department: string;
+    qualification: string;
+  };
+  studentDetails?: {
+    groupId: string;
+    studentId: string;
+  };
+}
 
 const TableRowSkeleton: React.FC<{ columnsCount: number }> = ({
   columnsCount,
@@ -68,6 +90,9 @@ const UsersPage: React.FC = () => {
   const [data, setData] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isUserFormOpen, setIsUserFormOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -88,7 +113,7 @@ const UsersPage: React.FC = () => {
           resultData.message || 'Не удалось получить список пользователей.'
         );
       }
-    } catch (err: unknown) { // Изменили any на unknown
+    } catch (err: unknown) {
       console.error('Ошибка при загрузке пользователей:', err);
       let errorMessage = 'Произошла ошибка при загрузке данных.';
       if (err instanceof Error) {
@@ -107,6 +132,44 @@ const UsersPage: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const handleUserCreatedOrUpdated = () => {
+    fetchUsers(); // Обновляем список
+  };
+
+  const openEditUserDialog = (user: User) => {
+    setEditingUser(user); // Сохраняем данные пользователя для редактирования
+    setIsUserFormOpen(true); // Открываем тот же диалог
+  };
+
+  const closeUserDialog = () => {
+    setIsUserFormOpen(false);
+    setEditingUser(null); // Сбрасываем редактируемого пользователя
+  }
+
+  const handleDeleteUser = async (user: User) => {
+    try {
+      const deleteUserFunction = httpsCallable(functions, 'deleteUser');
+      const result = await deleteUserFunction({ userId: user.id });
+      const resultData = result.data as { success: boolean; message: string };
+
+      if (resultData.success) {
+        toast.success(resultData.message);
+        fetchUsers();
+      } else {
+        throw new Error(resultData.message);
+      }
+    } catch (err: unknown) {
+      console.error('Ошибка при удалении пользователя:', err);
+      let errorMessage = 'Произошла ошибка при удалении пользователя.';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setUserToDelete(null);
+    }
+  };
 
   const columns = useMemo<ColumnDef<User>[]>(
     () => [
@@ -135,20 +198,18 @@ const UsersPage: React.FC = () => {
         accessorKey: 'role',
         header: 'Роль',
         cell: ({ row }) => {
-          const role = row.getValue('role') as User['role'];
-          // TODO: Заменить на Badge из Shadcn UI
-          switch (role) {
-            case 'student': return 'Студент';
-            case 'teacher': return 'Преподаватель';
-            case 'admin': return 'Администратор';
-            default: return role;
-          }
+          const role = row.original.role;
+          return (
+            <Badge variant={role === 'admin' ? 'destructive' : role === 'teacher' ? 'default' : 'secondary'}>
+              {role === 'admin' ? 'Администратор' : role === 'teacher' ? 'Преподаватель' : 'Студент'}
+            </Badge>
+          );
         },
       },
       {
-        accessorKey: 'groupName',
+        accessorKey: 'studentDetails',
         header: 'Группа',
-        cell: ({ row }) => row.original.groupName || '—',
+        cell: ({ row }) => row.original.studentDetails?.groupId || '—',
       },
       {
         id: 'actions',
@@ -169,20 +230,19 @@ const UsersPage: React.FC = () => {
                   <DropdownMenuItem
                     onClick={() => console.log('View user', user.id)}
                   >
+                    <Eye className="mr-2 h-4 w-4" />
                     Просмотреть
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    // TODO: Реализовать открытие формы редактирования
-                    onClick={() => console.log('Edit user', user.id)}
-                  >
+                  <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
+                    <Pencil className="mr-2 h-4 w-4" />
                     Редактировать
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive hover:!bg-destructive/10"
-                    // TODO: Реализовать удаление
-                    onClick={() => console.log('Delete user', user.id)}
+                    onClick={() => setUserToDelete(user)}
                   >
+                    <Trash2 className="mr-2 h-4 w-4" />
                     Удалить
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -210,7 +270,7 @@ const UsersPage: React.FC = () => {
   const columnsCount = columns.length;
 
   return (
-    <motion.div
+    <><Toaster richColors position="top-right" /><motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -231,7 +291,7 @@ const UsersPage: React.FC = () => {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           {/* TODO: Кнопка для открытия модального окна создания пользователя */}
-          <Button onClick={() => console.log('Открыть модальное окно создания')}>
+          <Button onClick={() => { setEditingUser(null); setIsUserFormOpen(true); }}>
             <UserPlusIcon className="mr-2 h-4 w-4" /> Создать пользователя
           </Button>
         </div>
@@ -255,9 +315,9 @@ const UsersPage: React.FC = () => {
                     {header.isPlaceholder
                       ? null
                       : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -300,7 +360,7 @@ const UsersPage: React.FC = () => {
       {!loading && data.length > 0 && (
         <div className="flex items-center justify-between space-x-2 py-4">
           <div className="text-sm text-muted-foreground">
-            {/* Для информации о выборе строк, если будет */}
+            Всего пользователей: {data.length}
           </div>
           <div className="flex items-center space-x-2">
             <Button
@@ -326,7 +386,33 @@ const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
-    </motion.div>
+    </motion.div><UserFormDialog
+        key={editingUser ? editingUser.id : 'new-user'}
+        open={isUserFormOpen}
+        onOpenChange={closeUserDialog}
+        onUserSubmitSuccess={handleUserCreatedOrUpdated}
+        initialData={editingUser || undefined}
+      />
+
+      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить пользователя?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Пользователь будет удален из системы.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => userToDelete && handleDeleteUser(userToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog></>
   );
 };
 
