@@ -1,6 +1,8 @@
 import {
-  Auth,
   createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
+} from 'firebase/auth';
+import type {
+  Auth,
   UserCredential,
 } from 'firebase/auth';
 import {
@@ -8,15 +10,20 @@ import {
   doc,
   setDoc,
   getDocs,
+  getDoc,
   updateDoc,
   deleteDoc,
   collection,
   serverTimestamp,
-  Timestamp,
   query,
   orderBy,
+  where,
+  limit,
+  startAfter,
+  DocumentSnapshot,
 } from 'firebase/firestore';
-import type { User } from '@/types'; // Assuming User is correctly defined in src/types/index.ts
+import type { User } from '@/types';
+import { db } from './firebase';
 
 // Re-export User type for convenience
 export type { User };
@@ -59,18 +66,15 @@ export const createUserDocument = async (
   }
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
-  const newUser: Omit<User, 'uid' | 'createdAt' | 'updatedAt'> & { createdAt: Timestamp, updatedAt: Timestamp } = {
+  const newUser = {
     email: userData.email,
     firstName: userData.firstName,
     lastName: userData.lastName,
     role: userData.role,
-    createdAt: serverTimestamp() as Timestamp, // Cast to Timestamp for type consistency
-    updatedAt: serverTimestamp() as Timestamp, // Cast to Timestamp for type consistency
-    // teacherId and studentId can be added later if needed
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
-  // Type workaround for setDoc with serverTimestamp.
-  // The actual type of newUser when serverTimestamp is resolved will match User.
-  return setDoc(userRef, newUser as any);
+  return setDoc(userRef, newUser);
 };
 
 /**
@@ -101,12 +105,11 @@ export const updateUserInFirestore = async (
   dataToUpdate: Partial<Pick<User, 'firstName' | 'lastName' | 'role'>>
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
-  const updatePayload: Partial<User> & { updatedAt: Timestamp } = {
+  const updatePayload = {
     ...dataToUpdate,
-    updatedAt: serverTimestamp() as Timestamp,
+    updatedAt: serverTimestamp(),
   };
-  // Type workaround for updateDoc with serverTimestamp.
-  return updateDoc(userRef, updatePayload as any);
+  return updateDoc(userRef, updatePayload);
 };
 
 /**
@@ -122,4 +125,124 @@ export const deleteUserFromFirestore = async (
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
   return deleteDoc(userRef);
+};
+
+/**
+ * Fetches a single user by ID from Firestore.
+ * @param db Firestore instance.
+ * @param uid User's UID.
+ * @returns Promise<User | null>
+ */
+export const getUserById = async (
+  db: Firestore,
+  uid: string
+): Promise<User | null> => {
+  const userRef = doc(db, 'users', uid);
+  const userSnap = await getDoc(userRef);
+  
+  if (!userSnap.exists()) {
+    return null;
+  }
+
+  return {
+    uid: userSnap.id,
+    ...userSnap.data(),
+  } as User;
+};
+
+/**
+ * Fetches users filtered by role.
+ * @param db Firestore instance.
+ * @param role User role to filter by.
+ * @returns Promise<User[]>
+ */
+export const getUsersByRole = async (
+  db: Firestore,
+  role: User['role']
+): Promise<User[]> => {
+  const usersCollection = collection(db, 'users');
+  const q = query(
+    usersCollection,
+    where('role', '==', role),
+    orderBy('createdAt', 'desc')
+  );
+  
+  const usersSnapshot = await getDocs(q);
+  return usersSnapshot.docs.map(docSnapshot => ({
+    uid: docSnapshot.id,
+    ...docSnapshot.data(),
+  } as User));
+};
+
+/**
+ * Fetches users with pagination.
+ * @param db Firestore instance.
+ * @param pageSize Number of users per page.
+ * @param lastDoc Last document from previous page (for pagination).
+ * @returns Promise<{ users: User[], lastDoc: DocumentSnapshot | null }>
+ */
+export const getUsersWithPagination = async (
+  db: Firestore,
+  pageSize: number = 10,
+  lastDoc: DocumentSnapshot | null = null
+): Promise<{ users: User[], lastDoc: DocumentSnapshot | null }> => {
+  const usersCollection = collection(db, 'users');
+  let q = query(
+    usersCollection,
+    orderBy('createdAt', 'desc'),
+    limit(pageSize)
+  );
+
+  if (lastDoc) {
+    q = query(q, startAfter(lastDoc));
+  }
+
+  const usersSnapshot = await getDocs(q);
+  const users = usersSnapshot.docs.map(docSnapshot => ({
+    uid: docSnapshot.id,
+    ...docSnapshot.data(),
+  } as User));
+
+  const lastVisible = usersSnapshot.docs[usersSnapshot.docs.length - 1] || null;
+
+  return {
+    users,
+    lastDoc: lastVisible,
+  };
+};
+
+/**
+ * Searches users by name or email.
+ * @param db Firestore instance.
+ * @param searchTerm Search term to look for in firstName, lastName, or email.
+ * @returns Promise<User[]>
+ */
+export const searchUsers = async (
+  db: Firestore,
+  searchTerm: string
+): Promise<User[]> => {
+  const usersCollection = collection(db, 'users');
+  const usersSnapshot = await getDocs(usersCollection);
+  
+  const searchTermLower = searchTerm.toLowerCase();
+  
+  return usersSnapshot.docs
+    .map(docSnapshot => ({
+      uid: docSnapshot.id,
+      ...docSnapshot.data(),
+    } as User))
+    .filter(user => 
+      user.firstName.toLowerCase().includes(searchTermLower) ||
+      user.lastName.toLowerCase().includes(searchTermLower) ||
+      user.email.toLowerCase().includes(searchTermLower)
+    );
+};
+
+export const getUsers = async (): Promise<User[]> => {
+  const usersRef = collection(db, 'users');
+  const snapshot = await getDocs(usersRef);
+  return snapshot.docs.map(doc => ({
+    uid: doc.id,
+    ...doc.data()
+  })) as User[];
 };

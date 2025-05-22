@@ -25,7 +25,7 @@ import { db } from '@/lib/firebase';
 import {
   createSubject,
   updateSubject,
-  getSubject, // To pre-fill form in edit mode
+  getSubject,
 } from '@/lib/firebaseService/subjectService';
 import type { Subject } from '@/types';
 
@@ -33,19 +33,20 @@ import type { Subject } from '@/types';
 const subjectSchema = z.object({
   name: z.string().min(1, 'Subject name is required').max(100, 'Name too long'),
   description: z.string().min(1, 'Description is required').max(500, 'Description too long'),
-  hoursPerSemester: z.coerce.number().min(1, 'Hours must be positive').max(500, 'Hours seem too high'),
-  type: z.enum(['lecture', 'practice', 'laboratory'], {
-    required_error: 'Subject type is required',
-  }),
+  credits: z.coerce.number().min(1, 'Credits must be positive').max(30, 'Credits seem too high'),
+  hours: z.coerce.number().min(1, 'Hours must be positive').max(500, 'Hours seem too high'),
+  teacherId: z.string().optional(),
+  groupId: z.string().optional(),
 });
 
 export type SubjectFormValues = z.infer<typeof subjectSchema>;
 
 interface SubjectFormProps {
   mode: 'create' | 'edit';
-  subjectId?: string; // Required for 'edit' mode
-  onFormSubmitSuccess: () => void;
+  subjectId?: string;
+  onFormSubmitSuccess: (data: SubjectFormValues) => void;
   onCancel?: () => void;
+  teachers: Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>;
 }
 
 const SubjectForm: React.FC<SubjectFormProps> = ({
@@ -53,6 +54,7 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
   subjectId,
   onFormSubmitSuccess,
   onCancel,
+  teachers,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
@@ -62,19 +64,22 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
     defaultValues: {
       name: '',
       description: '',
-      hoursPerSemester: 0, // Default to 0 or a more sensible default like 30
-      type: undefined,
+      credits: 0,
+      hours: 0,
+      teacherId: undefined,
+      groupId: undefined,
     },
   });
 
   useEffect(() => {
-    // Reset form fields when mode changes or for create mode
     if (mode === 'create') {
       form.reset({
         name: '',
         description: '',
-        hoursPerSemester: 0, // Or a sensible default like 30
-        type: undefined,
+        credits: 0,
+        hours: 0,
+        teacherId: undefined,
+        groupId: undefined,
       });
     } else if (mode === 'edit' && subjectId) {
       const fetchSubjectData = async () => {
@@ -85,8 +90,10 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
             form.reset({
               name: subject.name,
               description: subject.description,
-              hoursPerSemester: subject.hoursPerSemester,
-              type: subject.type,
+              credits: subject.credits,
+              hours: subject.hours,
+              teacherId: subject.teacherId,
+              groupId: subject.groupId,
             });
           } else {
             toast.error('Subject not found.');
@@ -107,11 +114,13 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
   const onSubmit = async (values: SubjectFormValues) => {
     setIsLoading(true);
     try {
-      const subjectData = {
+      const subjectData: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'> = {
         name: values.name,
         description: values.description,
-        hoursPerSemester: values.hoursPerSemester,
-        type: values.type as Subject['type'], // Ensure correct type
+        credits: values.credits,
+        hours: values.hours,
+        teacherId: values.teacherId,
+        groupId: values.groupId,
       };
 
       if (mode === 'create') {
@@ -121,11 +130,12 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
         await updateSubject(db, subjectId, subjectData);
         toast.success('Subject updated successfully!');
       }
-      onFormSubmitSuccess(); // Callback to refresh list or close dialog
-      if (mode === 'create') form.reset(); // Only reset for create mode for better UX
-    } catch (error: any) {
+      onFormSubmitSuccess(values);
+      if (mode === 'create') form.reset();
+    } catch (error) {
       console.error('Error submitting subject form:', error);
-      toast.error(error.message || 'Failed to save subject.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save subject.';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -166,10 +176,23 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
         />
         <FormField
           control={form.control}
-          name="hoursPerSemester"
+          name="credits"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Hours Per Semester</FormLabel>
+              <FormLabel>Credits</FormLabel>
+              <FormControl>
+                <Input type="number" placeholder="e.g., 3" {...field} disabled={isLoading} onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="hours"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Hours</FormLabel>
               <FormControl>
                 <Input type="number" placeholder="e.g., 60" {...field} disabled={isLoading} onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)} />
               </FormControl>
@@ -179,20 +202,22 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
         />
         <FormField
           control={form.control}
-          name="type"
+          name="teacherId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Subject Type</FormLabel>
+              <FormLabel>Teacher</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select subject type" />
+                    <SelectValue placeholder="Select teacher" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="lecture">Lecture</SelectItem>
-                  <SelectItem value="practice">Practice</SelectItem>
-                  <SelectItem value="laboratory">Laboratory</SelectItem>
+                  {teachers.map(teacher => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      {`${teacher.firstName} ${teacher.lastName}${teacher.patronymic ? ` ${teacher.patronymic}` : ''}`}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />

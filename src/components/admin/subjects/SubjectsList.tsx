@@ -20,16 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from '@/components/ui/skeleton';
-
-interface Subject {
-  id: string;
-  name: string;
-  description: string;
-  teacherId: string;
-  teacherName: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import type { Subject } from '@/types';
 
 interface SubjectsListProps {
   subjects: Subject[];
@@ -71,7 +62,8 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
           <TableRow>
             <TableHead>Название</TableHead>
             <TableHead>Описание</TableHead>
-            <TableHead>Преподаватель</TableHead>
+            <TableHead>Кредиты</TableHead>
+            <TableHead>Часы</TableHead>
             <TableHead className="w-[100px]">Действия</TableHead>
           </TableRow>
         </TableHeader>
@@ -80,7 +72,8 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
             <TableRow key={subject.id}>
               <TableCell className="font-medium">{subject.name}</TableCell>
               <TableCell>{subject.description}</TableCell>
-              <TableCell>{subject.teacherName}</TableCell>
+              <TableCell>{subject.credits}</TableCell>
+              <TableCell>{subject.hours}</TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <Button

@@ -18,6 +18,7 @@ import {
   documentId, // To query by document ID in an array
 } from 'firebase/firestore';
 import type { Group, Student } from '@/types';
+import { db } from './firebase';
 
 // Re-export Group type for convenience
 export type { Group };
@@ -210,3 +211,13 @@ export const getStudentsInGroupDetails = async (
     ...docSnap.data(),
   } as Student));
 };
+
+export async function getGroups(): Promise<Group[]> {
+  const groupsRef = collection(db, 'groups');
+  const q = query(groupsRef, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Group[];
+}

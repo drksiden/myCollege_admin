@@ -13,8 +13,10 @@ import {
   serverTimestamp,
   Timestamp,
   WriteBatch, // For batch operations if needed, though we'll coordinate in components
+  orderBy,
 } from 'firebase/firestore';
 import type { Teacher } from '@/types'; // User type not directly needed here but good for context
+import { db } from '@/lib/firebase';
 
 // Re-export Teacher type for convenience
 export type { Teacher };
@@ -131,4 +133,60 @@ export const getAllTeachers = async (db: Firestore): Promise<Teacher[]> => {
     id: docSnap.id,
     ...docSnap.data(),
   } as Teacher));
+};
+
+export const getTeachersByGroup = async (groupId: string): Promise<Teacher[]> => {
+  const q = query(
+    collection(db, 'users'),
+    where('role', '==', 'teacher'),
+    where('groups', 'array-contains', groupId)
+  );
+  
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({
+    uid: doc.id,
+    ...doc.data(),
+  } as Teacher));
+};
+
+export const assignTeacherToGroup = async (
+  teacherId: string,
+  groupId: string
+): Promise<void> => {
+  const teacherRef = doc(db, 'users', teacherId);
+  const teacherDoc = await getDoc(teacherRef);
+  
+  if (!teacherDoc.exists()) {
+    throw new Error('Teacher not found');
+  }
+  
+  const teacherData = teacherDoc.data();
+  const groups = teacherData.groups || [];
+  
+  if (!groups.includes(groupId)) {
+    await updateDoc(teacherRef, {
+      groups: [...groups, groupId],
+    });
+  }
+};
+
+export const removeTeacherFromGroup = async (
+  teacherId: string,
+  groupId: string
+): Promise<void> => {
+  const teacherRef = doc(db, 'users', teacherId);
+  const teacherDoc = await getDoc(teacherRef);
+  
+  if (!teacherDoc.exists()) {
+    throw new Error('Teacher not found');
+  }
+  
+  const teacherData = teacherDoc.data();
+  const groups = teacherData.groups || [];
+  
+  if (groups.includes(groupId)) {
+    await updateDoc(teacherRef, {
+      groups: groups.filter((id: string) => id !== groupId),
+    });
+  }
 };

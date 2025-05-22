@@ -6,10 +6,15 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import DashboardPage from './pages/admin/DashboardPage';
 import UsersPage from './pages/admin/UsersPage'; // Создайте этот файл
 import GroupsPage from './pages/admin/GroupsPage'; // Создайте этот файл
+import { GroupDetailsPage } from './components/admin/groups/GroupDetailsPage';
 import StudentsPage from './pages/admin/StudentsPage';
 import TeachersPage from './pages/admin/TeachersPage';
+import { TeacherProfilePage } from './components/admin/teachers/TeacherProfilePage';
 import SchedulePage from './pages/admin/SchedulePage';
 import SubjectsPage from './pages/admin/SubjectsPage';
+import AttendancePage from './components/admin/attendance/AttendancePage';
+import { StudentProfilePage } from './components/admin/students/StudentProfilePage';
+import GradesPage from './components/admin/grades/GradesPage';
 // import SchedulePage from './pages/admin/SchedulePage'; // Создайте этот файл
 import { useAuth } from './contexts/AuthContext';
 
@@ -40,10 +45,15 @@ function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="students" element={<StudentsPage />} />
+          <Route path="students/:studentId" element={<StudentProfilePage />} />
           <Route path="teachers" element={<TeachersPage />} />
+          <Route path="teachers/:teacherId" element={<TeacherProfilePage />} />
           <Route path="groups" element={<GroupsPage />} />
+          <Route path="groups/:groupId" element={<GroupDetailsPage />} />
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="subjects" element={<SubjectsPage />} />
+          <Route path="grades" element={<GradesPage />} />
+          <Route path="attendance" element={<AttendancePage />} />
           {/* Если пользователь пытается зайти на /admin без подмаршрута, перенаправляем на дашборд */}
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>

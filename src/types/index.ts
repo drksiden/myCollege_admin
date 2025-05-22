@@ -29,17 +29,6 @@ export interface Teacher {
   updatedAt: Timestamp;
 }
 
-export interface Student {
-  id: string;                 // Firestore document ID
-  userId: string;             // Reference to the User document's uid
-  groupId: string;            // ID of the group (for now, a string ID)
-  enrollmentDate: Timestamp;
-  status: 'active' | 'inactive' | 'graduated';
-  studentCardId: string;      // Номер студенческого (Student ID card number)
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
 export interface Group {
   id: string;
   name: string;

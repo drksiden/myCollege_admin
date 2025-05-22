@@ -3,19 +3,10 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { SubjectsList } from '@/components/admin/subjects/SubjectsList';
-import { SubjectFormDialog } from '@/components/admin/subjects/SubjectForm';
+import { SubjectFormDialog } from '@/components/admin/subjects/SubjectFormDialog';
 import { toast } from 'sonner';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-
-interface Subject {
-  id: string;
-  name: string;
-  description: string;
-  teacherId: string;
-  teacherName: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import type { Subject } from '@/types';
 
 interface Teacher {
   id: string;
@@ -86,7 +77,7 @@ const SubjectsPage: React.FC = () => {
     }
   };
 
-  const handleSubjectSubmit = async (data: Omit<Subject, 'id' | 'teacherName' | 'createdAt' | 'updatedAt'>) => {
+  const handleSubjectSubmit = async (data: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       if (selectedSubject) {
         // Обновление существующего предмета
