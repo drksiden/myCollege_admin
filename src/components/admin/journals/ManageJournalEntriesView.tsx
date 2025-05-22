@@ -61,11 +61,7 @@ const journalEntryRowSchema = z.object({
   studentId: z.string(),
   studentName: z.string(),
   attendance: z.enum(['present', 'absent', 'late']),
-  grade: z.string().optional().transform((val) => {
-    if (val === "" || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) ? undefined : num;
-  }).refine((val) => val === undefined || (val >= 0 && val <= 100), {
+  grade: z.coerce.number().optional().refine((val) => val === undefined || (val >= 0 && val <= 100), {
     message: "Grade must be between 0 and 100"
   }),
   comment: z.string().optional().transform(val => val === "" ? undefined : val),
@@ -167,7 +163,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         studentId: student.id,
         studentName: student.fullName || 'Unknown Student',
         attendance: existingEntry?.attendance || 'present',
-        grade: existingEntry?.grade !== undefined ? String(existingEntry.grade) : "",
+        grade: existingEntry?.grade,
         comment: existingEntry?.comment ?? "",
       };
     });
@@ -209,7 +205,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
           studentId: student.id,
           studentName: student.fullName || 'Unknown Student',
           attendance: 'present' as const,
-          grade: "",
+          grade: undefined,
           comment: "",
         }));
         replace(resetEntries);
@@ -327,8 +323,8 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                               max="100"
                               placeholder="0-100"
                               {...field}
-                              value={field.value || ""}
-                              onChange={e => field.onChange(e.target.value)}
+                              value={field.value ?? ""}
+                              onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
                             />
                           </FormControl>
                         </FormItem>
