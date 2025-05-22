@@ -29,13 +29,23 @@ export interface Teacher {
   updatedAt: Timestamp;
 }
 
+export interface Student {
+  id: string;
+  userId: string;
+  groupId: string;
+  studentId: string;
+  status: 'active' | 'inactive';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  attendance: number;
+  averageGrade: number;
+}
+
 export interface Group {
   id: string;
   name: string;
-  year: number;
+  course: number;
   specialization: string;
-  students: string[];
-  scheduleId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

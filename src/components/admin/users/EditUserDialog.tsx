@@ -34,18 +34,18 @@ import { updateUserInFirestore } from '@/lib/firebaseService/userService';
 import type { User } from '@/types';
 
 const formSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  email: z.string().email(), // Read-only in the form
+  firstName: z.string().min(1, 'Имя обязательно'),
+  lastName: z.string().min(1, 'Фамилия обязательна'),
+  email: z.string().email('Неверный формат email'),
   role: z.enum(['student', 'teacher', 'admin'], {
-    required_error: 'Role is required',
+    required_error: 'Роль обязательна',
   }),
 });
 
 type EditUserFormValues = z.infer<typeof formSchema>;
 
 interface EditUserDialogProps {
-  user: User | null; // Allow null for when dialog is closed or no user selected
+  user: User | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUserUpdated: () => void;
@@ -77,7 +77,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
         role: user.role,
       });
     } else if (!open) {
-      form.reset({ // Reset form when dialog is closed
+      form.reset({
         firstName: '',
         lastName: '',
         email: '',
@@ -88,7 +88,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   const onSubmit = async (values: EditUserFormValues) => {
     if (!user) {
-      toast.error('No user selected for editing.');
+      toast.error('Пользователь не выбран для редактирования');
       return;
     }
     setIsLoading(true);
@@ -99,27 +99,27 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
         role: values.role as User['role'],
       };
       await updateUserInFirestore(db, user.uid, dataToUpdate);
-      toast.success(`User ${user.email} updated successfully!`);
+      toast.success(`Пользователь ${user.email} успешно обновлен`);
       onUserUpdated();
-      onOpenChange(false); // Close dialog
-    } catch (error: any) {
-      console.error('Error updating user:', error);
-      toast.error(error.message || 'Failed to update user.');
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Ошибка при обновлении пользователя:', error);
+      toast.error('Не удалось обновить пользователя');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!user) return null; // Don't render if no user or dialog is closed
+  if (!user) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit User</DialogTitle>
+          <DialogTitle>Редактирование пользователя</DialogTitle>
           <DialogDescription>
-            Update the details for {user.firstName} {user.lastName}. Email is read-only.
-            Password changes are not supported here.
+            Обновите данные для {user.firstName} {user.lastName}. Email нельзя изменить.
+            Изменение пароля не поддерживается в этой форме.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -129,9 +129,9 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
               name="firstName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>First Name</FormLabel>
+                  <FormLabel>Имя</FormLabel>
                   <FormControl>
-                    <Input placeholder="John" {...field} disabled={isLoading} />
+                    <Input placeholder="Иван" {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -142,9 +142,9 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
               name="lastName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Last Name</FormLabel>
+                  <FormLabel>Фамилия</FormLabel>
                   <FormControl>
-                    <Input placeholder="Doe" {...field} disabled={isLoading} />
+                    <Input placeholder="Иванов" {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -155,7 +155,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email (Read-only)</FormLabel>
+                  <FormLabel>Email (только для чтения)</FormLabel>
                   <FormControl>
                     <Input type="email" {...field} readOnly disabled />
                   </FormControl>
@@ -168,21 +168,21 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
               name="role"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Role</FormLabel>
+                  <FormLabel>Роль</FormLabel>
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value} // Ensure value is controlled
+                    value={field.value}
                     disabled={isLoading}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a role" />
+                        <SelectValue placeholder="Выберите роль" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="student">Student</SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="student">Студент</SelectItem>
+                      <SelectItem value="teacher">Преподаватель</SelectItem>
+                      <SelectItem value="admin">Администратор</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -191,10 +191,12 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             />
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isLoading}>Cancel</Button>
+                <Button type="button" variant="outline" disabled={isLoading}>
+                  Отмена
+                </Button>
               </DialogClose>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Saving...' : 'Save Changes'}
+                {isLoading ? 'Сохранение...' : 'Сохранить изменения'}
               </Button>
             </DialogFooter>
           </form>

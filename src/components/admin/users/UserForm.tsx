@@ -32,7 +32,7 @@ import {
 import { functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { toast } from 'sonner';
-import type { User } from '@/pages/admin/UsersPage';
+import type { User } from '@/types';
 import { motion } from 'framer-motion';
 
 const formSchema = z.object({
@@ -131,7 +131,11 @@ export function UserFormDialog({
         }
       } else {
         const createUserFunction = httpsCallable(functions, 'createUserOnServer');
-        const result = await createUserFunction(values);
+        const result = await createUserFunction({
+          ...values,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
         const resultData = result.data as {
           success: boolean;
           uid?: string;

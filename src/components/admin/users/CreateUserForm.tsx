@@ -20,24 +20,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { auth, db } from '@/lib/firebase';
-import { createUserInAuth, createUserDocument } from '@/lib/firebaseService/userService';
+import { createUserInAuth } from '@/lib/firebaseService/userService';
 import type { User } from '@/types';
 
 const formSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  firstName: z.string().min(1, 'Имя обязательно'),
+  lastName: z.string().min(1, 'Фамилия обязательна'),
+  email: z.string().email('Неверный формат email'),
+  password: z.string().min(6, 'Пароль должен содержать минимум 6 символов'),
   role: z.enum(['student', 'teacher', 'admin'], {
-    required_error: 'Role is required',
+    required_error: 'Роль обязательна',
   }),
 });
 
 type CreateUserFormValues = z.infer<typeof formSchema>;
 
 interface CreateUserFormProps {
-  onUserCreated?: () => void; // Optional callback
+  onUserCreated?: () => void;
 }
 
 const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
@@ -56,38 +55,33 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
   const onSubmit = async (values: CreateUserFormValues) => {
     setIsLoading(true);
     try {
-      // 1. Create user in Firebase Authentication
-      const userCredential = await createUserInAuth(auth, values.email, values.password);
-      const authUser = userCredential.user;
-
-      if (!authUser) {
-        throw new Error('User authentication failed.');
-      }
-
-      // 2. Create user document in Firestore
-      const userDataForFirestore = {
+      await createUserInAuth({
+        email: values.email,
+        password: values.password,
         firstName: values.firstName,
         lastName: values.lastName,
-        email: values.email,
-        role: values.role as User['role'], // Cast to ensure type compatibility
-      };
-      await createUserDocument(db, authUser.uid, userDataForFirestore);
+        role: values.role as User['role'],
+      });
 
-      toast.success(`User ${values.email} created successfully!`);
+      toast.success(`Пользователь ${values.email} успешно создан!`);
       form.reset();
       if (onUserCreated) {
         onUserCreated();
       }
-    } catch (error: any) {
-      console.error('Error creating user:', error);
-      // Handle specific Firebase Auth errors
-      let errorMessage = 'Failed to create user.';
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email is already in use.';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'The password is too weak.';
-      } else if (error.message) {
-        errorMessage = error.message;
+    } catch (error) {
+      console.error('Ошибка при создании пользователя:', error);
+      let errorMessage = 'Не удалось создать пользователя.';
+      if (error instanceof Error) {
+        if ('code' in error) {
+          const firebaseError = error as { code: string };
+          if (firebaseError.code === 'auth/email-already-in-use') {
+            errorMessage = 'Этот email уже используется.';
+          } else if (firebaseError.code === 'auth/weak-password') {
+            errorMessage = 'Пароль слишком простой.';
+          }
+        } else {
+          errorMessage = error.message;
+        }
       }
       toast.error(errorMessage);
     } finally {
@@ -97,16 +91,16 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4  max-w-md">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="firstName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>First Name</FormLabel>
+                <FormLabel>Имя</FormLabel>
                 <FormControl>
-                  <Input placeholder="John" {...field} disabled={isLoading} />
+                  <Input placeholder="Иван" {...field} disabled={isLoading} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -117,9 +111,9 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
             name="lastName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Last Name</FormLabel>
+                <FormLabel>Фамилия</FormLabel>
                 <FormControl>
-                  <Input placeholder="Doe" {...field} disabled={isLoading} />
+                  <Input placeholder="Иванов" {...field} disabled={isLoading} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -144,7 +138,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>Пароль</FormLabel>
               <FormControl>
                 <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
               </FormControl>
@@ -157,7 +151,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
           name="role"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Role</FormLabel>
+              <FormLabel>Роль</FormLabel>
               <Select
                 onValueChange={field.onChange}
                 defaultValue={field.value}
@@ -165,13 +159,13 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
+                    <SelectValue placeholder="Выберите роль" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="teacher">Teacher</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="student">Студент</SelectItem>
+                  <SelectItem value="teacher">Преподаватель</SelectItem>
+                  <SelectItem value="admin">Администратор</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -179,7 +173,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onUserCreated }) => {
           )}
         />
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Creating User...' : 'Create User'}
+          {isLoading ? 'Создание пользователя...' : 'Создать пользователя'}
         </Button>
       </form>
     </Form>

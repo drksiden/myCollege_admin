@@ -189,4 +189,25 @@ export interface Message {
   isDeleted: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface Journal {
+  id: string;
+  groupId: string;
+  subjectId: string;
+  teacherId: string;
+  semester: number;
+  year: number;
+  entries: {
+    date: Timestamp;
+    topic: string;
+    homework?: string;
+    notes?: string;
+    attendance?: {
+      studentId: string;
+      status: 'present' | 'absent' | 'late' | 'excused';
+    }[];
+  }[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 } 

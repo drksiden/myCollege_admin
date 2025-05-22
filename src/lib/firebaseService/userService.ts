@@ -22,6 +22,7 @@ import {
   startAfter,
   DocumentSnapshot,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { User } from '@/types';
 import { db } from './firebase';
 
@@ -29,23 +30,27 @@ import { db } from './firebase';
 export type { User };
 
 /**
- * Creates a new user in Firebase Authentication.
- * @param auth Firebase Auth instance.
- * @param email User's email.
- * @param password User's password.
- * @returns Promise<UserCredential>
+ * Creates a new user using Cloud Function.
+ * @param userData Object containing user data (email, password, firstName, lastName, role).
+ * @returns Promise<User>
  */
-export const createUserInAuth = async (
-  auth: Auth,
-  email: string,
-  password?: string // Password can be optional if handled by backend or other flows
-): Promise<UserCredential> => {
-  if (!password) {
-    // This case should ideally be handled by a backend function that sets a temporary password
-    // or sends a password reset email. For client-side, a password is required.
-    throw new Error("Password is required for client-side user creation.");
+export const createUserInAuth = async (userData: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: User['role'];
+}): Promise<User> => {
+  const functions = getFunctions();
+  const createUser = httpsCallable(functions, 'createUser');
+  
+  try {
+    const result = await createUser(userData);
+    return result.data as User;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
   }
-  return firebaseCreateUserWithEmailAndPassword(auth, email, password);
 };
 
 /**

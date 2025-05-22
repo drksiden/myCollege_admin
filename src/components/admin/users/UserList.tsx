@@ -16,12 +16,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { getUsersFromFirestore, deleteUserFromFirestore } from '@/lib/firebaseService/userService';
 import type { User } from '@/types';
-import EditUserDialog from './EditUserDialog'; // Ensure this path is correct
+import EditUserDialog from './EditUserDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,9 +33,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Timestamp } from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
 
 interface UserListProps {
-  key?: number; // Allow key prop for re-fetching on demand
+  key?: number;
 }
 
 const UserList: React.FC<UserListProps> = () => {
@@ -52,8 +53,8 @@ const UserList: React.FC<UserListProps> = () => {
       const fetchedUsers = await getUsersFromFirestore(db);
       setUsers(fetchedUsers);
     } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Failed to fetch users.");
+      console.error("Ошибка при загрузке пользователей:", error);
+      toast.error("Не удалось загрузить пользователей");
     } finally {
       setLoading(false);
     }
@@ -76,15 +77,12 @@ const UserList: React.FC<UserListProps> = () => {
   const confirmDelete = async () => {
     if (!deletingUser) return;
     try {
-      // Note: This only deletes the Firestore document.
-      // The Firebase Auth user is NOT deleted by this client-side action.
-      // A Firebase Function using the Admin SDK would be needed for full cleanup.
       await deleteUserFromFirestore(db, deletingUser.uid);
-      toast.success(`User ${deletingUser.firstName} ${deletingUser.lastName} deleted from Firestore.`);
+      toast.success(`Пользователь ${deletingUser.firstName} ${deletingUser.lastName} удален`);
       setUsers(prevUsers => prevUsers.filter(u => u.uid !== deletingUser.uid));
     } catch (error) {
-      console.error("Error deleting user from Firestore:", error);
-      toast.error("Failed to delete user.");
+      console.error("Ошибка при удалении пользователя:", error);
+      toast.error("Не удалось удалить пользователя");
     } finally {
       setDeletingUser(null);
       setShowDeleteConfirm(false);
@@ -92,16 +90,40 @@ const UserList: React.FC<UserListProps> = () => {
   };
 
   const handleUserUpdated = () => {
-    fetchUsers(); // Refetch users after an update
+    fetchUsers();
   };
   
   const formatDate = (timestamp: Timestamp | undefined | null): string => {
-    if (!timestamp) return 'N/A';
-    return new Date(timestamp.seconds * 1000).toLocaleDateString();
+    if (!timestamp) return 'Н/Д';
+    return new Date(timestamp.seconds * 1000).toLocaleDateString('ru-RU');
+  };
+
+  const getRoleBadge = (role: User['role']) => {
+    const variants = {
+      admin: 'destructive',
+      teacher: 'secondary',
+      student: 'default',
+    } as const;
+
+    const labels = {
+      admin: 'Администратор',
+      teacher: 'Преподаватель',
+      student: 'Студент',
+    } as const;
+
+    return (
+      <Badge variant={variants[role]}>
+        {labels[role]}
+      </Badge>
+    );
   };
 
   if (loading) {
-    return <p>Loading users...</p>;
+    return (
+      <div className="flex items-center justify-center h-32">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (
@@ -109,18 +131,18 @@ const UserList: React.FC<UserListProps> = () => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
+            <TableHead>ФИО</TableHead>
             <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Created At</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>Роль</TableHead>
+            <TableHead>Дата создания</TableHead>
+            <TableHead className="text-right">Действия</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {users.length === 0 && !loading ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center h-24">
-                No users found.
+              <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
+                Пользователи не найдены
               </TableCell>
             </TableRow>
           ) : (
@@ -128,27 +150,27 @@ const UserList: React.FC<UserListProps> = () => {
               <TableRow key={user.uid}>
                 <TableCell>{`${user.firstName} ${user.lastName}`}</TableCell>
                 <TableCell>{user.email}</TableCell>
-                <TableCell>{user.role}</TableCell>
+                <TableCell>{getRoleBadge(user.role)}</TableCell>
                 <TableCell>{formatDate(user.createdAt)}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
+                        <span className="sr-only">Открыть меню</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => handleEdit(user)}>
-                        Edit
+                        Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleDeleteInitiate(user)}
                         className="text-red-600 focus:text-red-600 focus:bg-red-50"
                       >
-                        Delete
+                        Удалить
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -165,12 +187,12 @@ const UserList: React.FC<UserListProps> = () => {
           open={showEditDialog}
           onOpenChange={(open) => {
             setShowEditDialog(open);
-            if (!open) setEditingUser(null); // Clear editing user when dialog closes
+            if (!open) setEditingUser(null);
           }}
           onUserUpdated={() => {
             setShowEditDialog(false);
             setEditingUser(null);
-            handleUserUpdated(); // Refetch or update local state
+            handleUserUpdated();
           }}
         />
       )}
@@ -179,22 +201,22 @@ const UserList: React.FC<UserListProps> = () => {
          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
            <AlertDialogContent>
              <AlertDialogHeader>
-               <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+               <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
                <AlertDialogDescription>
-                 This action will delete the user <span className="font-semibold">{deletingUser.firstName} {deletingUser.lastName}</span> from Firestore.
+                 Это действие удалит пользователя <span className="font-semibold">{deletingUser.firstName} {deletingUser.lastName}</span> из базы данных.
                  <br />
-                 <span className="font-semibold text-orange-600">The Firebase Authentication user will NOT be deleted.</span>
+                 <span className="font-semibold text-orange-600">Учетная запись в Firebase Authentication не будет удалена.</span>
                  <br />
-                 This operation cannot be undone from the client-side.
+                 Это действие нельзя отменить.
                </AlertDialogDescription>
              </AlertDialogHeader>
              <AlertDialogFooter>
-               <AlertDialogCancel onClick={() => setDeletingUser(null)}>Cancel</AlertDialogCancel>
+               <AlertDialogCancel onClick={() => setDeletingUser(null)}>Отмена</AlertDialogCancel>
                <AlertDialogAction
                 onClick={confirmDelete}
                 className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50"
                >
-                 Delete Firestore Document
+                 Удалить
                </AlertDialogAction>
              </AlertDialogFooter>
            </AlertDialogContent>

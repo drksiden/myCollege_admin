@@ -4,30 +4,30 @@ import LoginPage from './pages/LoginPage';
 import AdminLayout from './components/layout/AdminLayout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import DashboardPage from './pages/admin/DashboardPage';
-import UsersPage from './pages/admin/UsersPage'; // Создайте этот файл
-import GroupsPage from './pages/admin/GroupsPage'; // Создайте этот файл
 import { GroupDetailsPage } from './components/admin/groups/GroupDetailsPage';
-import StudentsPage from './pages/admin/StudentsPage';
-import TeachersPage from './pages/admin/TeachersPage';
 import { TeacherProfilePage } from './components/admin/teachers/TeacherProfilePage';
 import SchedulePage from './pages/admin/SchedulePage';
-import SubjectsPage from './pages/admin/SubjectsPage';
 import AttendancePage from './components/admin/attendance/AttendancePage';
 import { StudentProfilePage } from './components/admin/students/StudentProfilePage';
 import GradesPage from './components/admin/grades/GradesPage';
-// import SchedulePage from './pages/admin/SchedulePage'; // Создайте этот файл
+import ManageUsersPage from './pages/admin/ManageUsersPage';
+import ManageGroupsPage from './pages/admin/ManageGroupsPage';
+import ManageJournalsPage from './pages/admin/ManageJournalsPage';
+import ManageSchedulesPage from './pages/admin/ManageSchedulesPage';
+import ManageStudentsPage from './pages/admin/ManageStudentsPage';
+import ManageSubjectsPage from './pages/admin/ManageSubjectsPage';
+import ManageTeachersPage from './pages/admin/ManageTeachersPage';
 import { useAuth } from './contexts/AuthContext';
 
 function App() {
   const { currentUser, isAdmin, loading } = useAuth();
 
   if (loading) {
-    return <div>Глобальная загрузка...</div>; // Или ваш компонент загрузки
+    return <div>Глобальная загрузка...</div>;
   }
 
   return (
     <Routes>
-      {/* Публичный маршрут для входа */}
       <Route
         path="/login"
         element={
@@ -39,28 +39,31 @@ function App() {
         }
       />
 
-      {/* Маршруты админ-панели, защищенные ProtectedRoute */}
       <Route element={<ProtectedRoute isAdminRoute={true} />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="students" element={<StudentsPage />} />
+          
+          {/* Основные страницы */}
           <Route path="students/:studentId" element={<StudentProfilePage />} />
-          <Route path="teachers" element={<TeachersPage />} />
           <Route path="teachers/:teacherId" element={<TeacherProfilePage />} />
-          <Route path="groups" element={<GroupsPage />} />
           <Route path="groups/:groupId" element={<GroupDetailsPage />} />
           <Route path="schedule" element={<SchedulePage />} />
-          <Route path="subjects" element={<SubjectsPage />} />
           <Route path="grades" element={<GradesPage />} />
           <Route path="attendance" element={<AttendancePage />} />
-          {/* Если пользователь пытается зайти на /admin без подмаршрута, перенаправляем на дашборд */}
+
+          {/* Страницы управления */}
+          <Route path="manage/users" element={<ManageUsersPage />} />
+          <Route path="manage/groups" element={<ManageGroupsPage />} />
+          <Route path="manage/journals" element={<ManageJournalsPage />} />
+          <Route path="manage/schedules" element={<ManageSchedulesPage />} />
+          <Route path="manage/students" element={<ManageStudentsPage />} />
+          <Route path="manage/subjects" element={<ManageSubjectsPage />} />
+          <Route path="manage/teachers" element={<ManageTeachersPage />} />
+
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>
       </Route>
 
-      {/* Если пользователь залогинен, но не админ, и пытается попасть в админку (хотя ProtectedRoute должен это обработать)
-          Или просто корневой маршрут для не-админов или неаутентифицированных */}
       <Route
         path="/*"
         element={

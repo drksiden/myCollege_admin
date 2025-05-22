@@ -12,6 +12,7 @@ import {
   orderBy,
   query,
   where,
+  DocumentReference,
 } from 'firebase/firestore';
 import type { Subject } from '@/types';
 import { db } from '@/lib/firebase';
@@ -32,14 +33,18 @@ const SUBJECTS_COLLECTION = 'subjects';
 export const createSubject = async (
   db: Firestore,
   subjectData: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<string> => {
-  const dataWithTimestamps = {
+): Promise<Subject> => {
+  const subjectsCollection = collection(db, SUBJECTS_COLLECTION);
+  const newSubject = {
     ...subjectData,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
   };
-  const docRef = await addDoc(collection(db, SUBJECTS_COLLECTION), dataWithTimestamps);
-  return docRef.id;
+  const docRef = await addDoc(subjectsCollection, newSubject);
+  return {
+    id: docRef.id,
+    ...newSubject,
+  } as Subject;
 };
 
 /**
@@ -110,14 +115,36 @@ export const deleteSubject = async (
   return deleteDoc(subjectRef);
 };
 
-export async function getSubjects() {
-  const subjectsRef = collection(db, SUBJECTS_COLLECTION);
-  const snapshot = await getDocs(subjectsRef);
+/**
+ * Fetches all subjects from Firestore.
+ * @param db Firestore instance
+ * @returns Promise<Subject[]>
+ */
+export const getSubjects = async (db: Firestore): Promise<Subject[]> => {
+  const subjectsCollection = collection(db, SUBJECTS_COLLECTION);
+  const q = query(subjectsCollection, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
-    ...doc.data()
-  })) as Subject[];
-}
+    ...doc.data(),
+  } as Subject));
+};
+
+/**
+ * Fetches a single subject by ID.
+ * @param db Firestore instance
+ * @param id Subject ID
+ * @returns Promise<Subject | null>
+ */
+export const getSubjectById = async (db: Firestore, id: string): Promise<Subject | null> => {
+  const subjectRef = doc(db, SUBJECTS_COLLECTION, id);
+  const snapshot = await getDoc(subjectRef);
+  if (!snapshot.exists()) return null;
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as Subject;
+};
 
 export async function getSubjectsByTeacher(teacherId: string) {
   const subjectsRef = collection(db, SUBJECTS_COLLECTION);

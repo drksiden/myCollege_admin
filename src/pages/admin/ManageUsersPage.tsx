@@ -1,7 +1,9 @@
 import React, { useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import CreateUserForm from '@/components/admin/users/CreateUserForm';
 import UserList from '@/components/admin/users/UserList';
-import { Toaster } from '@/components/ui/sonner'; // Ensure Toaster is rendered for toast notifications
+import { Toaster } from '@/components/ui/sonner';
 
 const ManageUsersPage: React.FC = () => {
   // State to trigger UserList refresh after a new user is created or an existing one is updated/deleted.
@@ -13,31 +15,39 @@ const ManageUsersPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-          User Management
-        </h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Create, view, edit, and manage user accounts.
-        </p>
-      </header>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="container mx-auto p-4 sm:p-6 lg:p-8"
+    >
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight">
+            Управление пользователями
+          </CardTitle>
+          <CardDescription>
+            Создание, просмотр, редактирование и управление учетными записями пользователей
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <section className="lg:col-span-1 space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-3 text-gray-800 dark:text-gray-200">Create New User</h2>
-            <div className="p-6 bg-white dark:bg-gray-800 shadow rounded-lg">
-              <CreateUserForm onUserCreated={handleUserChange} />
-            </div>
-          </div>
-        </section>
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold">Создание пользователя</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CreateUserForm onUserCreated={handleUserChange} />
+          </CardContent>
+        </Card>
 
-        <section className="lg:col-span-2 space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-3 text-gray-800 dark:text-gray-200">User List</h2>
-            <div className="p-0 sm:p-2 md:p-4 bg-white dark:bg-gray-800 shadow rounded-lg">
-              {/* 
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold">Список пользователей</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* 
                 The UserList component now internally handles its data fetching and updates
                 when EditUserDialog or its own delete action completes.
                 The key-based refresh is still useful if CreateUserForm was completely separate,
@@ -46,13 +56,13 @@ const ManageUsersPage: React.FC = () => {
                 is not strictly necessary if it calls fetchUsers itself.
                 However, ensuring CreateUserForm can trigger a list refresh is good.
               */}
-              <UserList key={userListKey} />
-            </div>
-          </div>
-        </section>
+            <UserList key={userListKey} />
+          </CardContent>
+        </Card>
       </div>
-      <Toaster richColors /> {/* Ensure Toaster is included for sonner notifications */}
-    </div>
+
+      <Toaster richColors />
+    </motion.div>
   );
 };
 
