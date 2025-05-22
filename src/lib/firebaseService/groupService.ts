@@ -16,6 +16,7 @@ import {
   where,
   writeBatch,
   documentId, // To query by document ID in an array
+  FieldValue,
 } from 'firebase/firestore';
 import type { Group, Student } from '@/types';
 import { db } from './firebase';
@@ -38,6 +39,7 @@ export const createGroup = async (
     ...groupData,
     students: groupData.students || [], // Use provided students array or empty array
     scheduleId: groupData.scheduleId || "", // Use provided scheduleId or empty string
+    studentCount: 0, // Initialize student count
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
   };
@@ -135,6 +137,7 @@ export const addStudentToGroup = async (
   // Add student to group's student list
   batch.update(groupRef, {
     students: arrayUnion(studentProfileId),
+    studentCount: FieldValue.increment(1),
     updatedAt: serverTimestamp() as Timestamp,
   });
 
@@ -167,6 +170,7 @@ export const removeStudentFromGroup = async (
   // Remove student from group's student list
   batch.update(groupRef, {
     students: arrayRemove(studentProfileId),
+    studentCount: FieldValue.increment(-1),
     updatedAt: serverTimestamp() as Timestamp,
   });
 

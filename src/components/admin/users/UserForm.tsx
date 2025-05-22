@@ -40,27 +40,25 @@ const formSchema = z.object({
   lastName: z.string().min(2, { message: "Фамилия должна содержать не менее 2 символов." }),
   patronymic: z.string().optional(),
   email: z.string().email({ message: "Некорректный email адрес." }),
-  password: z.string().min(6, { message: "Пароль должен содержать не менее 6 символов." }).optional().or(z.literal('')),
+  // Password is not part of the form for editing, only for creation which is removed.
+  // If password change is needed, it should be a separate form/process.
   role: z.enum(['student', 'teacher', 'admin'], { required_error: "Роль обязательна." }),
-  teacherDetails: z.object({
-    department: z.string().min(1, { message: "Кафедра обязательна." }),
-    qualification: z.string().min(1, { message: "Квалификация обязательна." }),
-  }).optional(),
-  studentDetails: z.object({
-    groupId: z.string().min(1, { message: "ID группы обязателен." }),
-    studentId: z.string().min(1, { message: "ID студента обязателен." }),
-  }).optional(),
+  // Flattened fields
+  department: z.string().optional(), // For teachers
+  qualification: z.string().optional(), // For teachers
+  groupId: z.string().optional(), // For students
+  studentId: z.string().optional(), // For students (student's specific ID, e.g. student card number)
 }).refine(data => {
   if (data.role === 'teacher') {
-    return !!data.teacherDetails?.department && !!data.teacherDetails?.qualification;
+    return !!data.department && !!data.qualification;
   }
   if (data.role === 'student') {
-    return !!data.studentDetails?.groupId && !!data.studentDetails?.studentId;
+    return !!data.groupId && !!data.studentId;
   }
   return true;
 }, {
-  message: "Для преподавателя и студента должны быть заполнены все обязательные поля.",
-  path: ["role"],
+  message: "Для преподавателя и студента должны быть заполнены все обязательные поля (кафедра/квалификация или ID группы/ID студента).",
+  path: ["role"], // This path might need adjustment or more specific paths for refined errors
 });
 
 type UserFormValues = z.infer<typeof formSchema>;
@@ -87,10 +85,11 @@ export function UserFormDialog({
       lastName: '',
       patronymic: '',
       email: '',
-      password: '',
       role: undefined,
-      teacherDetails: undefined,
-      studentDetails: undefined,
+      department: '',
+      qualification: '',
+      groupId: '',
+      studentId: '',
     },
   });
 
@@ -103,57 +102,78 @@ export function UserFormDialog({
         lastName: initialData.lastName,
         patronymic: initialData.patronymic || '',
         email: initialData.email,
-        password: '',
         role: initialData.role,
-        teacherDetails: initialData.teacherDetails,
-        studentDetails: initialData.studentDetails,
+        // Map from potentially nested initialData to flat form fields
+        department: initialData.teacherDetails?.department || '',
+        qualification: initialData.teacherDetails?.qualification || '',
+        groupId: initialData.studentDetails?.groupId || '',
+        studentId: initialData.studentDetails?.studentId || '',
+      });
+    } else {
+      // Reset to default if no initial data (e.g. dialog closed and reopened without initialData)
+      form.reset({
+        firstName: '',
+        lastName: '',
+        patronymic: '',
+        email: '',
+        role: undefined,
+        department: '',
+        qualification: '',
+        groupId: '',
+        studentId: '',
       });
     }
   }, [initialData, form]);
 
   const onSubmit = async (values: UserFormValues) => {
+    if (!initialData) {
+      // This case should ideally not be reached if create logic is removed
+      toast.error("Cannot submit form without initial data for editing.");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      if (initialData) {
-        const updateUserFunction = httpsCallable(functions, 'updateUser');
-        const result = await updateUserFunction({
-          userId: initialData.id,
-          data: values,
-        });
-        const resultData = result.data as { success: boolean; message: string };
+      // Prepare payload for the updateUser cloud function
+      // Values from the form are already flat.
+      // We just need to map form field names to cloud function expected field names if they differ.
+      const payload: any = {
+        email: values.email,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        patronymic: values.patronymic,
+        role: values.role,
+      };
 
-        if (resultData.success) {
-          toast.success(resultData.message);
-          onUserSubmitSuccess();
-          onOpenChange(false);
-        } else {
-          throw new Error(resultData.message);
-        }
+      if (values.role === 'student') {
+        payload.groupId = values.groupId;
+        // payload.studentId = values.studentId; // This field is part of User.studentDetails, not directly on User
+                                                // The updateUser cloud function expects it within studentDetails or similar if needed.
+                                                // For now, assuming studentId (student card ID) is not directly updatable via this general user form's main fields.
+                                                // Or, if it is, the cloud function needs to handle `studentId` at the top level.
+                                                // The current `updateUser` function doesn't explicitly handle top-level `studentId`.
+                                                // It's usually part of the `users` collection document.
+      } else if (values.role === 'teacher') {
+        payload.specialization = values.department; // Map form's `department` to `specialization`
+        payload.academicDegree = values.qualification; // Map form's `qualification` to `academicDegree`
+      }
+      // Add other fields like iin, birthDate, phone, address if they are part of the form and updatable.
+      // Currently, they are not in UserForm.tsx's form fields.
+
+      const updateUserFunction = httpsCallable(functions, 'updateUser');
+      const result = await updateUserFunction({ userId: initialData.id, ...payload });
+      const resultData = result.data as { success: boolean; message: string };
+
+      if (resultData.success) {
+        toast.success(resultData.message || 'Пользователь успешно обновлен.');
+        onUserSubmitSuccess();
+        onOpenChange(false);
       } else {
-        const createUserFunction = httpsCallable(functions, 'createUserOnServer');
-        const result = await createUserFunction({
-          ...values,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-        const resultData = result.data as {
-          success: boolean;
-          uid?: string;
-          message: string;
-        };
-
-        if (resultData.success) {
-          toast.success(resultData.message);
-          onUserSubmitSuccess();
-          onOpenChange(false);
-          form.reset();
-        } else {
-          throw new Error(resultData.message);
-        }
+        throw new Error(resultData.message || 'Не удалось обновить пользователя.');
       }
     } catch (error: unknown) {
-      console.error('Ошибка при сохранении пользователя:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Произошла ошибка при сохранении пользователя.';
+      console.error('Ошибка при обновлении пользователя:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Произошла ошибка при обновлении пользователя.';
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -229,21 +249,8 @@ export function UserFormDialog({
                 </FormItem>
               )}
             />
-            {!initialData && (
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Пароль (мин. 6 символов, необязательно)</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            {/* Password field is removed as this form is now only for editing */}
+            {/* If password change is needed, it should be a separate feature */}
             <FormField
               control={form.control}
               name="role"
@@ -277,10 +284,10 @@ export function UserFormDialog({
               >
                 <FormField
                   control={form.control}
-                  name="teacherDetails.department"
+                  name="department"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Кафедра</FormLabel>
+                      <FormLabel>Кафедра (для преподавателя)</FormLabel>
                       <FormControl>
                         <Input placeholder="Название кафедры" {...field} />
                       </FormControl>
@@ -290,10 +297,10 @@ export function UserFormDialog({
                 />
                 <FormField
                   control={form.control}
-                  name="teacherDetails.qualification"
+                  name="qualification"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Квалификация</FormLabel>
+                      <FormLabel>Квалификация (для преподавателя)</FormLabel>
                       <FormControl>
                         <Input placeholder="Квалификация" {...field} />
                       </FormControl>
@@ -314,10 +321,10 @@ export function UserFormDialog({
               >
                 <FormField
                   control={form.control}
-                  name="studentDetails.groupId"
+                  name="groupId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>ID Группы</FormLabel>
+                      <FormLabel>ID Группы (для студента)</FormLabel>
                       <FormControl>
                         <Input placeholder="ID группы" {...field} />
                       </FormControl>
@@ -327,10 +334,10 @@ export function UserFormDialog({
                 />
                 <FormField
                   control={form.control}
-                  name="studentDetails.studentId"
+                  name="studentId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>ID Студента</FormLabel>
+                      <FormLabel>ID Студента (карты) (для студента)</FormLabel>
                       <FormControl>
                         <Input placeholder="ID студента" {...field} />
                       </FormControl>
@@ -348,7 +355,7 @@ export function UserFormDialog({
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Сохранение...' : initialData ? 'Сохранить' : 'Создать'}
+                {isLoading ? 'Сохранение...' : 'Сохранить изменения'}
               </Button>
             </DialogFooter>
           </form>

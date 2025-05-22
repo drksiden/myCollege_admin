@@ -135,58 +135,12 @@ export const getAllTeachers = async (db: Firestore): Promise<Teacher[]> => {
   } as Teacher));
 };
 
-export const getTeachersByGroup = async (groupId: string): Promise<Teacher[]> => {
-  const q = query(
-    collection(db, 'users'),
-    where('role', '==', 'teacher'),
-    where('groups', 'array-contains', groupId)
-  );
-  
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({
-    uid: doc.id,
-    ...doc.data(),
-  } as Teacher));
-};
-
-export const assignTeacherToGroup = async (
-  teacherId: string,
-  groupId: string
-): Promise<void> => {
-  const teacherRef = doc(db, 'users', teacherId);
-  const teacherDoc = await getDoc(teacherRef);
-  
-  if (!teacherDoc.exists()) {
-    throw new Error('Teacher not found');
-  }
-  
-  const teacherData = teacherDoc.data();
-  const groups = teacherData.groups || [];
-  
-  if (!groups.includes(groupId)) {
-    await updateDoc(teacherRef, {
-      groups: [...groups, groupId],
-    });
-  }
-};
-
-export const removeTeacherFromGroup = async (
-  teacherId: string,
-  groupId: string
-): Promise<void> => {
-  const teacherRef = doc(db, 'users', teacherId);
-  const teacherDoc = await getDoc(teacherRef);
-  
-  if (!teacherDoc.exists()) {
-    throw new Error('Teacher not found');
-  }
-  
-  const teacherData = teacherDoc.data();
-  const groups = teacherData.groups || [];
-  
-  if (groups.includes(groupId)) {
-    await updateDoc(teacherRef, {
-      groups: groups.filter((id: string) => id !== groupId),
-    });
-  }
-};
+// The following functions were removed as they were based on an incorrect data model
+// (operating on 'users' collection for teacher group assignments instead of 'teachers' collection profile):
+// - getTeachersByGroup
+// - assignTeacherToGroup
+// - removeTeacherFromGroup
+//
+// Correct management of a teacher's groups should be done by updating the 'groups' array
+// within their 'Teacher' profile document in the 'teachers' collection,
+// likely using `updateTeacherProfile`.

@@ -30,9 +30,9 @@ const STUDENTS_COLLECTION = 'students';
  */
 export const createStudentProfile = async (
   db: Firestore,
-  studentData: Omit<Student, 'uid' | 'createdAt' | 'updatedAt'>
+  studentData: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> => {
-  const dataWithTimestamps: Omit<Student, 'uid'> = {
+  const dataWithTimestamps: Omit<Student, 'id'> = {
     ...studentData,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
@@ -54,7 +54,7 @@ export const getStudentProfile = async (
   const studentRef = doc(db, STUDENTS_COLLECTION, studentProfileId);
   const docSnap = await getDoc(studentRef);
   if (docSnap.exists()) {
-    return { uid: docSnap.id, ...docSnap.data() } as Student;
+    return { id: docSnap.id, ...docSnap.data() } as Student;
   }
   return null;
 };
@@ -71,13 +71,13 @@ export const getStudentProfileByUserId = async (
   userId: string
 ): Promise<Student | null> => {
   const studentsCollection = collection(db, STUDENTS_COLLECTION);
-  const q = query(studentsCollection, where('uid', '==', userId));
+  const q = query(studentsCollection, where('userId', '==', userId)); // Query by userId field
   const querySnapshot = await getDocs(q);
 
   if (!querySnapshot.empty) {
     // Assuming only one profile per userId
     const docSnap = querySnapshot.docs[0];
-    return { uid: docSnap.id, ...docSnap.data() } as Student;
+    return { id: docSnap.id, ...docSnap.data() } as Student; // Map docSnap.id to 'id'
   }
   return null;
 };
@@ -92,7 +92,7 @@ export const getStudentProfileByUserId = async (
 export const updateStudentProfile = async (
   db: Firestore,
   studentProfileId: string,
-  updates: Partial<Omit<Student, 'uid' | 'createdAt' | 'updatedAt'>>
+  updates: Partial<Omit<Student, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
   const studentRef = doc(db, STUDENTS_COLLECTION, studentProfileId);
   const dataWithTimestamp = {
@@ -128,99 +128,15 @@ export const getAllStudents = async (db: Firestore): Promise<Student[]> => {
   const q = query(studentsCollection, orderBy('createdAt', 'desc')); // Optional: order by creation
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(docSnap => ({
-    uid: docSnap.id,
+    id: docSnap.id, // Map docSnap.id to 'id'
     ...docSnap.data(),
   } as Student));
 };
 
-export async function getStudents(): Promise<Student[]> {
-  const studentsRef = collection(db, STUDENTS_COLLECTION);
-  const snapshot = await getDocs(studentsRef);
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      uid: doc.id,
-      email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: data.role,
-      groupId: data.groupId,
-      specialization: data.specialization,
-      year: data.year,
-      createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
-    };
-  });
-}
-
-export async function getStudent(uid: string): Promise<Student | null> {
-  const studentRef = doc(db, STUDENTS_COLLECTION, uid);
-  const studentDoc = await getDoc(studentRef);
-  if (!studentDoc.exists()) {
-    return null;
-  }
-  const data = studentDoc.data();
-  return {
-    uid: studentDoc.id,
-    email: data.email,
-    firstName: data.firstName,
-    lastName: data.lastName,
-    role: data.role,
-    groupId: data.groupId,
-    specialization: data.specialization,
-    year: data.year,
-    createdAt: data.createdAt,
-    updatedAt: data.updatedAt,
-  };
-}
-
-export async function getStudentsByGroup(groupId: string): Promise<Student[]> {
-  const studentsRef = collection(db, STUDENTS_COLLECTION);
-  const q = query(studentsRef, where('groupId', '==', groupId));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      uid: doc.id,
-      email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: data.role,
-      groupId: data.groupId,
-      specialization: data.specialization,
-      year: data.year,
-      createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
-    };
-  });
-}
-
-export async function createStudent(data: Omit<Student, 'uid' | 'createdAt' | 'updatedAt'>): Promise<Student> {
-  const studentsRef = collection(db, STUDENTS_COLLECTION);
-  const docRef = await addDoc(studentsRef, {
-    ...data,
-    role: 'student',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return {
-    uid: docRef.id,
-    ...data,
-    role: 'student',
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-  };
-}
-
-export async function updateStudent(uid: string, data: Partial<Omit<Student, 'uid' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-  const studentRef = doc(db, STUDENTS_COLLECTION, uid);
-  await updateDoc(studentRef, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function deleteStudent(uid: string): Promise<void> {
-  const studentRef = doc(db, STUDENTS_COLLECTION, uid);
-  await deleteDoc(studentRef);
-}
+// Redundant functions below are removed as per refactoring plan.
+// getStudents() - covered by getAllStudents
+// getStudent(uid: string) - covered by getStudentProfile(profileId: string) or getStudentProfileByUserId(userId: string)
+// getStudentsByGroup(groupId: string) - To be removed, client-side filtering or specific query if needed later.
+// createStudent(...) - covered by createStudentProfile
+// updateStudent(uid: string, ...) - covered by updateStudentProfile(profileId: string, ...)
+// deleteStudent(uid: string) - covered by deleteStudentProfileInService(profileId: string)

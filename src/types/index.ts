@@ -1,15 +1,36 @@
 import { Timestamp } from 'firebase/firestore';
 
 export interface User {
+  id: string;
   uid: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'student' | 'teacher' | 'admin';
+  patronymic?: string;
+  role: 'admin' | 'teacher' | 'student';
   createdAt: Timestamp;
   updatedAt: Timestamp;
   teacherId?: string;
   studentId?: string;
+  teacherDetails?: {
+    department: string;
+    qualification: string;
+  };
+  studentDetails?: {
+    groupId: string;
+    studentId: string;
+  };
+}
+
+export interface Student {
+  id: string;
+  userId: string;
+  groupId: string;
+  studentCardId: string;
+  enrollmentDate: Timestamp;
+  status: 'active' | 'inactive' | 'graduated';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Teacher {
@@ -29,33 +50,37 @@ export interface Teacher {
   updatedAt: Timestamp;
 }
 
-export interface Student {
-  id: string;
-  userId: string;
-  groupId: string;
-  studentId: string;
-  status: 'active' | 'inactive';
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  attendance: number;
-  averageGrade: number;
-}
-
 export interface Group {
   id: string;
   name: string;
-  course: number;
+  year: number;
   specialization: string;
+  students: string[];
+  scheduleId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
 export interface Subject {
-  id: string;                 // Firestore document ID
+  id: string;
   name: string;
-  description: string;        // Made required as per task
-  hoursPerSemester: number;   // Renamed from hours and clarified purpose
-  type: 'lecture' | 'practice' | 'laboratory'; // Added as per task
+  description: string;
+  hoursPerSemester: number;
+  credits: number;
+  hours: number;
+  type: 'lecture' | 'practice' | 'laboratory';
+  teacherId?: string;
+  groupId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Schedule {
+  id: string;
+  groupId: string;
+  semester: number;
+  year: number;
+  lessons: Lesson[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -71,12 +96,97 @@ export interface Lesson {
   type: 'lecture' | 'practice' | 'laboratory';
 }
 
-export interface Schedule {
-  id: string;                 // Firestore document ID
+export interface Attendance {
+  id: string;
+  studentId: string;
+  subjectId: string;
   groupId: string;
-  semester: number;           // e.g., 1 or 2 for a typical semester system
-  year: number;               // e.g., 2023 (academic year start)
-  lessons: Lesson[];          // Array of Lesson objects
+  date: Timestamp;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  date: Timestamp;
+  subjectId: string;
+  groupId: string;
+  records: {
+    studentId: string;
+    status: 'present' | 'absent' | 'late' | 'excused';
+    notes?: string;
+  }[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Grade {
+  id: string;
+  studentId: string;
+  subjectId: string;
+  groupId: string;
+  teacherId: string;
+  value: number;
+  type: 'exam' | 'test' | 'homework' | 'project';
+  semester: number;
+  date: Timestamp;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'grade' | 'attendance' | 'system' | 'news';
+  read: boolean;
+  data?: Record<string, unknown>;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Comment {
+  id: string;
+  gradeId: string;
+  userId: string;
+  content: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface News {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  imageUrl?: string;
+  isPublished: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Chat {
+  id: string;
+  participants: string[];
+  lastMessage?: {
+    content: string;
+    senderId: string;
+    timestamp: Timestamp;
+  };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Message {
+  id: string;
+  chatId: string;
+  senderId: string;
+  content: string;
+  isDeleted: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -85,34 +195,19 @@ export interface Journal {
   id: string;
   groupId: string;
   subjectId: string;
-  teacherId: string;      // Teacher Profile Document ID
+  teacherId: string;
   semester: number;
   year: number;
-  entries: JournalEntry[]; // Array of journal entries
+  entries: {
+    date: Timestamp;
+    topic: string;
+    homework?: string;
+    notes?: string;
+    attendance?: {
+      studentId: string;
+      status: 'present' | 'absent' | 'late' | 'excused';
+    }[];
+  }[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
-
-// New interface for Journal Entries
-export interface JournalEntry {
-  // id: string; // Not using a separate ID for sub-collection items for now
-  date: Timestamp;        // Date of the class/entry
-  studentId: string;      // Student Profile Document ID
-  attendance: 'present' | 'absent' | 'late';
-  grade?: number;         // Optional grade for this entry
-  comment?: string;       // Optional comment
-}
-
-export interface Grade {
-  id: string;
-  studentId: string;
-  subjectId: string;
-  teacherId: string;
-  groupId: string;
-  semester: number;
-  year: number;
-  type: 'exam' | 'test' | 'homework' | 'project';
-  value: number;
-  date: Timestamp;
-  comment?: string;
-} 

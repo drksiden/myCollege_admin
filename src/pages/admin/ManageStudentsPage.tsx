@@ -49,26 +49,68 @@ import {
 import { writeBatch, doc } from 'firebase/firestore';
 import { Toaster } from '@/components/ui/sonner';
 import { format } from 'date-fns'; // For formatting dates
+import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { functions } from '@/lib/firebase'; // Ensure 'functions' is imported for httpsCallable
+
+interface CombinedStudent {
+  user: User;
+  profile?: Student; // Student profile can be undefined if not found/linked
+  isOrphanedProfile?: boolean; // Flag for profiles without a user
+  // If it's an orphaned profile, 'user' might be partially constructed or minimal
+}
 
 const ManageStudentsPage: React.FC = () => {
-  const [studentUsers, setStudentUsers] = useState<User[]>([]);
-  const [allStudentProfiles, setAllStudentProfiles] = useState<Student[]>([]);
-  const [selectedUserForProfile, setSelectedUserForProfile] = useState<User | null>(null);
-  const [selectedStudentProfileForEdit, setSelectedStudentProfileForEdit] = useState<Student | null>(null);
-  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
-  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  // Remove studentUsers and allStudentProfiles states, will be combined into one.
+  // const [studentUsers, setStudentUsers] = useState<User[]>([]);
+  // const [allStudentProfiles, setAllStudentProfiles] = useState<Student[]>([]);
+  const [combinedStudentData, setCombinedStudentData] = useState<CombinedStudent[]>([]);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<User | null>(null); // Still needed for creating profile for a user
+  const [selectedStudentDataForEdit, setSelectedStudentDataForEdit] = useState<CombinedStudent | null>(null); // For editing combined data
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create'); // For StudentProfileForm
+  const [showProfileDialog, setShowProfileDialog] = useState(false); // For StudentProfileForm
   const [isLoading, setIsLoading] = useState(true);
-  const [studentToDelete, setStudentToDelete] = useState<{profileId: string, userId: string, userName: string} | null>(null);
+  // studentToDelete will now refer to CombinedStudent data or at least user.uid for deleteUser cloud function
+  const [studentToDelete, setStudentToDelete] = useState<{ userId: string; userName: string; profileId?: string } | null>(null);
+
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const allUsers = await getUsersFromFirestore(db);
-      const students = allUsers.filter(user => user.role === 'student');
-      setStudentUsers(students);
+      const studentRoleUsers = allUsers.filter(user => user.role === 'student');
+      const profiles = await getAllStudents(db); // Fetches all student profiles
 
-      const profiles = await getAllStudents(db);
-      setAllStudentProfiles(profiles);
+      const combinedData: CombinedStudent[] = studentRoleUsers.map(user => {
+        const studentProfile = profiles.find(p => p.userId === user.uid);
+        return { user, profile: studentProfile };
+      });
+
+      // Identify orphaned profiles (profiles whose userId does not match any user in allUsers)
+      // This is a simplified check; a more robust check might compare against allUser.uids
+      const orphanedProfiles = profiles.filter(p => !allUsers.some(u => u.uid === p.userId));
+      orphanedProfiles.forEach(orphan => {
+        // For orphaned profiles, create a minimal User-like object for display consistency
+        // or handle them differently in the UI. For this iteration, we'll add them with a flag.
+        combinedData.push({
+          user: { // Construct a partial User object for display
+            id: orphan.userId, // Technically profile.id is the student doc id, userId is the auth link
+            uid: orphan.userId,
+            firstName: orphan.firstName || 'Orphaned', // Assuming Student profile has these
+            lastName: orphan.lastName || 'Profile',
+            email: orphan.email || 'N/A', // Assuming Student profile has email
+            role: 'student', // Implied role
+            studentId: orphan.id, // studentId on user obj refers to student profile doc ID
+            // Fill other User fields as null/default if necessary for type consistency
+            patronymic: '',
+            createdAt: orphan.createdAt, // Or some default
+            updatedAt: orphan.updatedAt, // Or some default
+          },
+          profile: orphan,
+          isOrphanedProfile: true,
+        });
+      });
+      
+      setCombinedStudentData(combinedData);
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -82,103 +124,153 @@ const ManageStudentsPage: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  const handleOpenCreateProfileDialog = (user: User) => {
+  const handleOpenCreateProfileDialog = (user: User) => { // User for whom to create a profile
     setSelectedUserForProfile(user);
     setSelectedStudentProfileForEdit(null);
     setFormMode('create');
     setShowProfileDialog(true);
   };
 
-  const handleOpenEditProfileDialog = async (user: User) => {
-    setSelectedUserForProfile(user);
-    try {
-      let profile = allStudentProfiles.find(p => p.userId === user.uid);
-      if (!profile && user.studentId) { // user.studentId refers to the Student Profile Document ID
-        toast.info("Fetching student profile details...");
-        // Attempt to fetch by studentId (profile document ID) if available on user object
-        // This might be redundant if allStudentProfiles is comprehensive.
-        // Prefer getStudentProfileByUserId if user.studentId is the profile's doc ID.
-        // For clarity, let's assume user.studentId stores the student profile document ID.
-        // However, getStudentProfileByUserId expects a USER ID.
-        // So, if user.studentId is the profile doc ID, use getStudentProfile(db, user.studentId)
-        // If user.studentId is not set, but we want to find by user.uid, use getStudentProfileByUserId(db, user.uid)
-        profile = await getStudentProfileByUserId(db, user.uid);
-      }
-
-      if (profile) {
-        setSelectedStudentProfileForEdit(profile);
-        setFormMode('edit');
-        setShowProfileDialog(true);
-      } else {
-        toast.info('No profile found for this student. You can create one.', { duration: 4000 });
-        handleOpenCreateProfileDialog(user); // Switch to create mode
-      }
-    } catch (error) {
-      toast.error('Failed to load student profile for editing.');
-      console.error("Error fetching profile for edit: ", error);
-    }
-  };
-  
-  const handleOpenEditProfileDialogFromProfilesList = (profile: Student) => {
-    const user = studentUsers.find(u => u.uid === profile.userId);
-    setSelectedUserForProfile(user || null); // User might not be in the list if role changed or issues
-    setSelectedStudentProfileForEdit(profile);
-    setFormMode('edit');
+    setSelectedUserForProfile(user); // This user is the one we are creating a profile for
+    setSelectedStudentDataForEdit(null); // No existing combined data to edit
+    setFormMode('create');
     setShowProfileDialog(true);
   };
 
-  const handleFormSuccess = () => {
+  // This function will handle editing the StudentProfile. User editing is separate (e.g. via UserList -> UserForm)
+  const handleOpenEditProfileDialog = (studentData: CombinedStudent) => {
+    if (studentData.profile) {
+      setSelectedUserForProfile(studentData.user); // Keep user context
+      setSelectedStudentDataForEdit(studentData); // Pass the whole combined data
+      setFormMode('edit');
+      setShowProfileDialog(true);
+    } else if (studentData.user) {
+      // If there's a user but no profile, it's a "Create Profile" scenario
+      toast.info('No profile found for this student. You can create one.', { duration: 4000 });
+      handleOpenCreateProfileDialog(studentData.user);
+    } else {
+      toast.error("Cannot edit profile: No student data available.");
+    }
+  };
+  
+  // This function is removed as there's no separate "profiles list" anymore.
+  // const handleOpenEditProfileDialogFromProfilesList = (profile: Student) => { ... }
+
+
+  const handleFormSuccess = () => { // Callback for StudentProfileForm
     setShowProfileDialog(false);
     setSelectedUserForProfile(null);
-    setSelectedStudentProfileForEdit(null);
+    setSelectedStudentDataForEdit(null);
     fetchData(); 
   };
 
-  const handleDeleteInitiate = (profile: Student) => {
-    const userName = getUserName(profile.userId);
-    setStudentToDelete({profileId: profile.id, userId: profile.userId, userName});
+  // This needs to be re-thought. Deleting a student should delete the User and associated Student profile.
+  // The `deleteUser` cloud function already handles deleting the student profile if `studentId` is on the user doc.
+  const handleDeleteInitiate = (studentData: CombinedStudent) => {
+    const userName = `${studentData.user.firstName} ${studentData.user.lastName}`;
+    // We need the user ID to call the `deleteUser` cloud function.
+    // The profileId is relevant if we were only deleting the profile, but the task is to delete the user + profile.
+    setStudentToDelete({ userId: studentData.user.uid, userName, profileId: studentData.profile?.id });
   };
 
-  const confirmDeleteProfile = async () => {
+  const confirmDeleteUserAndProfile = async () => { // Renamed for clarity
     if (!studentToDelete) return;
     try {
-      const batch = writeBatch(db);
-      // 1. Delete the student profile document
-      const studentProfileRef = doc(db, 'students', studentToDelete.profileId);
-      batch.delete(studentProfileRef);
+      // Call the `deleteUser` cloud function, which should handle deleting 
+      // the user from Auth, their user document from Firestore, and their student profile document.
+      const deleteUserFunction = httpsCallable(functions, 'deleteUser'); // Ensure 'functions' is imported from firebase config
+      await deleteUserFunction({ userId: studentToDelete.userId });
       
-      // 2. Update the user document to remove/nullify studentId
-      const userRef = doc(db, 'users', studentToDelete.userId);
-      batch.update(userRef, { studentId: null }); // Or use deleteField() from 'firebase/firestore'
-
-      await batch.commit();
-      toast.success(`Student profile for ${studentToDelete.userName} deleted and user unlinked.`);
+      toast.success(`User ${studentToDelete.userName} and their profile deleted successfully.`);
       fetchData(); // Refresh data
-    } catch (error) {
-      console.error('Error deleting student profile:', error);
-      toast.error('Failed to delete student profile.');
+    } catch (error: any) {
+      console.error('Error deleting user and profile:', error);
+      toast.error(error.message || 'Failed to delete user and profile.');
     } finally {
       setStudentToDelete(null);
     }
   };
 
-  const getUserName = (userId: string | undefined): string => {
-    if (!userId) return 'Unknown User';
-    const user = studentUsers.find(u => u.uid === userId);
-    return user ? `${user.firstName} ${user.lastName}` : 'User Not Found';
+  const confirmDeleteOrphanedProfileOnly = async () => {
+    if (!studentToDelete || !studentToDelete.profileId) {
+      toast.error("No profile selected for deletion or profile ID is missing.");
+      return;
+    }
+    try {
+      // For orphaned profiles, we only delete the student profile document.
+      // The user link is already considered broken or the user non-existent.
+      await deleteStudentProfileInService(db, studentToDelete.profileId);
+      toast.success(`Orphaned student profile for ${studentToDelete.userName} deleted.`);
+      fetchData(); // Refresh data
+    } catch (error: any) {
+      console.error('Error deleting orphaned student profile:', error);
+      toast.error(error.message || 'Failed to delete orphaned student profile.');
+    } finally {
+      setStudentToDelete(null);
+    }
+  };
+  
+  // This function can be simplified as combinedStudentData will have user info.
+  // Also, it's used in the Dialog title, so ensure it handles the structure correctly.
+  const getUserNameForDisplay = (targetUser?: User | null, targetProfile?: Student | null): string => {
+    if (targetUser) return `${targetUser.firstName} ${targetUser.lastName}`;
+    if (targetProfile) return `${targetProfile.firstName || 'Orphaned'} ${targetProfile.lastName || 'Profile'}`;
+    return 'Unknown User';
   };
 
-  if (isLoading && studentUsers.length === 0 && allStudentProfiles.length === 0) {
-    return <p className="text-center p-10">Loading student management data...</p>;
+
+  // Loading state: render skeletons
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">Student Management</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage student roles, profiles, and group assignments.
+          </p>
+        </header>
+        <div className="mt-8">
+          <h2 className="text-2xl font-semibold mb-4">Unified Student List</h2>
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Empty state: after loading, if no data
+  if (!isLoading && combinedStudentData.length === 0) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+         <header className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">Student Management</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage student roles, profiles, and group assignments.
+          </p>
+        </header>
+        <div className="mt-8 text-center">
+          <h2 className="text-2xl font-semibold mb-4">Unified Student List</h2>
+          <UserX2 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <p className="text-muted-foreground mb-4">No students found.</p>
+          <p className="text-sm text-muted-foreground">
+            Click the "Add New Student" button on the main "Manage Users" page to create users with the student role. 
+            You can then manage their profiles here.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Toaster richColors position="top-right" />
       <Dialog open={showProfileDialog} onOpenChange={(open) => {
-        if (!open) { // Reset state when dialog is closed by any means (X, cancel, overlay click)
+        if (!open) {
           setSelectedUserForProfile(null);
-          setSelectedStudentProfileForEdit(null);
+          setSelectedStudentDataForEdit(null);
         }
         setShowProfileDialog(open);
       }}>
@@ -186,8 +278,7 @@ const ManageStudentsPage: React.FC = () => {
           <DialogHeader>
             <DialogTitle>
               {formMode === 'create' ? 'Create Student Profile' : 'Edit Student Profile'}
-              {selectedUserForProfile && ` for ${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}`}
-              {!selectedUserForProfile && selectedStudentProfileForEdit && ` for ${getUserName(selectedStudentProfileForEdit.userId)}`}
+              {getUserNameForDisplay(selectedUserForProfile, selectedStudentDataForEdit?.profile)}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
@@ -195,13 +286,12 @@ const ManageStudentsPage: React.FC = () => {
                 : 'Update the student profile information.'}
             </DialogDescription>
           </DialogHeader>
-          {/* Ensure form is rendered only when necessary data is available */}
-          {( (formMode === 'create' && selectedUserForProfile) || (formMode === 'edit' && selectedStudentProfileForEdit) ) && (
+          {( (formMode === 'create' && selectedUserForProfile) || (formMode === 'edit' && selectedStudentDataForEdit?.profile) ) && (
             <StudentProfileForm
               mode={formMode}
-              userId={selectedUserForProfile?.uid}
-              studentProfileId={selectedStudentProfileForEdit?.id}
-              userName={selectedUserForProfile ? `${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}` : getUserName(selectedStudentProfileForEdit?.userId)}
+              userId={selectedUserForProfile?.uid || selectedStudentDataForEdit?.user.uid}
+              studentProfileId={selectedStudentDataForEdit?.profile?.id}
+              userName={getUserNameForDisplay(selectedUserForProfile, selectedStudentDataForEdit?.profile)}
               onFormSubmitSuccess={handleFormSuccess}
               onCancel={() => setShowProfileDialog(false)}
             />
@@ -215,13 +305,24 @@ const ManageStudentsPage: React.FC = () => {
             <AlertDialogHeader>
               <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
               <AlertDialogDescription>
-                This action will delete the student profile for <span className="font-semibold">{studentToDelete.userName}</span>.
-                The associated user account will be unlinked from this profile. This cannot be undone.
+                {studentToDelete.profileId && combinedStudentData.find(s => s.profile?.id === studentToDelete.profileId)?.isOrphanedProfile ?
+                  `This action will delete the orphaned student profile for ${studentToDelete.userName}. This cannot be undone.` :
+                  `This action will delete the user ${studentToDelete.userName} and their associated student profile (if any). This action cannot be undone.`
+                }
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteProfile} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Delete Profile</AlertDialogAction>
+              <AlertDialogAction 
+                onClick={
+                  combinedStudentData.find(s => s.profile?.id === studentToDelete.profileId)?.isOrphanedProfile ? 
+                  confirmDeleteOrphanedProfileOnly : // New function for orphaned profile deletion
+                  confirmDeleteUserAndProfile
+                } 
+                className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50"
+              >
+                {combinedStudentData.find(s => s.profile?.id === studentToDelete.profileId)?.isOrphanedProfile ? 'Delete Profile Only' : 'Delete User & Profile'}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -234,126 +335,105 @@ const ManageStudentsPage: React.FC = () => {
         </p>
       </header>
 
-      <section className="mb-12">
+      <div className="mt-8">
         <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserCheck2 className="mr-3 h-6 w-6 text-primary" /> Student Users
+          <UserCheck2 className="mr-3 h-6 w-6 text-primary" /> Unified Student List
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Users with the 'student' role. Create or edit their specific student profiles.
-        </p>
-        <div className="bg-card shadow sm:rounded-lg">
-          {studentUsers.length === 0 && !isLoading ? (
-            <p className="p-6 text-muted-foreground">No users with 'student' role found.</p>
-          ) : (
+        <div className="bg-card shadow sm:rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Profile Status</TableHead>
+                <TableHead>Student Card ID</TableHead>
+                <TableHead>Group ID</TableHead>
+                <TableHead>Enrollment Date</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {studentUsers.map(user => {
-                // Check if a profile exists for this user by matching userId in allStudentProfiles
-                // or by checking if user.studentId (the profile doc ID) is set and corresponds to a loaded profile.
-                const profile = allStudentProfiles.find(p => p.userId === user.uid);
-                return (
-                  <TableRow key={user.uid}>
-                    <TableCell className="font-medium">{`${user.firstName} ${user.lastName}`}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      {profile ? (
-                        <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">Profile Linked</Badge>
-                      ) : (
-                        <Badge variant="secondary">No Profile</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {profile ? (
-                        <Button variant="outline" size="sm" onClick={() => handleOpenEditProfileDialog(user)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit Profile
+              {combinedStudentData.map((item) => (
+                <TableRow key={item.user.uid || item.profile?.id}>
+                  <TableCell className="font-medium">
+                    {`${item.user.firstName} ${item.user.lastName}`}
+                    {item.isOrphanedProfile && <Badge variant="outline" className="ml-2 border-orange-500 text-orange-500">Orphaned</Badge>}
+                  </TableCell>
+                  <TableCell>{item.user.email}</TableCell>
+                  <TableCell>
+                    {item.profile ? (
+                      <Badge variant="default" className="bg-green-600 hover:bg-green-700">Profile Linked</Badge>
+                    ) : !item.isOrphanedProfile ? (
+                      <Badge variant="secondary">No Profile</Badge>
+                    ) : (
+                       <Badge variant="outline" className="border-orange-500 text-orange-500">Orphaned</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{item.profile?.studentCardId || 'N/A'}</TableCell>
+                  <TableCell>{item.profile?.groupId || 'N/A'}</TableCell>
+                  <TableCell>
+                    {item.profile?.enrollmentDate ? format(item.profile.enrollmentDate.toDate(), "PPP") : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    {item.profile ? (
+                      <Badge variant={item.profile.status === 'active' ? 'default' : 'outline'} className={
+                        item.profile.status === 'active' ? 'bg-green-500 text-white' :
+                        item.profile.status === 'graduated' ? 'bg-blue-500 text-white' :
+                        'border-gray-500 text-gray-500'
+                      }>{item.profile.status}</Badge>
+                    ) : 'N/A'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
                         </Button>
-                      ) : (
-                        <Button variant="default" size="sm" onClick={() => handleOpenCreateProfileDialog(user)}>
-                          <PlusCircle className="mr-2 h-4 w-4" /> Create Profile
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        {item.isOrphanedProfile ? (
+                          <>
+                            <DropdownMenuItem onClick={() => handleOpenEditProfileDialog(item)}>
+                              <Edit2 className="mr-2 h-4 w-4" /> Edit Orphaned Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteInitiate(item)}
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Orphaned Profile
+                            </DropdownMenuItem>
+                          </>
+                        ) : item.profile ? (
+                          <>
+                            <DropdownMenuItem onClick={() => handleOpenEditProfileDialog(item)}>
+                              <Edit2 className="mr-2 h-4 w-4" /> Edit Student Profile
+                            </DropdownMenuItem>
+                            {/* TODO: Add "Edit User Details" if needed, or confirm UserForm handles enough */}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteInitiate(item)}
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete User & Profile
+                            </DropdownMenuItem>
+                          </>
+                        ) : (
+                          <DropdownMenuItem onClick={() => handleOpenCreateProfileDialog(item.user)}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Create Profile
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
-          )}
         </div>
-      </section>
-
-      <section>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserX2 className="mr-3 h-6 w-6 text-primary" /> All Created Student Profiles
-        </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Direct list of all created student profiles. You can edit or delete them here.
-        </p>
-        <div className="bg-card shadow sm:rounded-lg">
-        {allStudentProfiles.length === 0 && !isLoading ? (
-          <p className="p-6 text-muted-foreground">No student profiles created yet.</p>
-        ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Student Name</TableHead>
-              <TableHead>Student Card ID</TableHead>
-              <TableHead>Group ID</TableHead>
-              <TableHead>Enrollment Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {allStudentProfiles.map(profile => (
-              <TableRow key={profile.id}>
-                <TableCell className="font-medium">{getUserName(profile.userId)}</TableCell>
-                <TableCell>{profile.studentCardId}</TableCell>
-                <TableCell>{profile.groupId}</TableCell>
-                <TableCell>{format(profile.enrollmentDate.toDate(), "PPP")}</TableCell>
-                <TableCell><Badge variant={profile.status === 'active' ? 'default' : 'outline'} className={
-                    profile.status === 'active' ? 'bg-green-500 text-white' :
-                    profile.status === 'graduated' ? 'bg-blue-500 text-white' :
-                    'border-gray-500 text-gray-500'
-                }>{profile.status}</Badge></TableCell>
-                <TableCell className="text-right">
-                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Profile Actions</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleOpenEditProfileDialogFromProfilesList(profile)}>
-                        <Edit2 className="mr-2 h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        onClick={() => handleDeleteInitiate(profile)} 
-                        className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        )}
-        </div>
-      </section>
+      </div>
     </div>
   );
 };

@@ -69,9 +69,15 @@ export default function NewsPage() {
       if (editingNews) {
         await updateNews(editingNews.id, newsData);
         toast.success('News updated successfully');
+        if (newsData.isPublished) {
+          toast.info('Published news! Users will be notified shortly.');
+        }
       } else {
         await createNews(newsData);
         toast.success('News created successfully');
+        if (newsData.isPublished) {
+          toast.info('Published news! Users will be notified shortly.');
+        }
       }
 
       setIsDialogOpen(false);
@@ -192,7 +198,17 @@ export default function NewsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {news.map((item) => (
+          {!loading && news.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="h-24 text-center">
+                <h3 className="text-xl font-semibold">No news articles yet</h3>
+                <p className="text-muted-foreground">
+                  Click the "Add News" button to create the first article.
+                </p>
+              </TableCell>
+            </TableRow>
+          ) : (
+            news.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="font-medium">{item.title}</TableCell>
               <TableCell className="max-w-md truncate">{item.content}</TableCell>

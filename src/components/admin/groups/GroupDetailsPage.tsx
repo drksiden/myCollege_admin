@@ -17,6 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getGroup, getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
 import { getUsersByRole } from '@/lib/firebaseService/userService';
@@ -35,40 +37,111 @@ export function GroupDetailsPage() {
   const [isManageTeachersOpen, setIsManageTeachersOpen] = useState(false);
 
   useEffect(() => {
-    const loadGroupData = async () => {
-      if (!groupId) return;
+    if (!groupId) {
+      navigate('/admin/groups'); // Or some other appropriate handling
+      return;
+    }
 
-      try {
-        setLoading(true);
-        // Load group details
-        const groupData = await getGroup(db, groupId);
-        if (!groupData) {
+    setLoading(true);
+    const groupDocRef = doc(db, 'groups', groupId);
+
+    const unsubscribe = onSnapshot(
+      groupDocRef,
+      async (docSnap) => {
+        if (docSnap.exists()) {
+          const groupData = { id: docSnap.id, ...docSnap.data() } as Group;
+
+          // Compare student arrays to see if an update to student details is needed
+          const currentStudentIds = group?.students.map(s => s.id).sort().join(',') || '';
+          const newStudentIds = groupData.students.map(s => s.id).sort().join(',') || '';
+
+          if (currentStudentIds !== newStudentIds || !group) {
+            const studentsData = await getStudentsInGroupDetails(db, groupData.students);
+            setStudents(studentsData);
+          }
+          
+          setGroup(groupData);
+        } else {
           toast.error('Group not found');
           navigate('/admin/groups');
-          return;
         }
-        setGroup(groupData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching group details:', error);
+        toast.error('Failed to fetch group details.');
+        setLoading(false);
+        navigate('/admin/groups');
+      }
+    );
 
-        // Load students
-        const studentsData = await getStudentsInGroupDetails(db, groupData.students);
-        setStudents(studentsData);
-
-        // Load teachers
+    // Load teachers separately (can remain as is or be refactored if needed)
+    const loadTeachers = async () => {
+      try {
         const teachersData = await getUsersByRole(db, 'teacher');
         setTeachers(teachersData);
       } catch (error) {
-        console.error('Error loading group data:', error);
-        toast.error('Failed to load group data');
-      } finally {
-        setLoading(false);
+        console.error('Error loading teachers:', error);
+        toast.error('Failed to load teachers');
       }
     };
 
-    loadGroupData();
-  }, [groupId, navigate]);
+    loadTeachers();
+
+    return () => {
+      unsubscribe();
+    };
+  }, [groupId, navigate, group]); // Added group to dependency array
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        {/* Header Skeletons */}
+        <div className="flex justify-between items-center">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" /> {/* Group Name */}
+            <Skeleton className="h-4 w-64" /> {/* Specialization & Year */}
+          </div>
+          <div className="flex space-x-2">
+            <Skeleton className="h-10 w-32" /> {/* Manage Teachers Button */}
+            <Skeleton className="h-10 w-32" /> {/* Back to Groups Button */}
+          </div>
+        </div>
+
+        {/* Tabs Skeletons */}
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-1/3" /> {/* TabsList */}
+          
+          {/* Assuming "Students" tab is default, show table skeletons */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-1/4 mb-1" /> {/* CardTitle Students */}
+              <Skeleton className="h-4 w-1/2" /> {/* CardDescription */}
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead><Skeleton className="h-5 w-1/3" /></TableHead>
+                    <TableHead><Skeleton className="h-5 w-1/3" /></TableHead>
+                    <TableHead><Skeleton className="h-5 w-1/4" /></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...Array(3)].map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                      <TableCell><Skeleton className="h-8 w-24" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   if (!group) {
