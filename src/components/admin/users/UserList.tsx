@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Table,
   TableBody,
@@ -19,7 +19,7 @@ import {
 import { MoreHorizontal, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import { getUsersFromFirestore, deleteUserFromFirestore } from '@/lib/firebaseService/userService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import type { User } from '@/types';
 import EditUserDialog from './EditUserDialog';
 import {
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Timestamp } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 interface UserListProps {
   key?: number;
@@ -46,6 +47,8 @@ const UserList: React.FC<UserListProps> = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [lastDeletedUser, setLastDeletedUser] = useState<User | null>(null);
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -77,12 +80,36 @@ const UserList: React.FC<UserListProps> = () => {
   const confirmDelete = async () => {
     if (!deletingUser) return;
     try {
-      await deleteUserFromFirestore(db, deletingUser.uid);
-      toast.success(`Пользователь ${deletingUser.firstName} ${deletingUser.lastName} удален`);
+      const functions = getFunctions();
+      const deleteUser = httpsCallable(functions, 'deleteUser');
+      setLastDeletedUser(deletingUser);
+      await deleteUser({ userId: deletingUser.uid });
       setUsers(prevUsers => prevUsers.filter(u => u.uid !== deletingUser.uid));
+      toast.success(`Пользователь ${deletingUser.firstName} ${deletingUser.lastName} удален полностью`, {
+        action: {
+          label: 'Отменить',
+          onClick: async () => {
+            if (!lastDeletedUser) return;
+            const restoreUser = httpsCallable(functions, 'createUser');
+            try {
+              await restoreUser({ ...lastDeletedUser, password: 'TempPassword123!' });
+              setUsers(prev => [...prev, lastDeletedUser]);
+              toast.success('Пользователь восстановлен');
+              setLastDeletedUser(null);
+              if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+            } catch (e) {
+              console.error('Ошибка при восстановлении пользователя:', e);
+              toast.error('Не удалось восстановить пользователя');
+            }
+          },
+        },
+        duration: 8000,
+      });
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = setTimeout(() => setLastDeletedUser(null), 8000);
     } catch (error) {
-      console.error("Ошибка при удалении пользователя:", error);
-      toast.error("Не удалось удалить пользователя");
+      console.error('Ошибка при удалении пользователя:', error);
+      toast.error('Не удалось удалить пользователя');
     } finally {
       setDeletingUser(null);
       setShowDeleteConfirm(false);
@@ -205,7 +232,7 @@ const UserList: React.FC<UserListProps> = () => {
                <AlertDialogDescription>
                  Это действие удалит пользователя <span className="font-semibold">{deletingUser.firstName} {deletingUser.lastName}</span> из базы данных.
                  <br />
-                 <span className="font-semibold text-orange-600">Учетная запись в Firebase Authentication не будет удалена.</span>
+                 <span className="font-semibold text-orange-600">Учетная запись в Firebase Authentication также будет удалена.</span>
                  <br />
                  Это действие нельзя отменить.
                </AlertDialogDescription>

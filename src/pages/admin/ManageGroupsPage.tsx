@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -56,6 +56,8 @@ const ManageGroupsPage: React.FC = () => {
   const [showManageStudentsDialog, setShowManageStudentsDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [lastDeletedGroup, setLastDeletedGroup] = useState<Group | null>(null);
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -109,26 +111,48 @@ const ManageGroupsPage: React.FC = () => {
 
   const confirmDeleteGroup = async () => {
     if (!groupToDelete) return;
-    setIsLoading(true); // Indicate processing
+    setIsLoading(true);
     try {
+      const groupBackup = { ...groupToDelete };
+      // Удаляем группу и отвязываем студентов (как раньше)
       const batch = writeBatch(db);
-
-      // 1. Unlink students from this group
       if (groupToDelete.students && groupToDelete.students.length > 0) {
         groupToDelete.students.forEach(studentProfileId => {
           const studentProfileRef = doc(db, 'students', studentProfileId);
-          // Assuming student profile might not exist or already unlinked, but attempt update.
-          batch.update(studentProfileRef, { groupId: "" }); // Set to empty string or null
+          batch.update(studentProfileRef, { groupId: "" });
         });
       }
-
-      // 2. Delete the group document itself
       const groupRef = doc(db, 'groups', groupToDelete.id);
       batch.delete(groupRef);
-
       await batch.commit();
-      toast.success(`Group "${groupToDelete.name}" and student links removed successfully.`);
-      fetchData(); 
+      setLastDeletedGroup(groupBackup);
+      toast.success(`Группа "${groupToDelete.name}" удалена`, {
+        action: {
+          label: 'Отменить',
+          onClick: async () => {
+            if (!lastDeletedGroup) return;
+            // Восстанавливаем группу и студентов
+            const groupDocRef = doc(db, 'groups', lastDeletedGroup.id);
+            await groupDocRef.set({ ...lastDeletedGroup });
+            if (lastDeletedGroup.students && lastDeletedGroup.students.length > 0) {
+              const batchRestore = writeBatch(db);
+              lastDeletedGroup.students.forEach(studentProfileId => {
+                const studentProfileRef = doc(db, 'students', studentProfileId);
+                batchRestore.update(studentProfileRef, { groupId: lastDeletedGroup.id });
+              });
+              await batchRestore.commit();
+            }
+            toast.success('Группа и студенты восстановлены');
+            fetchData();
+            setLastDeletedGroup(null);
+            if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+          },
+        },
+        duration: 8000,
+      });
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = setTimeout(() => setLastDeletedGroup(null), 8000);
+      fetchData();
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error('Failed to delete group. Students might still be linked.');

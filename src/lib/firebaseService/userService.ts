@@ -29,18 +29,29 @@ import { db } from './firebase';
 // Re-export User type for convenience
 export type { User };
 
+export interface CreateUserData {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  iin: string;
+  role: 'student' | 'teacher' | 'admin';
+  birthDate?: string;
+  phone?: string;
+  address?: string;
+  enrollmentDate?: string;
+  specialization?: string;
+  academicDegree?: string;
+  groupId?: string;
+}
+
 /**
  * Creates a new user using Cloud Function.
  * @param userData Object containing user data (email, password, firstName, lastName, role).
  * @returns Promise<User>
  */
-export const createUserInAuth = async (userData: {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  role: User['role'];
-}): Promise<User> => {
+export const createUserInAuth = async (userData: CreateUserData): Promise<User> => {
   const functions = getFunctions();
   const createUser = httpsCallable(functions, 'createUser');
   
