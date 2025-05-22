@@ -1,7 +1,7 @@
 // src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Импортируем Alert
 import { AlertCircle } from 'lucide-react'; // Иконка для Alert
 import { FirebaseError } from 'firebase/app';
+import { doc, getDoc } from 'firebase/firestore';
 
 // ... (useAuth импорт если он тут нужен, но для логина он не обязателен напрямую)
 
@@ -32,7 +33,19 @@ const LoginPage: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Проверяем роль пользователя
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      const userData = userDoc.data();
+      
+      if (!userData || userData.role !== 'admin') {
+        // Если пользователь не админ, выходим из системы
+        await auth.signOut();
+        setError('У вас нет прав доступа к административной панели');
+        return;
+      }
+
       navigate('/admin/dashboard');
     } catch (err: unknown) {
       let errorMessage = 'Произошла неизвестная ошибка при входе.';

@@ -46,6 +46,7 @@ export interface Group {
   name: string;
   course: number;
   specialization: string;
+  curatorId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

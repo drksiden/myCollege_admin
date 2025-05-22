@@ -30,14 +30,17 @@ const formSchema = z.object({
     (date) => !date || date <= today,
     { message: 'Дата рождения не может быть в будущем' }
   ),
-  phone: z.string().optional(),
-  address: z.string().optional(),
+  phone: z.string()
+    .min(10, 'Телефон должен содержать минимум 10 цифр')
+    .regex(/^[0-9+()-]*$/, 'Телефон может содержать только цифры, +, (, ), -')
+    .optional(),
+  address: z.string().min(5, 'Адрес должен содержать минимум 5 символов').optional(),
   enrollmentDate: z.date().optional().refine(
     (date) => !date || date <= today,
     { message: 'Дата зачисления не может быть в будущем' }
   ),
-  specialization: z.string().optional(),
-  academicDegree: z.string().optional(),
+  specialization: z.string().min(1, 'Специализация обязательна').optional(),
+  academicDegree: z.string().min(1, 'Ученая степень обязательна').optional(),
   groupId: z.string().optional(),
 }).refine((data) => {
   if (data.role === 'student') {
@@ -55,6 +58,22 @@ const formSchema = z.object({
 }, {
   message: 'Специализация обязательна для преподавателей',
   path: ['specialization'],
+}).refine((data) => {
+  if (data.role === 'teacher') {
+    return !!data.academicDegree;
+  }
+  return true;
+}, {
+  message: 'Ученая степень обязательна для преподавателей',
+  path: ['academicDegree'],
+}).refine((data) => {
+  if (data.role === 'student') {
+    return !!data.groupId;
+  }
+  return true;
+}, {
+  message: 'Группа обязательна для студентов',
+  path: ['groupId'],
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -71,26 +90,88 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
     resolver: zodResolver(formSchema),
     defaultValues: {
       role: 'student',
+      academicDegree: '',
+      groupId: '',
+      specialization: '',
     },
   });
 
   const role = form.watch('role');
+  const academicDegree = form.watch('academicDegree');
+  const groupId = form.watch('groupId');
 
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
-      await createUserInAuth({
+      console.log('Starting form submission...');
+      
+      // Проверяем валидацию формы
+      const isValid = await form.trigger();
+      console.log('Form validation result:', isValid);
+      console.log('Form errors:', form.formState.errors);
+      
+      if (!isValid) {
+        console.error('Form validation failed:', form.formState.errors);
+        toast.error('Пожалуйста, заполните все обязательные поля');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('Form data before submission:', data);
+      
+      // Проверяем, что все обязательные поля заполнены
+      const requiredFields = ['email', 'password', 'firstName', 'lastName', 'iin', 'role'];
+      const missingFields = requiredFields.filter(field => !data[field as keyof FormData]);
+      
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields);
+        toast.error(`Пожалуйста, заполните обязательные поля: ${missingFields.join(', ')}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Добавляем специфичные проверки для ролей
+      if (data.role === 'teacher') {
+        if (!data.specialization || !data.academicDegree) {
+          console.error('Missing teacher fields:', { specialization: data.specialization, academicDegree: data.academicDegree });
+          toast.error('Для преподавателя необходимо указать специализацию и ученую степень');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      if (data.role === 'student') {
+        if (!data.enrollmentDate || !data.groupId) {
+          console.error('Missing student fields:', { enrollmentDate: data.enrollmentDate, groupId: data.groupId });
+          toast.error('Для студента необходимо указать дату зачисления и группу');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      console.log('Calling createUserInAuth with data:', {
+        ...data,
+        enrollmentDate: data.enrollmentDate ? format(data.enrollmentDate, 'yyyy-MM-dd') : undefined,
+        birthDate: data.birthDate ? format(data.birthDate, 'yyyy-MM-dd') : undefined,
+      });
+
+      const result = await createUserInAuth({
         ...data,
         enrollmentDate: data.enrollmentDate ? format(data.enrollmentDate, 'yyyy-MM-dd') : undefined,
         birthDate: data.birthDate ? format(data.birthDate, 'yyyy-MM-dd') : undefined,
       });
       
+      console.log('User created successfully:', result);
       toast.success('Пользователь успешно создан');
       form.reset();
       if (onUserCreated) onUserCreated();
     } catch (error) {
       console.error('Error creating user:', error);
-      toast.error('Не удалось создать пользователя');
+      if (error instanceof Error) {
+        toast.error(`Не удалось создать пользователя: ${error.message}`);
+      } else {
+        toast.error('Не удалось создать пользователя');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -182,10 +263,21 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
             <div className="space-y-2">
               <Label htmlFor="role">Роль</Label>
               <Select
-                onValueChange={(value) => form.setValue('role', value as 'student' | 'teacher' | 'admin')}
-                defaultValue={form.getValues('role')}
+                onValueChange={(value) => {
+                  form.setValue('role', value as 'student' | 'teacher' | 'admin');
+                  // Сбрасываем специфичные поля при смене роли
+                  if (value === 'student') {
+                    form.setValue('specialization', '');
+                    form.setValue('academicDegree', '');
+                  } else if (value === 'teacher') {
+                    form.setValue('enrollmentDate', undefined);
+                    form.setValue('groupId', '');
+                  }
+                }}
+                value={role}
+                defaultValue={role}
               >
-                <SelectTrigger>
+                <SelectTrigger id="role">
                   <SelectValue placeholder="Выберите роль" />
                 </SelectTrigger>
                 <SelectContent>
@@ -231,9 +323,10 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
                   <Label htmlFor="groupId">Группа</Label>
                   <Select
                     onValueChange={(value) => form.setValue('groupId', value)}
-                    value={form.getValues('groupId')}
+                    value={groupId}
+                    defaultValue={groupId}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="groupId">
                       <SelectValue placeholder="Выберите группу" />
                     </SelectTrigger>
                     <SelectContent>
@@ -244,6 +337,9 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
                       ))}
                     </SelectContent>
                   </Select>
+                  {form.formState.errors.groupId && (
+                    <p className="text-sm text-red-500">{form.formState.errors.groupId.message}</p>
+                  )}
                 </div>
               </>
             )}
@@ -251,7 +347,7 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
             {role === 'teacher' && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="specialization">Специализация</Label>
+                  <Label htmlFor="specialization">Специализация *</Label>
                   <Input
                     id="specialization"
                     {...form.register('specialization')}
@@ -263,12 +359,25 @@ export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="academicDegree">Ученая степень</Label>
-                  <Input
-                    id="academicDegree"
-                    {...form.register('academicDegree')}
-                    placeholder="Введите ученую степень"
-                  />
+                  <Label htmlFor="academicDegree">Ученая степень *</Label>
+                  <Select
+                    onValueChange={(value) => form.setValue('academicDegree', value)}
+                    value={academicDegree}
+                    defaultValue={academicDegree}
+                  >
+                    <SelectTrigger id="academicDegree">
+                      <SelectValue placeholder="Выберите ученую степень" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bachelor">Бакалавр</SelectItem>
+                      <SelectItem value="master">Магистр</SelectItem>
+                      <SelectItem value="candidate">Кандидат наук</SelectItem>
+                      <SelectItem value="doctor">Доктор наук</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.formState.errors.academicDegree && (
+                    <p className="text-sm text-red-500">{form.formState.errors.academicDegree.message}</p>
+                  )}
                 </div>
               </>
             )}

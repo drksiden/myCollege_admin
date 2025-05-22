@@ -32,16 +32,17 @@ export type { Group };
  */
 export const createGroup = async (
   db: Firestore,
-  groupData: Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId'>
+  groupData: Pick<Group, 'name' | 'year' | 'specialization'>
 ): Promise<string> => {
-  const dataWithDefaults: Omit<Group, 'id'> = {
+  const groupsRef = collection(db, 'groups');
+  const newGroup = {
     ...groupData,
-    students: groupData.students || [], // Use provided students array or empty array
-    scheduleId: groupData.scheduleId || "", // Use provided scheduleId or empty string
-    createdAt: serverTimestamp() as Timestamp,
-    updatedAt: serverTimestamp() as Timestamp,
+    students: [],
+    scheduleId: '',
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
   };
-  const docRef = await addDoc(collection(db, 'groups'), dataWithDefaults);
+  const docRef = await addDoc(groupsRef, newGroup);
   return docRef.id;
 };
 
@@ -56,11 +57,14 @@ export const getGroup = async (
   groupId: string
 ): Promise<Group | null> => {
   const groupRef = doc(db, 'groups', groupId);
-  const docSnap = await getDoc(groupRef);
-  if (docSnap.exists()) {
-    return { id: docSnap.id, ...docSnap.data() } as Group;
-  }
-  return null;
+  const groupDoc = await getDoc(groupRef);
+  if (!groupDoc.exists()) return null;
+  return {
+    id: groupDoc.id,
+    ...groupDoc.data(),
+    createdAt: groupDoc.data().createdAt,
+    updatedAt: groupDoc.data().updatedAt,
+  } as Group;
 };
 
 /**
@@ -69,13 +73,14 @@ export const getGroup = async (
  * @returns Promise<Group[]> An array of groups.
  */
 export const getAllGroups = async (db: Firestore): Promise<Group[]> => {
-  const groupsCollection = collection(db, 'groups');
-  const q = query(groupsCollection, orderBy('name', 'asc'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  } as Group));
+  const groupsRef = collection(db, 'groups');
+  const snapshot = await getDocs(groupsRef);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt,
+    updatedAt: doc.data().updatedAt,
+  })) as Group[];
 };
 
 /**
@@ -91,11 +96,11 @@ export const updateGroup = async (
   updates: Partial<Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId'>>
 ): Promise<void> => {
   const groupRef = doc(db, 'groups', groupId);
-  const dataWithTimestamp = {
+  const updateData = {
     ...updates,
-    updatedAt: serverTimestamp() as Timestamp,
+    updatedAt: Timestamp.now(),
   };
-  return updateDoc(groupRef, dataWithTimestamp);
+  await updateDoc(groupRef, updateData);
 };
 
 /**
@@ -107,12 +112,12 @@ export const updateGroup = async (
  * @param groupId The document ID of the group to delete.
  * @returns Promise<void>
  */
-export const deleteGroupInService = async ( // Renamed to emphasize it's a partial operation
+export const deleteGroup = async (
   db: Firestore,
   groupId: string
 ): Promise<void> => {
   const groupRef = doc(db, 'groups', groupId);
-  return deleteDoc(groupRef);
+  await deleteDoc(groupRef);
 };
 
 /**
@@ -212,12 +217,25 @@ export const getStudentsInGroupDetails = async (
   } as Student));
 };
 
-export async function getGroups(): Promise<Group[]> {
+export const getGroupsByTeacher = async (db: Firestore, teacherId: string): Promise<Group[]> => {
   const groupsRef = collection(db, 'groups');
-  const q = query(groupsRef, orderBy('createdAt', 'desc'));
+  const q = query(groupsRef, where('teacherId', '==', teacherId));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
+    createdAt: doc.data().createdAt,
+    updatedAt: doc.data().updatedAt,
   })) as Group[];
-}
+};
+
+export const getGroups = async (): Promise<Group[]> => {
+  return getAllGroups(db);
+};
+
+export const deleteGroupInService = async (
+  db: Firestore,
+  groupId: string
+): Promise<void> => {
+  return deleteGroup(db, groupId);
+};

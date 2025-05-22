@@ -29,7 +29,8 @@ import {
 } from '@/lib/firebaseService/teacherService';
 import { updateUserInFirestore } from '@/lib/firebaseService/userService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import type { Teacher, Subject } from '@/types';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import type { Teacher, Subject, Group } from '@/types';
 
 // Обновленная Zod-схема для TeacherProfileForm
 const teacherProfileSchema = z.object({
@@ -62,7 +63,9 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
   const form = useForm<TeacherProfileFormValues>({
     resolver: zodResolver(teacherProfileSchema),
@@ -76,17 +79,21 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
   });
 
   useEffect(() => {
-    const fetchSubjects = async () => {
+    const fetchData = async () => {
       try {
-        const subjectsList = await getAllSubjects(db);
+        const [subjectsList, groupsList] = await Promise.all([
+          getAllSubjects(db),
+          getAllGroups(db),
+        ]);
         setSubjects(subjectsList);
+        setGroups(groupsList);
       } catch (error) {
-        console.error('Error fetching subjects:', error);
-        toast.error('Failed to load subjects');
+        console.error('Error fetching data:', error);
+        toast.error('Failed to load data');
       }
     };
 
-    fetchSubjects();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -97,6 +104,7 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
           const profile = await getTeacherProfile(db, teacherProfileId);
           if (profile) {
             setSelectedSubjects(profile.subjects);
+            setSelectedGroups(profile.groups);
             form.reset({
               specialization: profile.specialization,
               experience: profile.experience,
@@ -275,9 +283,55 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Groups Managed</FormLabel>
-              <FormControl>
-                <Input placeholder="Group A, Group B (comma-separated)" {...field} disabled={isLoading} />
-              </FormControl>
+              <Select
+                onValueChange={(value) => {
+                  const newGroups = [...selectedGroups, value];
+                  setSelectedGroups(newGroups);
+                  field.onChange(newGroups);
+                }}
+                disabled={isLoading}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select groups" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {groups
+                    .filter((group) => !selectedGroups.includes(group.id))
+                    .map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-2 space-y-2">
+                {selectedGroups.map((groupId) => {
+                  const group = groups.find((g) => g.id === groupId);
+                  return (
+                    <div
+                      key={groupId}
+                      className="flex items-center justify-between p-2 bg-secondary rounded-md"
+                    >
+                      <span>{group?.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const newGroups = selectedGroups.filter((id) => id !== groupId);
+                          setSelectedGroups(newGroups);
+                          field.onChange(newGroups);
+                        }}
+                        disabled={isLoading}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -288,7 +342,7 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
               Cancel
             </Button>
           )}
-          <Button type="submit" disabled={isLoading || (initialDataLoading && mode === 'edit')}>
+          <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Saving...' : (mode === 'create' ? 'Create Profile' : 'Save Changes')}
           </Button>
         </div>

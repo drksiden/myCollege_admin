@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
-import { getUser, createUser } from '../services/firestore';
-import { Timestamp } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -17,47 +16,49 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
-      if (firebaseUser) {
-        // Получаем профиль пользователя из Firestore
-        const userProfile = await getUser(firebaseUser.uid);
+      try {
+        if (firebaseUser) {
+          // Получаем данные пользователя из Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userData = userDoc.data();
 
-        if (userProfile) {
-          setCurrentUser(userProfile);
-          setIsAdmin(userProfile.role === 'admin');
-          console.log('[AuthContext] Пользователь найден в Firestore:', userProfile);
-        } else {
-          // Автоматически создаём профиль, если его нет (только для DEV/эмулятора!)
-          if (import.meta.env.DEV) {
-            const newUser: Omit<User, 'createdAt' | 'updatedAt'> = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              firstName: '',
-              lastName: '',
-              role: 'admin',
-            };
-            await createUser(newUser);
-            const now = Timestamp.now();
-            setCurrentUser({ ...newUser, createdAt: now, updatedAt: now });
-            setIsAdmin(true);
-            console.warn('[AuthContext] Автоматически создан профиль пользователя в Firestore.');
-          } else {
-            console.warn('[AuthContext] User exists in Auth but not in Firestore DB. UID:', firebaseUser.uid);
+          if (!userData || userData.role !== 'admin') {
+            // Если пользователь не админ, выходим из системы
+            await signOut(auth);
             setCurrentUser(null);
             setIsAdmin(false);
+            return;
           }
+
+          setCurrentUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            role: userData.role,
+            createdAt: userData.createdAt,
+            updatedAt: userData.updatedAt,
+          } as User);
+          setIsAdmin(true);
+        } else {
+          setCurrentUser(null);
+          setIsAdmin(false);
         }
-      } else {
-        // Пользователь не аутентифицирован
+      } catch (error) {
+        console.error('Error checking user role:', error);
+        // В случае ошибки также выходим из системы
+        await signOut(auth);
         setCurrentUser(null);
         setIsAdmin(false);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     setLoading(true);
-    await auth.signOut();
+    await signOut(auth);
     setCurrentUser(null);
     setIsAdmin(false);
     setLoading(false);

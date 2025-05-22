@@ -81,9 +81,9 @@ const UserList: React.FC<UserListProps> = () => {
     if (!deletingUser) return;
     try {
       const functions = getFunctions();
-      const deleteUser = httpsCallable(functions, 'deleteUser');
+      const deleteUserFn = httpsCallable(functions, 'deleteUser');
       setLastDeletedUser(deletingUser);
-      await deleteUser({ userId: deletingUser.uid });
+      await deleteUserFn({ userId: deletingUser.uid });
       setUsers(prevUsers => prevUsers.filter(u => u.uid !== deletingUser.uid));
       toast.success(`Пользователь ${deletingUser.firstName} ${deletingUser.lastName} удален полностью`, {
         action: {

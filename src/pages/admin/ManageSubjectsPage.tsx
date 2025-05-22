@@ -30,6 +30,8 @@ import {
   getAllSubjects,
   deleteSubject,
 } from '@/lib/firebaseService/subjectService';
+import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import SubjectForm from '@/components/admin/subjects/SubjectForm';
 import type { Subject } from '@/types';
 import {
@@ -52,15 +54,30 @@ const ManageSubjectsPage: React.FC = () => {
   const [showSubjectDialog, setShowSubjectDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [subjectToDelete, setSubjectToDelete] = useState<Subject | null>(null);
+  const [teachers, setTeachers] = useState<Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>>([]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const fetchedSubjects = await getAllSubjects(db);
+      const [fetchedSubjects, fetchedTeacherProfiles, allUsers] = await Promise.all([
+        getAllSubjects(db),
+        getAllTeacherProfiles(db),
+        getUsersFromFirestore(db),
+      ]);
       setSubjects(fetchedSubjects);
+
+      // Map teacher profiles to include user names
+      const userMap = new Map(allUsers.map(u => [u.uid, u]));
+      const teachersWithNames = fetchedTeacherProfiles.map(t => ({
+        id: t.id,
+        firstName: userMap.get(t.userId)?.firstName || '',
+        lastName: userMap.get(t.userId)?.lastName || '',
+        patronymic: userMap.get(t.userId)?.middleName,
+      }));
+      setTeachers(teachersWithNames);
     } catch (error) {
-      console.error('Error fetching subjects:', error);
-      toast.error('Failed to load subjects.');
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load data.');
     } finally {
       setIsLoading(false);
     }
@@ -149,6 +166,7 @@ const ManageSubjectsPage: React.FC = () => {
               subjectId={selectedSubject?.id}
               onFormSubmitSuccess={handleFormSuccess}
               onCancel={() => setShowSubjectDialog(false)}
+              teachers={teachers}
             />
           )}
         </DialogContent>

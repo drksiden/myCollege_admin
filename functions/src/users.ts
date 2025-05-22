@@ -7,16 +7,16 @@ interface CreateUserData {
   password: string;
   firstName: string;
   lastName: string;
-  middleName?: string; // Отчество
-  iin: string; // ИИН
+  middleName?: string;
+  iin: string;
   role: 'student' | 'teacher' | 'admin';
-  enrollmentDate?: string; // Дата зачисления (для студентов)
-  birthDate?: string; // Дата рождения
-  phone?: string; // Телефон
-  address?: string; // Адрес
-  specialization?: string; // Специализация (для преподавателей)
-  academicDegree?: string; // Ученая степень (для преподавателей)
-  groupId?: string; // ID группы (для студентов)
+  enrollmentDate?: string;
+  birthDate?: string;
+  phone?: string;
+  address?: string;
+  specialization?: string;
+  academicDegree?: string;
+  groupId?: string;
 }
 
 export const createUser = functions.https.onCall(async (request: functions.https.CallableRequest<CreateUserData>) => {

@@ -12,6 +12,13 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import {
@@ -19,6 +26,9 @@ import {
   updateGroup,
   getGroup,
 } from '@/lib/firebaseService/groupService';
+import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
+import type { Teacher } from '@/types';
 
 // Zod schema for the form
 const groupSchema = z.object({
@@ -27,13 +37,14 @@ const groupSchema = z.object({
     .min(new Date().getFullYear() - 10, `Year too old`) 
     .max(new Date().getFullYear() + 5, `Year too far in future`),
   specialization: z.string().min(1, 'Specialization is required').max(100, 'Specialization too long'),
+  curatorId: z.string().min(1, 'Curator is required'),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
 
 interface GroupFormProps {
   mode: 'create' | 'edit';
-  groupId?: string; // Required for 'edit' mode
+  groupId?: string;
   onFormSubmitSuccess: () => void;
   onCancel?: () => void;
 }
@@ -46,25 +57,46 @@ const GroupForm: React.FC<GroupFormProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  const [teachers, setTeachers] = useState<Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>>([]);
 
   const form = useForm<GroupFormValues>({
     resolver: zodResolver(groupSchema),
     defaultValues: {
       name: '',
-      year: new Date().getFullYear(), // Default to current year
+      year: new Date().getFullYear(),
       specialization: '',
+      curatorId: '',
     },
   });
 
   useEffect(() => {
-    if (mode === 'create') {
-      form.reset({
-        name: '',
-        year: new Date().getFullYear(),
-        specialization: '',
-      });
-    } else if (mode === 'edit' && groupId) {
-      const fetchGroupData = async () => {
+    const fetchTeachers = async () => {
+      try {
+        const [teacherProfiles, allUsers] = await Promise.all([
+          getAllTeacherProfiles(db),
+          getUsersFromFirestore(db),
+        ]);
+
+        const userMap = new Map(allUsers.map(u => [u.uid, u]));
+        const teachersWithNames = teacherProfiles.map(t => ({
+          id: t.id,
+          firstName: userMap.get(t.userId)?.firstName || '',
+          lastName: userMap.get(t.userId)?.lastName || '',
+          patronymic: userMap.get(t.userId)?.middleName,
+        }));
+        setTeachers(teachersWithNames);
+      } catch (error) {
+        console.error('Error fetching teachers:', error);
+        toast.error('Failed to load teachers');
+      }
+    };
+
+    fetchTeachers();
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'edit' && groupId) {
+      const fetchGroup = async () => {
         setInitialDataLoading(true);
         try {
           const group = await getGroup(db, groupId);
@@ -73,45 +105,34 @@ const GroupForm: React.FC<GroupFormProps> = ({
               name: group.name,
               year: group.year,
               specialization: group.specialization,
+              curatorId: group.curatorId || '',
             });
-          } else {
-            toast.error('Group not found.');
-            if (onCancel) onCancel();
           }
         } catch (error) {
           console.error('Error fetching group:', error);
-          toast.error('Failed to load group details.');
-          if (onCancel) onCancel();
+          toast.error('Failed to load group data');
         } finally {
           setInitialDataLoading(false);
         }
       };
-      fetchGroupData();
+      fetchGroup();
     }
-  }, [mode, groupId, form, onCancel]);
+  }, [mode, groupId, form]);
 
   const onSubmit = async (values: GroupFormValues) => {
     setIsLoading(true);
     try {
-      const groupData = {
-        name: values.name,
-        year: values.year,
-        specialization: values.specialization,
-      };
-
       if (mode === 'create') {
-        await createGroup(db, groupData);
-        toast.success('Group created successfully!');
+        await createGroup(db, values);
+        toast.success('Group created successfully');
       } else if (mode === 'edit' && groupId) {
-        await updateGroup(db, groupId, groupData);
-        toast.success('Group updated successfully!');
+        await updateGroup(db, groupId, values);
+        toast.success('Group updated successfully');
       }
       onFormSubmitSuccess();
-      if (mode === 'create') form.reset(); // Reset only on create
-    } catch (error: unknown) {
-      console.error('Error submitting group form:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save group.';
-      toast.error(errorMessage);
+    } catch (error) {
+      console.error('Error submitting group:', error);
+      toast.error('Failed to save group');
     } finally {
       setIsLoading(false);
     }
@@ -170,13 +191,37 @@ const GroupForm: React.FC<GroupFormProps> = ({
             </FormItem>
           )}
         />
+        <FormField
+          control={form.control}
+          name="curatorId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Curator</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select curator" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {teachers.map(teacher => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      {`${teacher.firstName} ${teacher.lastName}${teacher.patronymic ? ` ${teacher.patronymic}` : ''}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <div className="flex justify-end space-x-3 pt-2">
           {onCancel && (
             <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
               Cancel
             </Button>
           )}
-          <Button type="submit" disabled={isLoading || (initialDataLoading && mode === 'edit')}>
+          <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Saving...' : (mode === 'create' ? 'Create Group' : 'Save Changes')}
           </Button>
         </div>

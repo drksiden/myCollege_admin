@@ -120,7 +120,11 @@ const ManageGroupStudentsDialog: React.FC<ManageGroupStudentsDialogProps> = ({
     }
     setIsSubmitting(true);
     try {
-      await addStudentToGroup(db, group.id, selectedStudentIdToAdd);
+      const selectedStudent = availableStudents.find(s => s.id === selectedStudentIdToAdd);
+      if (!selectedStudent) {
+        throw new Error("Selected student not found");
+      }
+      await addStudentToGroup(db, group.id, selectedStudent.id);
       toast.success("Student added to group successfully.");
       setSelectedStudentIdToAdd(""); // Reset selection
       onStudentsManaged(); // Refresh data on the parent page

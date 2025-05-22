@@ -25,6 +25,8 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { User } from '@/types';
 import { db } from './firebase';
+import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth';
+import { format } from 'date-fns';
 
 // Re-export User type for convenience
 export type { User };
@@ -37,10 +39,10 @@ export interface CreateUserData {
   middleName?: string;
   iin: string;
   role: 'student' | 'teacher' | 'admin';
+  enrollmentDate?: string;
   birthDate?: string;
   phone?: string;
   address?: string;
-  enrollmentDate?: string;
   specialization?: string;
   academicDegree?: string;
   groupId?: string;
@@ -53,13 +55,47 @@ export interface CreateUserData {
  */
 export const createUserInAuth = async (userData: CreateUserData): Promise<User> => {
   const functions = getFunctions();
-  const createUser = httpsCallable(functions, 'createUser');
+  const createUser = httpsCallable(functions, 'createUserFunction');
   
   try {
+    console.log('Starting createUserInAuth...');
+    console.log('Functions instance:', functions);
+    console.log('User data:', userData);
+    
+    // Проверяем, что все обязательные поля присутствуют
+    if (!userData.email || !userData.password || !userData.firstName || !userData.lastName || !userData.role) {
+      console.error('Missing required fields:', {
+        email: !!userData.email,
+        password: !!userData.password,
+        firstName: !!userData.firstName,
+        lastName: !!userData.lastName,
+        role: !!userData.role
+      });
+      throw new Error('Missing required fields');
+    }
+    
+    console.log('Calling createUser function...');
     const result = await createUser(userData);
+    console.log('Create user result:', result);
+    
+    if (!result.data) {
+      console.error('No data returned from createUser function');
+      throw new Error('No data returned from createUser function');
+    }
+    
+    console.log('User created successfully:', result.data);
     return result.data as User;
   } catch (error) {
-    console.error('Error creating user:', error);
+    console.error('Error in createUserInAuth:', error);
+    if (error instanceof Error) {
+      // Проверяем, является ли ошибка ошибкой Firebase Functions
+      if ('code' in error) {
+        console.error('Firebase error code:', (error as any).code);
+        console.error('Firebase error message:', error.message);
+        throw new Error(`Firebase error: ${error.message}`);
+      }
+      throw new Error(`Failed to create user: ${error.message}`);
+    }
     throw error;
   }
 };
