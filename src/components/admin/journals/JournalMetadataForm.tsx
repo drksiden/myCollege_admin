@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -27,7 +27,7 @@ import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Journal, Group, Subject, Teacher, User } from '@/types';
+import type { Group, Subject, Teacher } from '@/types';
 import { Loader2 } from 'lucide-react';
 
 // Zod schema for the form
@@ -79,36 +79,36 @@ const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
     },
   });
 
-  useEffect(() => {
-    const fetchDataForDropdowns = async () => {
-      setDataLoading(true);
-      try {
-        const [fetchedGroups, fetchedSubjects, fetchedTeacherProfiles, allUsers] = await Promise.all([
-          getAllGroups(db),
-          getAllSubjects(db),
-          getAllTeacherProfiles(db),
-          getUsersFromFirestore(db),
-        ]);
-        setGroups(fetchedGroups);
-        setSubjects(fetchedSubjects);
+  const fetchDataForDropdowns = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const [fetchedGroups, fetchedSubjects, fetchedTeacherProfiles, allUsers] = await Promise.all([
+        getAllGroups(db),
+        getAllSubjects(db),
+        getAllTeacherProfiles(db),
+        getUsersFromFirestore(db),
+      ]);
+      setGroups(fetchedGroups);
+      setSubjects(fetchedSubjects);
 
-        const userMap = new Map(allUsers.map(u => [u.uid, u]));
-        const teachersWithNames = fetchedTeacherProfiles.map(t => ({
-          ...t,
-          displayName: `${userMap.get(t.userId)?.firstName || ''} ${userMap.get(t.userId)?.lastName || 'N/A (User)'}`.trim() || 'Unnamed Teacher'
-        }));
-        setTeachers(teachersWithNames);
+      const userMap = new Map(allUsers.map(u => [u.uid, u]));
+      const teachersWithNames = fetchedTeacherProfiles.map(t => ({
+        ...t,
+        displayName: `${userMap.get(t.userId)?.firstName || ''} ${userMap.get(t.userId)?.lastName || 'N/A (User)'}`.trim() || 'Unnamed Teacher'
+      }));
+      setTeachers(teachersWithNames);
 
-      } catch (error) {
-        toast.error("Failed to load data for selections (groups, subjects, teachers).");
-        console.error("Error fetching dropdown data:", error);
-      } finally {
-        // Data loading for dropdowns is finished, now potentially load journal data
-        // setDataLoading(false); // This will be set after journal data is loaded in edit mode
-      }
-    };
-    fetchDataForDropdowns();
+    } catch (error) {
+      toast.error("Failed to load data for selections (groups, subjects, teachers).");
+      console.error("Error fetching dropdown data:", error);
+    } finally {
+      setDataLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchDataForDropdowns();
+  }, [fetchDataForDropdowns]);
 
   useEffect(() => {
     // This effect runs after dropdown data is potentially loaded
@@ -168,7 +168,6 @@ const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
         resultingJournalId = newJournalId;
         toast.success('Journal created successfully! You can now add entries.');
       } else if (mode === 'edit' && journalId) {
-        // For metadata form, we only update these specific fields, not 'entries'
         await updateJournal(db, journalId, {
             groupId: journalData.groupId,
             subjectId: journalData.subjectId,
@@ -182,9 +181,9 @@ const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
         onFormSubmitSuccess(resultingJournalId);
       }
       if (mode === 'create') form.reset();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error submitting journal metadata form:', error);
-      toast.error(error.message || 'Failed to save journal details.');
+      toast.error(error instanceof Error ? error.message : 'Failed to save journal details.');
     } finally {
       setIsSubmitting(false);
     }

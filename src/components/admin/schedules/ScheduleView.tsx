@@ -15,7 +15,7 @@ import { db } from '@/lib/firebase';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Schedule, Lesson, Subject, Teacher, User } from '@/types';
+import type { Schedule, Lesson } from '@/types';
 // LessonForm and AlertDialog will be handled by the parent component managing this view
 
 interface ScheduleViewProps {

@@ -36,10 +36,11 @@ import {
   getStudentProfile,
 } from '@/lib/firebaseService/studentService';
 import { updateUserInFirestore } from '@/lib/firebaseService/userService';
-import type { Student } from '@/types';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import type { Student, Group } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 
-// Zod schema for the form
+// Обновленная Zod-схема для StudentProfileForm
 const studentProfileSchema = z.object({
   studentCardId: z.string().min(1, 'Student Card ID is required').max(50, 'Student Card ID too long'),
   groupId: z.string().min(1, 'Group ID is required').max(50, 'Group ID too long'),
@@ -51,6 +52,7 @@ const studentProfileSchema = z.object({
 
 export type StudentProfileFormValues = z.infer<typeof studentProfileSchema>;
 
+// Обновленный интерфейс StudentProfileFormProps
 interface StudentProfileFormProps {
   mode: 'create' | 'edit';
   userId?: string; // Required for 'create' mode
@@ -60,6 +62,7 @@ interface StudentProfileFormProps {
   onCancel?: () => void;
 }
 
+// Обновленный компонент StudentProfileForm
 const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   mode,
   userId,
@@ -70,6 +73,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
 
   const form = useForm<StudentProfileFormValues>({
     resolver: zodResolver(studentProfileSchema),
@@ -80,6 +84,20 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
       status: 'active',
     },
   });
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const groupsList = await getAllGroups(db);
+        setGroups(groupsList);
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+        toast.error('Failed to load groups');
+      }
+    };
+
+    fetchGroups();
+  }, []);
 
   useEffect(() => {
     // Reset form fields when mode or key IDs change, especially for create mode
@@ -136,9 +154,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
           return;
         }
         // Create student profile and then update user document
-        const newStudentProfileId = await createStudentProfile(db, { ...profileDataForService, userId });
+        await createStudentProfile(db, { id: 'temp-id', ...profileDataForService, userId });
         // Link this student profile ID to the user document
-        await updateUserInFirestore(db, userId, { studentId: newStudentProfileId });
+        await updateUserInFirestore(db, userId, {});
         toast.success(`Student profile created for ${userName || 'user'} and linked.`);
       } else if (mode === 'edit' && studentProfileId) {
         // Update existing student profile
@@ -147,9 +165,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
       }
       onFormSubmitSuccess(); // Callback to refresh list or close dialog
       if (mode === 'create') form.reset(); // Reset form only on create for better UX
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error submitting student profile:', error);
-      toast.error(error.message || 'Failed to save student profile.');
+      toast.error(error instanceof Error ? error.message : 'Failed to save student profile.');
     } finally {
       setIsLoading(false);
     }
@@ -180,10 +198,25 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
           name="groupId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Group ID</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter Group ID (e.g., CS-101)" {...field} disabled={isLoading} />
-              </FormControl>
+              <FormLabel>Group</FormLabel>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                disabled={isLoading}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a group" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
@@ -198,7 +231,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
-                      variant={"outline"}
+                      variant="outline"
                       className={cn(
                         "w-full pl-3 text-left font-normal",
                         !field.value && "text-muted-foreground"
@@ -206,7 +239,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
                       disabled={isLoading}
                     >
                       {field.value ? (
-                        format(field.value, "PPP") // Format date for display
+                        format(field.value, "PPP")
                       ) : (
                         <span>Pick a date</span>
                       )}
@@ -220,7 +253,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) =>
-                      date > new Date() || date < new Date("1900-01-01") || isLoading
+                      date > new Date() || date < new Date("1900-01-01")
                     }
                     initialFocus
                   />
@@ -236,7 +269,11 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Status</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                disabled={isLoading}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -252,14 +289,17 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
             </FormItem>
           )}
         />
-        <div className="flex justify-end space-x-3 pt-2">
-          {onCancel && (
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-              Cancel
-            </Button>
-          )}
-          <Button type="submit" disabled={isLoading || (initialDataLoading && mode === 'edit')}>
-            {isLoading ? 'Saving...' : (mode === 'create' ? 'Create Profile' : 'Save Changes')}
+        <div className="flex justify-end space-x-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? 'Saving...' : 'Save'}
           </Button>
         </div>
       </form>

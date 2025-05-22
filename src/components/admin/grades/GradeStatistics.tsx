@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Grade, Student, Subject, Group } from '@/types';
+import type { Grade, Subject, Group } from '@/types';
 import {
   BarChart,
   Bar,
@@ -14,10 +14,10 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { useMemo } from 'react';
 
 interface GradeStatisticsProps {
   grades: Grade[];
-  students: Student[];
   subjects: Subject[];
   groups: Group[];
   selectedGroup?: string;
@@ -29,66 +29,81 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 export default function GradeStatistics({
   grades,
-  students,
   subjects,
   groups,
   selectedGroup,
   selectedSubject,
   selectedSemester,
 }: GradeStatisticsProps) {
-  const filteredGrades = grades.filter(grade => {
-    if (selectedGroup && grade.groupId !== selectedGroup) return false;
-    if (selectedSubject && grade.subjectId !== selectedSubject) return false;
-    if (selectedSemester && grade.semester !== selectedSemester) return false;
-    return true;
-  });
+  const filteredGrades = useMemo(() => 
+    grades.filter(grade => {
+      if (selectedGroup && grade.groupId !== selectedGroup) return false;
+      if (selectedSubject && grade.subjectId !== selectedSubject) return false;
+      if (selectedSemester && grade.semester !== selectedSemester) return false;
+      return true;
+    }),
+    [grades, selectedGroup, selectedSubject, selectedSemester]
+  );
 
   // Calculate average grades by type
-  const averageByType = ['exam', 'test', 'homework', 'project'].map(type => {
-    const typeGrades = filteredGrades.filter(g => g.type === type);
-    const average = typeGrades.reduce((acc, g) => acc + g.value, 0) / typeGrades.length || 0;
-    return {
-      type: type.charAt(0).toUpperCase() + type.slice(1),
-      average: Number(average.toFixed(2)),
-    };
-  });
+  const averageByType = useMemo(() => 
+    ['exam', 'test', 'homework', 'project'].map(type => {
+      const typeGrades = filteredGrades.filter(g => g.type === type);
+      const average = typeGrades.reduce((acc, g) => acc + g.value, 0) / typeGrades.length || 0;
+      return {
+        type: type.charAt(0).toUpperCase() + type.slice(1),
+        average: Number(average.toFixed(2)),
+      };
+    }),
+    [filteredGrades]
+  );
 
   // Calculate grade distribution
-  const gradeDistribution = [
-    { range: '90-100', count: 0 },
-    { range: '80-89', count: 0 },
-    { range: '70-79', count: 0 },
-    { range: '60-69', count: 0 },
-    { range: '0-59', count: 0 },
-  ];
+  const gradeDistribution = useMemo(() => {
+    const distribution = [
+      { range: '90-100', count: 0 },
+      { range: '80-89', count: 0 },
+      { range: '70-79', count: 0 },
+      { range: '60-69', count: 0 },
+      { range: '0-59', count: 0 },
+    ];
 
-  filteredGrades.forEach(grade => {
-    if (grade.value >= 90) gradeDistribution[0].count++;
-    else if (grade.value >= 80) gradeDistribution[1].count++;
-    else if (grade.value >= 70) gradeDistribution[2].count++;
-    else if (grade.value >= 60) gradeDistribution[3].count++;
-    else gradeDistribution[4].count++;
-  });
+    filteredGrades.forEach(grade => {
+      if (grade.value >= 90) distribution[0].count++;
+      else if (grade.value >= 80) distribution[1].count++;
+      else if (grade.value >= 70) distribution[2].count++;
+      else if (grade.value >= 60) distribution[3].count++;
+      else distribution[4].count++;
+    });
+
+    return distribution;
+  }, [filteredGrades]);
 
   // Calculate average grades by subject
-  const averageBySubject = subjects.map(subject => {
-    const subjectGrades = filteredGrades.filter(g => g.subjectId === subject.id);
-    const average = subjectGrades.reduce((acc, g) => acc + g.value, 0) / subjectGrades.length || 0;
-    return {
-      subject: subject.name,
-      average: Number(average.toFixed(2)),
-    };
-  });
+  const averageBySubject = useMemo(() => 
+    subjects.map(subject => {
+      const subjectGrades = filteredGrades.filter(g => g.subjectId === subject.id);
+      const average = subjectGrades.reduce((acc, g) => acc + g.value, 0) / subjectGrades.length || 0;
+      return {
+        subject: subject.name,
+        average: Number(average.toFixed(2)),
+      };
+    }),
+    [subjects, filteredGrades]
+  );
 
   // Calculate average grades by group
-  const averageByGroup = groups.map(group => {
-    const groupGrades = filteredGrades.filter(g => g.groupId === group.id);
-    const average = groupGrades.reduce((acc, g) => acc + g.value, 0) / groupGrades.length || 0;
-    return {
-      group: group.name,
-      average: Number(average.toFixed(2)),
-    };
-  });
+  const averageByGroup = useMemo(() => 
+    groups.map(group => {
+      const groupGrades = filteredGrades.filter(g => g.groupId === group.id);
+      const average = groupGrades.reduce((acc, g) => acc + g.value, 0) / groupGrades.length || 0;
+      return {
+        group: group.name,
+        average: Number(average.toFixed(2)),
+      };
+    }),
+    [groups, filteredGrades]
+  );
 
   return (
     <div className="space-y-6">

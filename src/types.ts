@@ -1,27 +1,53 @@
 import { Timestamp } from 'firebase/firestore';
 
 export interface User {
+  id: string;
   uid: string;
   email: string;
   firstName: string;
   lastName: string;
+  patronymic?: string;
   role: 'admin' | 'teacher' | 'student';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  teacherId?: string;
+  studentId?: string;
+  teacherDetails?: {
+    department: string;
+    qualification: string;
+  };
+  studentDetails?: {
+    groupId: string;
+    studentId: string;
+  };
+}
+
+export interface Student {
+  id: string;
+  userId: string;
+  groupId: string;
+  studentCardId: string;
+  enrollmentDate: Timestamp;
+  status: 'active' | 'inactive' | 'graduated';
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export interface Student extends User {
-  groupId?: string;
-  specialization?: string;
-  year?: number;
-}
-
-export interface Teacher extends User {
-  subjects?: string[];
-  specialization?: string;
-  groups?: string[];
-  experience?: number;
-  education?: string;
+export interface Teacher {
+  id: string;
+  userId: string;
+  subjects: string[];
+  groups: string[];
+  specialization: string;
+  experience: number;
+  education: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  email: string;
+  phone?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Group {
@@ -30,6 +56,7 @@ export interface Group {
   year: number;
   specialization: string;
   students: string[];
+  scheduleId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -38,8 +65,10 @@ export interface Subject {
   id: string;
   name: string;
   description: string;
+  hoursPerSemester: number;
   credits: number;
   hours: number;
+  type: 'lecture' | 'practice' | 'laboratory';
   teacherId?: string;
   groupId?: string;
   createdAt: Timestamp;
@@ -51,29 +80,20 @@ export interface Schedule {
   groupId: string;
   semester: number;
   year: number;
-  entries: ScheduleEntry[];
+  lessons: Lesson[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export interface ScheduleEntry {
-  id: string;
-  dayOfWeek: string;
-  startTime: string;
-  endTime: string;
-  subject: string;
-  teacherId: string;
-  room: string;
-}
-
 export interface Lesson {
   id: string;
-  subject: string;
-  teacherId: string;
-  room: string;
+  dayOfWeek: number;
   startTime: string;
   endTime: string;
-  dayOfWeek: string;
+  subjectId: string;
+  teacherId: string;
+  room: string;
+  type: 'lecture' | 'practice' | 'laboratory';
 }
 
 export interface Attendance {

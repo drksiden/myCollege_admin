@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -28,8 +28,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 
 const formSchema = z.object({
   groupId: z.string().min(1, "Выберите группу"),
@@ -63,18 +61,20 @@ export function ScheduleFormDialog({
 }: ScheduleFormDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
 
+  const defaultValues = useMemo(() => ({
+    groupId: initialData?.groupId || "",
+    subjectId: initialData?.subjectId || "",
+    teacherId: initialData?.teacherId || "",
+    date: initialData?.date || new Date(),
+    startTime: initialData?.startTime || "",
+    endTime: initialData?.endTime || "",
+    room: initialData?.room || "",
+    type: initialData?.type || "lecture",
+  }), [initialData]);
+
   const form = useForm<ScheduleFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      groupId: initialData?.groupId || "",
-      subjectId: initialData?.subjectId || "",
-      teacherId: initialData?.teacherId || "",
-      date: initialData?.date || new Date(),
-      startTime: initialData?.startTime || "",
-      endTime: initialData?.endTime || "",
-      room: initialData?.room || "",
-      type: initialData?.type || "lecture",
-    },
+    defaultValues,
   });
 
   const onSubmit = async (data: ScheduleFormValues) => {

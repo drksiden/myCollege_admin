@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -11,6 +10,16 @@ import { Timestamp } from 'firebase/firestore';
 interface GradeImportProps {
   teacherId: string;
   onSuccess?: () => void;
+}
+
+interface ExcelRow {
+  'Student ID': string;
+  'Subject ID': string;
+  'Group ID': string;
+  'Grade': number;
+  'Type': Grade['type'];
+  'Semester': number;
+  'Notes'?: string;
 }
 
 export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) {
@@ -29,7 +38,7 @@ export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) 
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
 
           // Validate and process each row
           for (const row of jsonData) {
@@ -39,10 +48,10 @@ export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) 
               groupId: row['Group ID'],
               teacherId,
               value: Number(row['Grade']),
-              type: row['Type'] as Grade['type'],
+              type: row['Type'],
               semester: Number(row['Semester']),
               date: Timestamp.now(),
-              notes: row['Notes'] as string | undefined,
+              notes: row['Notes'],
             };
 
             // Validate required fields

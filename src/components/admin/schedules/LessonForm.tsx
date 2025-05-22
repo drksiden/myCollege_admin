@@ -19,13 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area'; // For potentially long dropdowns
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Lesson, Subject, Teacher, User } from '@/types';
+import type { Lesson, Subject, Teacher } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 // Zod schema for the form
@@ -141,9 +141,9 @@ const LessonForm: React.FC<LessonFormProps> = ({
       // Toast for success will be shown by parent after successful Firestore op.
       // if (mode === 'create') form.reset(); // Parent dialog closure will likely unmount/reset
       
-    } catch (error: any) { // Should not happen if validation is robust, but good for safety
+    } catch (error: unknown) { // Should not happen if validation is robust, but good for safety
       console.error('Error preparing lesson data:', error);
-      toast.error(error.message || 'Failed to prepare lesson data.');
+      toast.error(error instanceof Error ? error.message : 'Failed to prepare lesson data.');
     } finally {
       setIsLoading(false);
     }

@@ -23,7 +23,8 @@ import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { createSchedule, updateSchedule, getSchedule } from '@/lib/firebaseService/scheduleService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
-import type { Schedule, Group } from '@/types';
+import type { Group } from '@/types';
+import { Timestamp } from 'firebase/firestore';
 
 // Zod schema for the form
 const scheduleMetadataSchema = z.object({
@@ -70,7 +71,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
         const fetchedGroups = await getAllGroups(db);
         setGroups(fetchedGroups);
         if (fetchedGroups.length === 0) {
-            toast.warn("No groups available. Please create groups first to assign schedules.");
+            toast.warning("No groups available. Please create groups first to assign schedules.");
         }
       } catch (error) {
         toast.error("Failed to load groups for selection.");
@@ -94,7 +95,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
         setInitialDataLoading(true);
         setIsLoading(true);
         try {
-          const schedule = await getSchedule(db, scheduleId);
+          const schedule = await getSchedule(scheduleId);
           if (schedule) {
             form.reset({
               groupId: schedule.groupId,
@@ -121,23 +122,26 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
   const onSubmit = async (values: ScheduleMetadataFormValues) => {
     setIsLoading(true);
     try {
-      const scheduleData = {
-        groupId: values.groupId,
-        semester: values.semester,
-        year: values.year,
-      };
-
       let resultingScheduleId = scheduleId; 
 
       if (mode === 'create') {
-        const newScheduleId = await createSchedule(db, scheduleData);
-        resultingScheduleId = newScheduleId;
+        const now = Timestamp.now();
+        const newSchedule = await createSchedule(values.groupId, {
+          groupId: values.groupId,
+          semester: values.semester,
+          year: values.year,
+          lessons: [],
+          createdAt: now,
+          updatedAt: now,
+        });
+        resultingScheduleId = newSchedule.id;
         toast.success('Schedule created successfully! You can now add lessons.');
       } else if (mode === 'edit' && scheduleId) {
-        await updateSchedule(db, scheduleId, { 
-            groupId: scheduleData.groupId, // Allow group change if needed
-            semester: scheduleData.semester, 
-            year: scheduleData.year 
+        await updateSchedule(scheduleId, {
+          groupId: values.groupId,
+          semester: values.semester,
+          year: values.year,
+          updatedAt: Timestamp.now(),
         });
         toast.success('Schedule metadata updated successfully!');
       }
@@ -145,9 +149,9 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
         onFormSubmitSuccess(resultingScheduleId);
       }
       if (mode === 'create') form.reset();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error submitting schedule metadata form:', error);
-      toast.error(error.message || 'Failed to save schedule metadata.');
+      toast.error(error instanceof Error ? error.message : 'Failed to save schedule metadata.');
     } finally {
       setIsLoading(false);
     }

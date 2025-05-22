@@ -24,9 +24,9 @@ import {
 import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import type { Schedule, Group, Subject, Teacher } from '../../types';
+import type { Schedule, Group, Subject, Teacher, Lesson } from '@/types';
 import { useAuth } from '../../contexts/AuthContext';
-import { ScheduleFormDialog } from '../../components/admin/ScheduleFormDialog';
+import ScheduleFormDialog from '../../components/admin/ScheduleFormDialog';
 
 const DAYS_OF_WEEK = [
   'Понедельник',

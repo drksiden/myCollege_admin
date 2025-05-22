@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,18 +17,18 @@ export default function NotificationCenter() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      loadNotifications();
-    }
-  }, [user]);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     if (!user) return;
     const data = await getNotifications(user.uid);
     setNotifications(data);
     setUnreadCount(data.filter(n => !n.read).length);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadNotifications();
+    }
+  }, [user, loadNotifications]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     await markNotificationAsRead(notificationId);

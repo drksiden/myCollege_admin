@@ -1,0 +1,184 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function currentUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSignedInUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && currentUserData().role == 'admin';
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && currentUserData().role == 'teacher';
+    }
+
+    function isStudent() {
+      return isAuthenticated() && currentUserData().role == 'student';
+    }
+
+    function isUpdatingAllowedFields(allowedFieldsToUpdate) {
+      let incomingData = request.resource.data;
+      let existingData = resource.data;
+      let permittedDiffFields = allowedFieldsToUpdate.concat(['updatedAt']);
+      let affectedKeys = incomingData.diff(existingData).affectedKeys();
+      let allChangesArePermitted = affectedKeys.hasOnly(permittedDiffFields);
+      let createdAtUnchanged = true;
+      if (existingData.keys().hasAny(['createdAt'])) {
+        createdAtUnchanged = incomingData.createdAt == existingData.createdAt;
+      }
+      return allChangesArePermitted && createdAtUnchanged;
+    }
+
+    function isCreatingWithAllowedFields(requiredFields, optionalFields) {
+      let incomingData = request.resource.data;
+      let allPotentiallyAllowed = requiredFields.concat(optionalFields).concat(['createdAt', 'updatedAt']);
+      let hasAllRequiredFields = incomingData.keys().hasAll(requiredFields);
+      let hasOnlyAllowedFields = incomingData.keys().hasOnly(allPotentiallyAllowed);
+      return hasAllRequiredFields && hasOnlyAllowedFields;
+    }
+
+    // Collection Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isAdmin() || isSignedInUser(userId));
+      allow create: if isAdmin();
+      allow update: if isAdmin() || 
+                     (isSignedInUser(userId) && 
+                      isUpdatingAllowedFields(['firstName', 'lastName', 'email', 'phone']));
+      allow delete: if isAdmin();
+    }
+
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || 
+                     (isTeacher() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      isCreatingWithAllowedFields(
+                        ['userId', 'firstName', 'lastName', 'email', 'specialization', 'experience', 'education'],
+                        ['phone', 'middleName', 'subjects', 'groups']
+                      ));
+      allow update: if isAdmin() || 
+                     (isTeacher() && 
+                      currentUserData().teacherId == teacherId &&
+                      isUpdatingAllowedFields(['specialization', 'experience', 'education', 'subjects', 'groups', 'phone', 'middleName', 'firstName', 'lastName', 'email']));
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['userId', 'firstName', 'lastName', 'email', 'groupId', 'enrollmentDate', 'status'],
+                        ['phone', 'middleName', 'studentCardId']
+                      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['name', 'description', 'credits', 'hours', 'hoursPerSemester', 'type'],
+                        []
+                      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['name', 'year', 'specialization'],
+                        ['students', 'scheduleId']
+                      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() &&
+                      isCreatingWithAllowedFields(
+                        ['groupId', 'semester', 'year'],
+                        ['lessons']
+                      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /journals/{journalId} {
+      function isAssignedTeacherToJournal(journalDoc) {
+        return isTeacher() && journalDoc.teacherId == currentUserData().teacherId;
+      }
+
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || 
+                    isAssignedTeacherToJournal(resource.data) || 
+                    (isStudent() && 
+                     get(/databases/$(database)/documents/students/$(currentUserData().studentId)).data.groupId == resource.data.groupId));
+      
+      allow create: if isAdmin() || 
+                     (isTeacher() && 
+                      request.resource.data.teacherId == currentUserData().teacherId &&
+                      isCreatingWithAllowedFields(
+                        ['groupId', 'subjectId', 'teacherId', 'semester', 'year'],
+                        ['entries']
+                      ));
+      
+      allow update: if isAdmin() || 
+                     (isAssignedTeacherToJournal(resource.data) &&
+                      isUpdatingAllowedFields(['entries']));
+      
+      allow delete: if isAdmin();
+    }
+
+    match /grades/{gradeId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || 
+                    (isTeacher() && resource.data.teacherId == currentUserData().teacherId) ||
+                    (isStudent() && resource.data.studentId == currentUserData().studentId));
+      
+      allow create: if isAdmin() || 
+                     (isTeacher() && 
+                      request.resource.data.teacherId == currentUserData().teacherId);
+      
+      allow update: if isAdmin() || 
+                     (isTeacher() && 
+                      resource.data.teacherId == currentUserData().teacherId);
+      
+      allow delete: if isAdmin();
+    }
+
+    match /comments/{commentId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || 
+                    (isTeacher() && resource.data.teacherId == currentUserData().teacherId) ||
+                    (isStudent() && resource.data.studentId == currentUserData().studentId));
+      
+      allow create: if isAuthenticated() && 
+                     (isAdmin() || 
+                      (isTeacher() && request.resource.data.teacherId == currentUserData().teacherId) ||
+                      (isStudent() && request.resource.data.studentId == currentUserData().studentId));
+      
+      allow update: if isAdmin() || 
+                     (isTeacher() && resource.data.teacherId == currentUserData().teacherId) ||
+                     (isStudent() && resource.data.studentId == currentUserData().studentId);
+      
+      allow delete: if isAdmin() || 
+                     (isTeacher() && resource.data.teacherId == currentUserData().teacherId) ||
+                     (isStudent() && resource.data.studentId == currentUserData().studentId);
+    }
+  }
+} 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -34,14 +34,12 @@ interface ManageStudentsDialogProps {
 }
 
 export function ManageStudentsDialog({ open, onOpenChange, group, onSuccess }: ManageStudentsDialogProps) {
-  const [loading, setLoading] = useState(true);
   const [students, setStudents] = useState<Student[]>([]);
   const [availableStudents, setAvailableStudents] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      setLoading(true);
       // Load current students in the group
       const currentStudents = await getStudentsInGroupDetails(db, group.students);
       setStudents(currentStudents);
@@ -56,16 +54,14 @@ export function ManageStudentsDialog({ open, onOpenChange, group, onSuccess }: M
     } catch (error) {
       console.error('Error loading students:', error);
       toast.error('Failed to load students');
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [group.students, group.id]);
 
   useEffect(() => {
     if (open) {
       loadData();
     }
-  }, [open, group.id]);
+  }, [open, loadData]);
 
   const handleAddStudent = async (student: User) => {
     try {

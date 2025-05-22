@@ -29,11 +29,10 @@ import { db } from '@/lib/firebase';
 import {
   addStudentToGroup,
   removeStudentFromGroup,
-  // getStudentsInGroupDetails, // Not directly used, fetching all and filtering
 } from '@/lib/firebaseService/groupService';
 import { getAllStudents as getAllStudentProfilesFromService } from '@/lib/firebaseService/studentService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Group, Student, User } from '@/types';
+import type { Group, Student } from '@/types';
 import { cn } from '@/lib/utils';
 // Removed Badge as it's not used in this simplified version
 
@@ -112,7 +111,7 @@ const ManageGroupStudentsDialog: React.FC<ManageGroupStudentsDialogProps> = ({
     if (open && group) {
       fetchStudentData();
     }
-  }, [open, group, fetchData]);
+  }, [open, group, fetchStudentData]);
 
   const handleAddStudentToGroup = async () => {
     if (!group || !selectedStudentIdToAdd) {

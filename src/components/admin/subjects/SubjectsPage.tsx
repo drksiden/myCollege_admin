@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -32,12 +32,17 @@ import { getSubjects, createSubject, updateSubject, deleteSubject } from '@/lib/
 import type { Subject } from '@/types';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
+import { Loader2 } from 'lucide-react';
 
 const formSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(2, 'Description must be at least 2 characters'),
   credits: z.coerce.number().min(0, 'Credits must be a positive number'),
   hours: z.coerce.number().min(0, 'Hours must be a positive number'),
+  hoursPerSemester: z.coerce.number().min(0, 'Hours per semester must be a positive number'),
+  type: z.enum(['lecture', 'practice', 'laboratory'], {
+    required_error: 'Type is required',
+  }),
 });
 
 type SubjectFormValues = z.infer<typeof formSchema>;
@@ -48,14 +53,18 @@ export default function SubjectsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
+  const defaultValues = useMemo(() => ({
+    name: '',
+    description: '',
+    credits: 0,
+    hours: 0,
+    hoursPerSemester: 0,
+    type: 'lecture' as const,
+  }), []);
+
   const form = useForm<SubjectFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      credits: 0,
-      hours: 0,
-    },
+    defaultValues,
   });
 
   useEffect(() => {
@@ -86,11 +95,11 @@ export default function SubjectsPage() {
       }
       setIsDialogOpen(false);
       setEditingSubject(null);
-      form.reset();
+      form.reset(defaultValues);
       loadSubjects();
     } catch (error) {
       console.error('Error saving subject:', error);
-      toast.error('Failed to save subject');
+      toast.error(error instanceof Error ? error.message : 'Failed to save subject');
     }
   };
 
@@ -101,6 +110,8 @@ export default function SubjectsPage() {
       description: subject.description,
       credits: subject.credits,
       hours: subject.hours,
+      hoursPerSemester: subject.hoursPerSemester,
+      type: subject.type,
     });
     setIsDialogOpen(true);
   };
@@ -116,12 +127,17 @@ export default function SubjectsPage() {
       loadSubjects();
     } catch (error) {
       console.error('Error deleting subject:', error);
-      toast.error('Failed to delete subject');
+      toast.error(error instanceof Error ? error.message : 'Failed to delete subject');
     }
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex items-center justify-center p-6">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading subjects...
+      </div>
+    );
   }
 
   return (
@@ -201,6 +217,34 @@ export default function SubjectsPage() {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="hoursPerSemester"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hours per Semester</FormLabel>
+                      <FormControl>
+                        <Input type="number" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <Button type="submit">
                   {editingSubject ? 'Update' : 'Create'}
                 </Button>
@@ -217,6 +261,8 @@ export default function SubjectsPage() {
             <TableHead>Description</TableHead>
             <TableHead>Credits</TableHead>
             <TableHead>Hours</TableHead>
+            <TableHead>Hours per Semester</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -227,6 +273,8 @@ export default function SubjectsPage() {
               <TableCell>{subject.description}</TableCell>
               <TableCell>{subject.credits}</TableCell>
               <TableCell>{subject.hours}</TableCell>
+              <TableCell>{subject.hoursPerSemester}</TableCell>
+              <TableCell>{subject.type}</TableCell>
               <TableCell>
                 <div className="flex space-x-2">
                   <Button

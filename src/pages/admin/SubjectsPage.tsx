@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -24,41 +24,39 @@ const SubjectsPage: React.FC = () => {
 
   const functions = getFunctions();
 
-  // Загрузка предметов
-  useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        const getSubjectsFn = httpsCallable(functions, 'getSubjects');
-        const result = await getSubjectsFn();
-        const { subjects } = result.data as { subjects: Subject[] };
-        setSubjects(subjects);
-      } catch (error) {
-        console.error('Error fetching subjects:', error);
-        toast.error('Ошибка при загрузке предметов');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchSubjects = useCallback(async () => {
+    try {
+      const getSubjectsFn = httpsCallable(functions, 'getSubjects');
+      const result = await getSubjectsFn();
+      const { subjects } = result.data as { subjects: Subject[] };
+      setSubjects(subjects);
+    } catch (error) {
+      console.error('Error fetching subjects:', error);
+      toast.error('Ошибка при загрузке предметов');
+    } finally {
+      setLoading(false);
+    }
+  }, [functions]);
 
+  const fetchTeachers = useCallback(async () => {
+    try {
+      const getTeachersFn = httpsCallable(functions, 'getTeachers');
+      const result = await getTeachersFn();
+      const { teachers } = result.data as { teachers: Teacher[] };
+      setTeachers(teachers);
+    } catch (error) {
+      console.error('Error fetching teachers:', error);
+      toast.error('Ошибка при загрузке преподавателей');
+    }
+  }, [functions]);
+
+  useEffect(() => {
     fetchSubjects();
-  }, []);
+  }, [fetchSubjects]);
 
-  // Загрузка преподавателей
   useEffect(() => {
-    const fetchTeachers = async () => {
-      try {
-        const getTeachersFn = httpsCallable(functions, 'getTeachers');
-        const result = await getTeachersFn();
-        const { teachers } = result.data as { teachers: Teacher[] };
-        setTeachers(teachers);
-      } catch (error) {
-        console.error('Error fetching teachers:', error);
-        toast.error('Ошибка при загрузке преподавателей');
-      }
-    };
-
     fetchTeachers();
-  }, []);
+  }, [fetchTeachers]);
 
   const handleEdit = (subject: Subject) => {
     setSelectedSubject(subject);

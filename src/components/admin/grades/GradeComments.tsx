@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,11 +21,7 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
   const [editingContent, setEditingContent] = useState('');
   const { user } = useAuth();
 
-  useEffect(() => {
-    loadComments();
-  }, [gradeId]);
-
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     try {
       const data = await getComments(gradeId);
       setComments(data);
@@ -33,7 +29,11 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
       console.error('Error loading comments:', error);
       toast.error('Failed to load comments');
     }
-  };
+  }, [gradeId]);
+
+  useEffect(() => {
+    loadComments();
+  }, [loadComments]);
 
   const handleAddComment = async () => {
     if (!user || !newComment.trim()) return;

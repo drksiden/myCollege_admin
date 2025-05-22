@@ -1,12 +1,10 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
-import type { Group } from "@/pages/admin/GroupsPage";
-import type { User } from "@/pages/admin/UsersPage";
+import type { Group, User, Lesson } from "@/types";
 import { db } from "@/lib/firebase";
 import {
   collection,
   doc,
   getDocs,
-  setDoc,
   deleteDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -93,7 +91,7 @@ export const getGroupSchedule = async (groupId: string) => {
 };
 
 // Сохранить расписание группы (batch write)
-export const saveGroupSchedule = async (groupId: string, schedule: any[]) => {
+export const saveGroupSchedule = async (groupId: string, schedule: Lesson[]) => {
   const batch = writeBatch(db);
   const scheduleRef = collection(db, `groups/${groupId}/schedule`);
 

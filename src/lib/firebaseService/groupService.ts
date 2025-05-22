@@ -32,12 +32,12 @@ export type { Group };
  */
 export const createGroup = async (
   db: Firestore,
-  groupData: Pick<Group, 'name' | 'year' | 'specialization'>
+  groupData: Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId'>
 ): Promise<string> => {
   const dataWithDefaults: Omit<Group, 'id'> = {
     ...groupData,
-    students: [], // Initialize with an empty array of student IDs
-    scheduleId: "", // Initialize with an empty string or null
+    students: groupData.students || [], // Use provided students array or empty array
+    scheduleId: groupData.scheduleId || "", // Use provided scheduleId or empty string
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
   };
@@ -88,7 +88,7 @@ export const getAllGroups = async (db: Firestore): Promise<Group[]> => {
 export const updateGroup = async (
   db: Firestore,
   groupId: string,
-  updates: Partial<Pick<Group, 'name' | 'year' | 'specialization'>>
+  updates: Partial<Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId'>>
 ): Promise<void> => {
   const groupRef = doc(db, 'groups', groupId);
   const dataWithTimestamp = {

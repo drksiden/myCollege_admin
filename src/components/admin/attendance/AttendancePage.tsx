@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,6 +41,7 @@ import { getAttendanceByDate, createAttendanceRecord } from '@/lib/firebaseServi
 import type { Group, Subject, Attendance } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { Timestamp } from 'firebase/firestore';
 
 const formSchema = z.object({
   groupId: z.string().min(1, 'Group is required'),
@@ -73,15 +74,26 @@ export default function AttendancePage() {
     },
   });
 
+  const loadAttendance = useCallback(async () => {
+    try {
+      const data = await getAttendanceByDate(selectedDate);
+      setAttendance(data);
+    } catch (error) {
+      console.error('Error loading attendance:', error);
+      toast.error('Failed to load attendance records');
+    }
+  }, [selectedDate]);
+
   useEffect(() => {
     loadData();
   }, []);
 
+  const groupId = form.watch('groupId');
   useEffect(() => {
-    if (form.watch('groupId')) {
+    if (groupId) {
       loadAttendance();
     }
-  }, [form.watch('groupId'), selectedDate]);
+  }, [groupId, selectedDate, loadAttendance]);
 
   const loadData = async () => {
     try {
@@ -100,16 +112,6 @@ export default function AttendancePage() {
     }
   };
 
-  const loadAttendance = async () => {
-    try {
-      const data = await getAttendanceByDate(selectedDate);
-      setAttendance(data);
-    } catch (error) {
-      console.error('Error loading attendance:', error);
-      toast.error('Failed to load attendance records');
-    }
-  };
-
   const onSubmit = async (values: AttendanceFormValues) => {
     try {
       for (const record of values.records) {
@@ -117,7 +119,7 @@ export default function AttendancePage() {
           studentId: record.studentId,
           subjectId: values.subjectId,
           groupId: values.groupId,
-          date: new Date(values.date),
+          date: Timestamp.fromDate(new Date(values.date)),
           status: record.status,
           notes: record.notes,
         });
