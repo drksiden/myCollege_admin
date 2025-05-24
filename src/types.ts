@@ -87,13 +87,14 @@ export interface Schedule {
 
 export interface Lesson {
   id: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
   subjectId: string;
   teacherId: string;
+  dayOfWeek: number; // 1-7 (понедельник-воскресенье)
+  startTime: string; // формат "HH:mm"
+  endTime: string; // формат "HH:mm"
   room: string;
   type: 'lecture' | 'practice' | 'laboratory';
+  weekType?: 'odd' | 'even' | 'all'; // для чередующихся недель
 }
 
 export interface Attendance {

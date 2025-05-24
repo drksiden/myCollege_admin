@@ -22,37 +22,199 @@ import { db } from '@/lib/firebase';
 // Re-export types for convenience
 export type { Schedule, Lesson, ScheduleEntry };
 
+const SCHEDULES_COLLECTION = 'schedules';
+
 /**
- * Creates a new schedule in Firestore.
- * @param db Firestore instance.
- * @param scheduleData Object containing groupId, semester, year.
- *                     'lessons' array is initialized as empty.
- * @returns Promise<string> The ID of the newly created schedule.
+ * Создает новое расписание для группы
+ * @param db Firestore instance
+ * @param scheduleData Данные расписания
+ * @returns Promise<Schedule>
  */
-export const createSchedule = async (groupId: string, schedule: Omit<Schedule, 'id'>) => {
-  const scheduleData = {
-    ...schedule,
-    groupId,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+export const createSchedule = async (
+  db: any,
+  scheduleData: Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<Schedule> => {
+  const schedulesCollection = collection(db, SCHEDULES_COLLECTION);
+  const newSchedule = {
+    ...scheduleData,
+    createdAt: serverTimestamp() as Timestamp,
+    updatedAt: serverTimestamp() as Timestamp,
   };
-  const docRef = await addDoc(collection(db, 'schedules'), scheduleData);
-  return { id: docRef.id, ...scheduleData };
+  const docRef = await addDoc(schedulesCollection, newSchedule);
+  return {
+    id: docRef.id,
+    ...newSchedule,
+  } as Schedule;
 };
 
 /**
- * Fetches a specific schedule from Firestore by its document ID.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule.
- * @returns Promise<Schedule | null> The schedule or null if not found.
+ * Обновляет существующее расписание
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @param updates Обновленные данные
+ * @returns Promise<void>
  */
-export const getSchedule = async (scheduleId: string) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) {
+export const updateSchedule = async (
+  db: any,
+  scheduleId: string,
+  updates: Partial<Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  const dataWithTimestamp = {
+    ...updates,
+    updatedAt: serverTimestamp() as Timestamp,
+  };
+  return updateDoc(scheduleRef, dataWithTimestamp);
+};
+
+/**
+ * Удаляет расписание
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @returns Promise<void>
+ */
+export const deleteSchedule = async (
+  db: any,
+  scheduleId: string
+): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  return deleteDoc(scheduleRef);
+};
+
+/**
+ * Получает расписание по ID
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @returns Promise<Schedule | null>
+ */
+export const getSchedule = async (
+  db: any,
+  scheduleId: string
+): Promise<Schedule | null> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  const scheduleDoc = await getDoc(scheduleRef);
+  if (!scheduleDoc.exists()) {
     return null;
   }
-  return { id: docSnap.id, ...docSnap.data() } as Schedule;
+  return {
+    id: scheduleDoc.id,
+    ...scheduleDoc.data(),
+  } as Schedule;
+};
+
+/**
+ * Получает расписание группы
+ * @param db Firestore instance
+ * @param groupId ID группы
+ * @param semester Семестр
+ * @param year Учебный год
+ * @returns Promise<Schedule | null>
+ */
+export const getGroupSchedule = async (
+  db: any,
+  groupId: string,
+  semester: number,
+  year: number
+): Promise<Schedule | null> => {
+  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
+  const q = query(
+    schedulesRef,
+    where('groupId', '==', groupId),
+    where('semester', '==', semester),
+    where('year', '==', year)
+  );
+  const querySnapshot = await getDocs(q);
+  if (querySnapshot.empty) {
+    return null;
+  }
+  const doc = querySnapshot.docs[0];
+  return {
+    id: doc.id,
+    ...doc.data(),
+  } as Schedule;
+};
+
+/**
+ * Добавляет урок в расписание
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @param lesson Данные урока
+ * @returns Promise<void>
+ */
+export const addLesson = async (
+  db: any,
+  scheduleId: string,
+  lesson: Omit<Lesson, 'id'>
+): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  const scheduleDoc = await getDoc(scheduleRef);
+  if (!scheduleDoc.exists()) {
+    throw new Error('Schedule not found');
+  }
+  const schedule = scheduleDoc.data() as Schedule;
+  const newLesson = {
+    ...lesson,
+    id: crypto.randomUUID(), // Генерируем уникальный ID для урока
+  };
+  const updatedLessons = [...schedule.lessons, newLesson];
+  return updateDoc(scheduleRef, {
+    lessons: updatedLessons,
+    updatedAt: serverTimestamp() as Timestamp,
+  });
+};
+
+/**
+ * Обновляет урок в расписании
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @param lessonId ID урока
+ * @param updates Обновленные данные урока
+ * @returns Promise<void>
+ */
+export const updateLesson = async (
+  db: any,
+  scheduleId: string,
+  lessonId: string,
+  updates: Partial<Omit<Lesson, 'id'>>
+): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  const scheduleDoc = await getDoc(scheduleRef);
+  if (!scheduleDoc.exists()) {
+    throw new Error('Schedule not found');
+  }
+  const schedule = scheduleDoc.data() as Schedule;
+  const updatedLessons = schedule.lessons.map(lesson =>
+    lesson.id === lessonId ? { ...lesson, ...updates } : lesson
+  );
+  return updateDoc(scheduleRef, {
+    lessons: updatedLessons,
+    updatedAt: serverTimestamp() as Timestamp,
+  });
+};
+
+/**
+ * Удаляет урок из расписания
+ * @param db Firestore instance
+ * @param scheduleId ID расписания
+ * @param lessonId ID урока
+ * @returns Promise<void>
+ */
+export const deleteLesson = async (
+  db: any,
+  scheduleId: string,
+  lessonId: string
+): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  const scheduleDoc = await getDoc(scheduleRef);
+  if (!scheduleDoc.exists()) {
+    throw new Error('Schedule not found');
+  }
+  const schedule = scheduleDoc.data() as Schedule;
+  const updatedLessons = schedule.lessons.filter(lesson => lesson.id !== lessonId);
+  return updateDoc(scheduleRef, {
+    lessons: updatedLessons,
+    updatedAt: serverTimestamp() as Timestamp,
+  });
 };
 
 /**
@@ -69,108 +231,6 @@ export const getAllSchedules = async (db: Firestore): Promise<Schedule[]> => {
     id: docSnap.id,
     ...docSnap.data(),
   } as Schedule));
-};
-
-/**
- * Updates schedule metadata (groupId, semester, year) or the entire lessons array.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule to update.
- * @param updates Partial data of Schedule to update (groupId, semester, year, lessons).
- * @returns Promise<void>
- */
-export const updateSchedule = async (scheduleId: string, schedule: Partial<Schedule>) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  const updateData = {
-    ...schedule,
-    updatedAt: new Date(),
-  };
-  await updateDoc(docRef, updateData);
-  return { id: scheduleId, ...updateData };
-};
-
-/**
- * Deletes a schedule from Firestore.
- * IMPORTANT: This does not update group.scheduleId. That should be handled by the calling function.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule to delete.
- * @returns Promise<void>
- */
-export const deleteSchedule = async (scheduleId: string) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  await deleteDoc(docRef);
-};
-
-// --- Lesson Management within a Schedule (Phase 1: Modify lessons array and update schedule) ---
-
-/**
- * Adds a Lesson object to the 'lessons' array of a specific schedule.
- * Fetches the schedule, adds the lesson (with a new UUID if id is missing), and updates the schedule.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule.
- * @param lessonData The Lesson object to add. If lessonData.id is not provided, a new UUID will be generated.
- * @returns Promise<void>
- */
-export const addLessonToSchedule = async (
-  db: Firestore,
-  scheduleId: string,
-  lessonData: Omit<Lesson, 'id'> & { id?: string } // Allow id to be optional for creation
-): Promise<void> => {
-  const schedule = await getSchedule(scheduleId);
-  if (!schedule) {
-    throw new Error("Schedule not found");
-  }
-  const newLesson: Lesson = {
-    ...lessonData,
-    id: lessonData.id || uuidv4(), // Ensure lesson has a unique ID
-  };
-  const updatedLessons = [...schedule.lessons, newLesson];
-  return updateSchedule(scheduleId, { lessons: updatedLessons });
-};
-
-/**
- * Removes a lesson from the 'lessons' array of a schedule based on lesson.id.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule.
- * @param lessonId The ID of the lesson to remove.
- * @returns Promise<void>
- */
-export const removeLessonFromSchedule = async (
-  db: Firestore,
-  scheduleId: string,
-  lessonId: string
-): Promise<void> => {
-  const schedule = await getSchedule(scheduleId);
-  if (!schedule) {
-    throw new Error("Schedule not found");
-  }
-  const updatedLessons = schedule.lessons.filter(lesson => lesson.id !== lessonId);
-  return updateSchedule(scheduleId, { lessons: updatedLessons });
-};
-
-/**
- * Updates a specific lesson within the 'lessons' array of a schedule.
- * The updatedLesson object must have the same 'id' as an existing lesson.
- * @param db Firestore instance.
- * @param scheduleId The document ID of the schedule.
- * @param updatedLesson The updated Lesson object.
- * @returns Promise<void>
- */
-export const updateLessonInSchedule = async (
-  db: Firestore,
-  scheduleId: string,
-  updatedLesson: Lesson
-): Promise<void> => {
-  const schedule = await getSchedule(scheduleId);
-  if (!schedule) {
-    throw new Error("Schedule not found");
-  }
-  const lessonIndex = schedule.lessons.findIndex(lesson => lesson.id === updatedLesson.id);
-  if (lessonIndex === -1) {
-    throw new Error("Lesson not found in schedule");
-  }
-  const updatedLessons = [...schedule.lessons];
-  updatedLessons[lessonIndex] = updatedLesson;
-  return updateSchedule(scheduleId, { lessons: updatedLessons });
 };
 
 // Get schedule by group ID

@@ -33,7 +33,7 @@ export interface Student {
   id: string;
   userId: string;
   groupId: string;
-  studentId: string;
+  studentCardId: string;
   status: 'active' | 'inactive';
   createdAt: Timestamp;
   updatedAt: Timestamp;
