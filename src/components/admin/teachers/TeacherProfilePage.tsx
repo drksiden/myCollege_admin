@@ -31,8 +31,9 @@ import * as z from 'zod';
 import { db } from '@/lib/firebase';
 import { getTeacherProfile, updateTeacherProfile } from '@/lib/firebaseService/teacherService';
 import { getGroup } from '@/lib/firebaseService/groupService';
-import type { Teacher, Group } from '@/types';
+import type { Teacher, Group, Subject } from '@/types';
 import { toast } from 'sonner';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 
 const formSchema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
@@ -50,6 +51,7 @@ export function TeacherProfilePage() {
   const navigate = useNavigate();
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -73,7 +75,7 @@ export function TeacherProfilePage() {
         setLoading(true);
         const teacherData = await getTeacherProfile(db, teacherId);
         if (!teacherData) {
-          toast.error('Teacher not found');
+          toast.error('Преподаватель не найден');
           navigate('/admin/teachers');
           return;
         }
@@ -86,6 +88,11 @@ export function TeacherProfilePage() {
         const groupsData = await Promise.all(groupPromises);
         setGroups(groupsData.filter((group): group is Group => group !== null));
 
+        // Load subjects for this teacher
+        const allSubjects = await getAllSubjects(db);
+        const teacherSubjects = allSubjects.filter(s => s.teacherId === teacherData.id);
+        setSubjects(teacherSubjects);
+
         // Set form values
         form.reset({
           firstName: teacherData.firstName,
@@ -96,8 +103,8 @@ export function TeacherProfilePage() {
           education: teacherData.education || '',
         });
       } catch (error) {
-        console.error('Error loading teacher data:', error);
-        toast.error('Failed to load teacher data');
+        console.error('Ошибка при загрузке данных преподавателя:', error);
+        toast.error('Не удалось загрузить данные преподавателя');
       } finally {
         setLoading(false);
       }
@@ -165,9 +172,9 @@ export function TeacherProfilePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Profile Information</CardTitle>
+            <CardTitle>Информация о преподавателе</CardTitle>
             <CardDescription>
-              Basic information about the teacher
+              Основная информация о преподавателе
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -273,9 +280,9 @@ export function TeacherProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Assigned Groups</CardTitle>
+            <CardTitle>Назначенные группы</CardTitle>
             <CardDescription>
-              Groups this teacher is assigned to
+              Группы, к которым прикреплён преподаватель
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -310,6 +317,39 @@ export function TeacherProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Преподаваемые предметы</CardTitle>
+          <CardDescription>
+            Все предметы, которые ведёт этот преподаватель
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {subjects.length === 0 ? (
+            <div className="text-muted-foreground py-4">Нет назначенных предметов</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Название</TableHead>
+                  <TableHead>Описание</TableHead>
+                  <TableHead>Часы в неделю</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {subjects.map(subject => (
+                  <TableRow key={subject.id}>
+                    <TableCell>{subject.name}</TableCell>
+                    <TableCell>{subject.description}</TableCell>
+                    <TableCell>{subject.hoursPerWeek || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 } 

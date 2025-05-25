@@ -151,12 +151,12 @@ const ManageSubjectsPage: React.FC = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {formMode === 'create' ? 'Create New Subject' : 'Edit Subject'}
+              {formMode === 'create' ? 'Создать предмет' : 'Редактировать предмет'}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
-                ? 'Fill in the details to add a new subject to the catalog.'
-                : `Editing the subject: ${selectedSubject?.name || ''}`}
+                ? 'Заполните данные для добавления нового предмета.'
+                : `Редактирование предмета: ${selectedSubject?.name || ''}`}
             </DialogDescription>
           </DialogHeader>
           {/* Render form only when dialog is open to ensure correct initial values */}
@@ -176,15 +176,14 @@ const ManageSubjectsPage: React.FC = () => {
         <AlertDialog open={!!subjectToDelete} onOpenChange={() => setSubjectToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>Удалить предмет?</AlertDialogTitle>
               <AlertDialogDescription>
-                This action will permanently delete the subject <span className="font-semibold">"{subjectToDelete.name}"</span>.
-                This operation cannot be undone.
+                Это действие навсегда удалит предмет <span className="font-semibold">"{subjectToDelete.name}"</span> из системы. Это действие нельзя отменить.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteSubject} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Delete Subject</AlertDialogAction>
+              <AlertDialogCancel>Отмена</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteSubject} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Удалить</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -193,13 +192,13 @@ const ManageSubjectsPage: React.FC = () => {
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Subject Management</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Управление предметами</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Manage academic subjects offered in the institution.
+              Управляйте учебными предметами, которые преподаются в учреждении.
             </p>
           </div>
           <Button onClick={handleOpenCreateDialog}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Subject
+            <PlusCircle className="mr-2 h-4 w-4" /> Добавить предмет
           </Button>
         </div>
       </header>
@@ -209,52 +208,55 @@ const ManageSubjectsPage: React.FC = () => {
           {subjects.length === 0 && !isLoading ? (
             <div className="p-10 text-center text-muted-foreground">
               <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium">No subjects found</h3>
-              <p className="mt-1 text-sm">Get started by adding a new subject to the catalog.</p>
+              <h3 className="text-lg font-medium">Нет предметов</h3>
+              <p className="mt-1 text-sm">Добавьте новый предмет в каталог.</p>
             </div>
           ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[25%]">Name</TableHead>
-                <TableHead className="w-[15%]">Type</TableHead>
-                <TableHead className="w-[15%] text-center">Hours/Semester</TableHead>
-                <TableHead className="w-[35%]">Description</TableHead>
-                <TableHead className="text-right w-[10%]">Actions</TableHead>
+                <TableHead className="w-[25%]">Название</TableHead>
+                <TableHead className="w-[20%]">Преподаватель</TableHead>
+                <TableHead className="w-[15%] text-center">Часы в неделю</TableHead>
+                <TableHead className="w-[35%]">Описание</TableHead>
+                <TableHead className="text-right w-[10%]">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {subjects.map(subject => (
-                <TableRow key={subject.id}>
-                  <TableCell className="font-medium">{subject.name}</TableCell>
-                  <TableCell>{getSubjectTypeName(subject.type)}</TableCell>
-                  <TableCell className="text-center">{subject.hoursPerSemester}</TableCell>
-                  <TableCell className="truncate max-w-sm" title={subject.description}>{subject.description}</TableCell>
-                  <TableCell className="text-right">
-                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleOpenEditDialog(subject)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={() => handleDeleteInitiate(subject)} 
-                          className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {subjects.map(subject => {
+                const teacher = teachers.find(t => t.id === subject.teacherId);
+                return (
+                  <TableRow key={subject.id}>
+                    <TableCell className="font-medium">{subject.name}</TableCell>
+                    <TableCell>{teacher ? `${teacher.lastName} ${teacher.firstName} ${teacher.patronymic || ''}` : '—'}</TableCell>
+                    <TableCell className="text-center">{subject.hoursPerWeek || '-'}</TableCell>
+                    <TableCell className="truncate max-w-sm" title={subject.description}>{subject.description}</TableCell>
+                    <TableCell className="text-right">
+                       <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Открыть меню</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => handleOpenEditDialog(subject)}>
+                            <Edit2 className="mr-2 h-4 w-4" /> Редактировать
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteInitiate(subject)} 
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> Удалить
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           )}

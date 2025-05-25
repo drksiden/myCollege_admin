@@ -71,7 +71,7 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
       const fetchProfile = async () => {
         setInitialDataLoading(true);
         try {
-          const profile = await getTeacherProfile(teacherProfileId);
+          const profile = await getTeacherProfile(db, teacherProfileId);
           if (profile) {
             form.reset({
               specialization: profile.specialization,
