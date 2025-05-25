@@ -1,5 +1,5 @@
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, updateDoc, writeBatch, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Notification } from '@/types';
 
 export async function createNotification(data: Omit<Notification, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -42,15 +42,11 @@ export async function getUnreadNotifications(userId: string) {
 }
 
 export async function markNotificationAsRead(notificationId: string) {
-  const notificationsRef = collection(db, 'notifications');
-  const notificationDoc = await getDocs(query(notificationsRef, where('id', '==', notificationId)));
-  if (!notificationDoc.empty) {
-    const docRef = notificationDoc.docs[0].ref;
-    await docRef.update({
-      read: true,
-      updatedAt: Timestamp.now(),
-    });
-  }
+  const notificationRef = doc(db, 'notifications', notificationId);
+  await updateDoc(notificationRef, {
+    read: true,
+    updatedAt: Timestamp.now(),
+  });
 }
 
 export async function markAllNotificationsAsRead(userId: string) {
@@ -61,7 +57,7 @@ export async function markAllNotificationsAsRead(userId: string) {
     where('read', '==', false)
   );
   const snapshot = await getDocs(q);
-  const batch = db.batch();
+  const batch = writeBatch(db);
   snapshot.docs.forEach(doc => {
     batch.update(doc.ref, {
       read: true,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle, Edit2, Trash2, Users, ListChecks } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Edit2, Trash2, ListChecks, Eye } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,13 +27,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import {
-  getAllGroups,
-  deleteGroupInService, // Renamed service function
-} from '@/lib/firebaseService/groupService';
-import { updateStudentProfile } from '@/lib/firebaseService/studentService'; // To update student's groupId
+import { getAllGroups } from '@/lib/firebaseService/groupService';
 import GroupForm from '@/components/admin/groups/GroupForm';
-import ManageGroupStudentsDialog from '@/components/admin/groups/ManageGroupStudentsDialog';
 import type { Group } from '@/types';
 import {
   AlertDialog,
@@ -45,15 +41,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Toaster } from '@/components/ui/sonner';
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc, setDoc } from 'firebase/firestore';
 
 const ManageGroupsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<Group | null>(null);
-  const [selectedGroupForStudents, setSelectedGroupForStudents] = useState<Group | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [showGroupFormDialog, setShowGroupFormDialog] = useState(false);
-  const [showManageStudentsDialog, setShowManageStudentsDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
   const [lastDeletedGroup, setLastDeletedGroup] = useState<Group | null>(null);
@@ -62,7 +57,7 @@ const ManageGroupsPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const fetchedGroups = await getAllGroups(db);
+      const fetchedGroups = await getAllGroups();
       setGroups(fetchedGroups);
     } catch (error) {
       console.error('Error fetching groups:', error);
@@ -88,21 +83,10 @@ const ManageGroupsPage: React.FC = () => {
     setShowGroupFormDialog(true);
   };
 
-  const handleOpenManageStudentsDialog = (group: Group) => {
-    setSelectedGroupForStudents(group);
-    setShowManageStudentsDialog(true);
-  };
-
   const handleGroupFormSuccess = () => {
     setShowGroupFormDialog(false);
     setSelectedGroupForEdit(null);
     fetchData(); 
-  };
-
-  const handleManageStudentsSuccess = () => {
-    // ManageGroupStudentsDialog handles its own open state.
-    // We just need to refresh the group list to show updated student counts.
-    fetchData();
   };
 
   const handleDeleteInitiate = (group: Group) => {
@@ -114,7 +98,7 @@ const ManageGroupsPage: React.FC = () => {
     setIsLoading(true);
     try {
       const groupBackup = { ...groupToDelete };
-      // Удаляем группу и отвязываем студентов (как раньше)
+      // Удаляем группу и отвязываем студентов
       const batch = writeBatch(db);
       if (groupToDelete.students && groupToDelete.students.length > 0) {
         groupToDelete.students.forEach(studentProfileId => {
@@ -133,7 +117,7 @@ const ManageGroupsPage: React.FC = () => {
             if (!lastDeletedGroup) return;
             // Восстанавливаем группу и студентов
             const groupDocRef = doc(db, 'groups', lastDeletedGroup.id);
-            await groupDocRef.set({ ...lastDeletedGroup });
+            await setDoc(groupDocRef, { ...lastDeletedGroup });
             if (lastDeletedGroup.students && lastDeletedGroup.students.length > 0) {
               const batchRestore = writeBatch(db);
               lastDeletedGroup.students.forEach(studentProfileId => {
@@ -172,7 +156,7 @@ const ManageGroupsPage: React.FC = () => {
 
       {/* Dialog for Create/Edit Group */}
       <Dialog open={showGroupFormDialog} onOpenChange={(open) => {
-        if (!open) setSelectedGroupForEdit(null); // Clear selection on close
+        if (!open) setSelectedGroupForEdit(null);
         setShowGroupFormDialog(open);
       }}>
         <DialogContent className="sm:max-w-md">
@@ -196,20 +180,6 @@ const ManageGroupsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* Dialog for Managing Students in a Group */}
-      {selectedGroupForStudents && (
-          <ManageGroupStudentsDialog
-            group={selectedGroupForStudents}
-            open={showManageStudentsDialog}
-            onOpenChange={(open) => {
-                 if(!open) setSelectedGroupForStudents(null);
-                 setShowManageStudentsDialog(open);
-            }}
-            onStudentsManaged={handleManageStudentsSuccess}
-          />
-      )}
-
 
       {/* Alert Dialog for Delete Confirmation */}
       {groupToDelete && (
@@ -281,19 +251,19 @@ const ManageGroupsPage: React.FC = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleOpenEditGroupDialog(group)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit Details
+                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => navigate(`/admin/groups/${group.id}`)}>
+                          <Eye className="mr-2 h-4 w-4" /> Подробнее
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleOpenManageStudentsDialog(group)}>
-                          <Users className="mr-2 h-4 w-4" /> Manage Students
+                        <DropdownMenuItem onClick={() => handleOpenEditGroupDialog(group)}>
+                          <Edit2 className="mr-2 h-4 w-4" /> Редактировать
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
                           onClick={() => handleDeleteInitiate(group)} 
                           className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" /> Delete Group
+                          <Trash2 className="mr-2 h-4 w-4" /> Удалить
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

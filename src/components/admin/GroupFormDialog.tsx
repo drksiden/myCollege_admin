@@ -21,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Group } from '@/types';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
-import { db } from '@/lib/firebaseService/firebase';
+import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
@@ -73,7 +73,7 @@ export default function GroupFormDialog({
         });
         toast.success('Group updated successfully');
       } else {
-        await createGroup(db, {
+        await createGroup({
           name: values.name,
           year: values.year,
           specialization: values.specialization,

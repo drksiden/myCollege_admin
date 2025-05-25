@@ -17,58 +17,83 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { db } from '@/lib/firebase';
-import { getGroup, getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
+import { getGroup } from '@/lib/firebaseService/groupService';
+import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
+import { getUsersByRole, getUserById } from '@/lib/firebaseService/userService';
 import { ScheduleTab } from './ScheduleTab';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
 import type { Group, Student, User } from '@/types';
 import { toast } from 'sonner';
+import { db } from '@/lib/firebase';
+
+interface StudentWithUserData extends Student {
+  userData?: User;
+  phone?: string;
+  address?: string;
+}
 
 export function GroupDetailsPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentWithUserData[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isManageTeachersOpen, setIsManageTeachersOpen] = useState(false);
 
-  useEffect(() => {
-    const loadGroupData = async () => {
-      if (!groupId) return;
+  const loadGroupData = async () => {
+    if (!groupId) return;
 
-      try {
-        setLoading(true);
-        // Load group details
-        const groupData = await getGroup(db, groupId);
-        if (!groupData) {
-          toast.error('Group not found');
-          navigate('/admin/groups');
-          return;
-        }
-        setGroup(groupData);
-
-        // Load students
-        const studentsData = await getStudentsInGroupDetails(db, groupData.students);
-        setStudents(studentsData);
-
-        // Load teachers
-        const teachersData = await getUsersByRole(db, 'teacher');
-        setTeachers(teachersData);
-      } catch (error) {
-        console.error('Error loading group data:', error);
-        toast.error('Failed to load group data');
-      } finally {
-        setLoading(false);
+    try {
+      setLoading(true);
+      // Load group details
+      const groupData = await getGroup(groupId);
+      if (!groupData) {
+        toast.error('Группа не найдена');
+        navigate('/admin/groups');
+        return;
       }
-    };
+      console.log('Loaded group data:', groupData);
+      setGroup(groupData);
 
+      // Load students
+      console.log('Loading students for group:', groupId);
+      const studentsData = await getStudentsByGroup(groupId);
+      console.log('Loaded students data:', studentsData);
+      
+      // Load user data for each student
+      const studentsWithUserData = await Promise.all(
+        studentsData.map(async (student) => {
+          console.log('Loading user data for student:', student);
+          const userData = await getUserById(db, student.userId);
+          console.log('Loaded user data:', userData);
+          return { 
+            ...student, 
+            userData: userData || undefined 
+          } as StudentWithUserData;
+        })
+      );
+      
+      console.log('Final students with user data:', studentsWithUserData);
+      setStudents(studentsWithUserData);
+
+      // Load teachers
+      const teachersData = await getUsersByRole(db, 'teacher');
+      setTeachers(teachersData);
+    } catch (error) {
+      console.error('Error loading group data:', error);
+      toast.error('Не удалось загрузить данные группы');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadGroupData();
   }, [groupId, navigate]);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <div>Загрузка...</div>;
   }
 
   if (!group) {
@@ -76,119 +101,181 @@ export function GroupDetailsPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">{group.name}</h1>
-          <p className="text-muted-foreground">
-            {group.specialization} • Year {group.year}
-          </p>
-        </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={() => setIsManageTeachersOpen(true)}>
-            Manage Teachers
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/admin/groups')}>
-            Back to Groups
-          </Button>
-        </div>
+    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">{group.name}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Год поступления: {group.year}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Специализация: {group.specialization}
+        </p>
       </div>
 
       <Tabs defaultValue="students" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="students">Students</TabsTrigger>
-          <TabsTrigger value="teachers">Teachers</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="students">Студенты</TabsTrigger>
+          <TabsTrigger value="schedule">Расписание</TabsTrigger>
+          <TabsTrigger value="teachers">Преподаватели</TabsTrigger>
         </TabsList>
 
         <TabsContent value="students">
           <Card>
             <CardHeader>
-              <CardTitle>Students</CardTitle>
-              <CardDescription>
-                List of students in {group.name}
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Студенты</CardTitle>
+                  <CardDescription>
+                    Список студентов в группе {group.name}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/admin/students/new')}
+                  >
+                    Добавить студента
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell>{student.firstName} {student.lastName}</TableCell>
-                      <TableCell>{student.email}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/admin/students/${student.id}`)}
-                        >
-                          View Profile
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="teachers">
-          <Card>
-            <CardHeader>
-              <CardTitle>Teachers</CardTitle>
-              <CardDescription>
-                Teachers assigned to {group.name}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teachers.map((teacher) => (
-                    <TableRow key={teacher.uid}>
-                      <TableCell>{teacher.firstName} {teacher.lastName}</TableCell>
-                      <TableCell>{teacher.email}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/admin/teachers/${teacher.uid}`)}
-                        >
-                          View Profile
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              {students.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <p className="text-lg font-medium">В группе пока нет студентов</p>
+                  <p className="mt-2">Добавьте студентов через форму создания профиля студента</p>
+                  <Button
+                    variant="link"
+                    className="mt-4"
+                    onClick={() => navigate('/admin/students/new')}
+                  >
+                    Создать профиль студента
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ФИО</TableHead>
+                        <TableHead>Номер студента</TableHead>
+                        <TableHead>Дата зачисления</TableHead>
+                        <TableHead>Статус</TableHead>
+                        <TableHead>Контакты</TableHead>
+                        <TableHead className="text-right">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {students.map((student) => (
+                        <TableRow key={student.id}>
+                          <TableCell className="font-medium">
+                            {student.userData ? 
+                              `${student.userData.lastName} ${student.userData.firstName} ${student.userData.middleName || ''}` :
+                              'Загрузка...'
+                            }
+                          </TableCell>
+                          <TableCell>{student.studentCardId}</TableCell>
+                          <TableCell>
+                            {student.enrollmentDate ? 
+                              new Date(student.enrollmentDate.seconds * 1000).toLocaleDateString('ru-RU') :
+                              '-'
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                              ${student.status === 'active' ? 'bg-green-100 text-green-800' :
+                                student.status === 'inactive' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'}`}>
+                              {student.status === 'active' ? 'Активен' :
+                               student.status === 'inactive' ? 'Неактивен' :
+                               'Выпускник'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              {student.phone && (
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">Тел.:</span> {student.phone}
+                                </div>
+                              )}
+                              {student.address && (
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">Адрес:</span> {student.address}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/admin/students/${student.id}`)}
+                            >
+                              Просмотр профиля
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="schedule">
+          <ScheduleTab group={group} />
+        </TabsContent>
+
+        <TabsContent value="teachers">
           <Card>
             <CardHeader>
-              <CardTitle>Schedule</CardTitle>
-              <CardDescription>
-                Class schedule for {group.name}
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Преподаватели</CardTitle>
+                  <CardDescription>
+                    Преподаватели, работающие с группой {group.name}
+                  </CardDescription>
+                </div>
+                <Button onClick={() => setIsManageTeachersOpen(true)}>
+                  Управление преподавателями
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <ScheduleTab group={group} />
+              {teachers.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  Нет назначенных преподавателей
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ФИО</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Действия</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {teachers.map((teacher) => (
+                      <TableRow key={teacher.uid}>
+                        <TableCell>{teacher.lastName} {teacher.firstName} {teacher.middleName || ''}</TableCell>
+                        <TableCell>{teacher.email}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/admin/teachers/${teacher.uid}`)}
+                          >
+                            Просмотр профиля
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -199,8 +286,8 @@ export function GroupDetailsPage() {
         onOpenChange={setIsManageTeachersOpen}
         group={group}
         onSuccess={() => {
-          // Reload teachers data
-          getUsersByRole(db, 'teacher').then(setTeachers);
+          setIsManageTeachersOpen(false);
+          loadGroupData();
         }}
       />
     </div>

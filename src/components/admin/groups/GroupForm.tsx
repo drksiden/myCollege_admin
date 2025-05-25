@@ -99,7 +99,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
       const fetchGroup = async () => {
         setInitialDataLoading(true);
         try {
-          const group = await getGroup(db, groupId);
+          const group = await getGroup(groupId);
           if (group) {
             form.reset({
               name: group.name,
@@ -123,10 +123,10 @@ const GroupForm: React.FC<GroupFormProps> = ({
     setIsLoading(true);
     try {
       if (mode === 'create') {
-        await createGroup(db, values);
+        await createGroup(values);
         toast.success('Group created successfully');
       } else if (mode === 'edit' && groupId) {
-        await updateGroup(db, groupId, values);
+        await updateGroup(groupId, values);
         toast.success('Group updated successfully');
       }
       onFormSubmitSuccess();

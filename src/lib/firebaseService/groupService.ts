@@ -1,5 +1,4 @@
 import {
-  Firestore,
   doc,
   getDoc,
   updateDoc,
@@ -9,30 +8,27 @@ import {
   getDocs,
   serverTimestamp,
   Timestamp,
-  orderBy,
   query,
   arrayUnion,
   arrayRemove,
   where,
   writeBatch,
-  documentId, // To query by document ID in an array
+  documentId,
 } from 'firebase/firestore';
 import type { Group, Student } from '@/types';
-import { db } from './firebase';
+import { db } from '@/lib/firebase';
 
 // Re-export Group type for convenience
 export type { Group };
 
 /**
  * Creates a new group in Firestore.
- * @param db Firestore instance.
  * @param groupData Object containing group details (name, year, specialization).
  *                  'students' array is initialized as empty. 'scheduleId' is empty.
  * @returns Promise<string> The ID of the newly created group.
  */
 export const createGroup = async (
-  db: Firestore,
-  groupData: Pick<Group, 'name' | 'year' | 'specialization'>
+  groupData: Pick<Group, 'name' | 'year' | 'specialization' | 'curatorId'>
 ): Promise<string> => {
   const groupsRef = collection(db, 'groups');
   const newGroup = {
@@ -48,12 +44,10 @@ export const createGroup = async (
 
 /**
  * Fetches a specific group from Firestore by its document ID.
- * @param db Firestore instance.
  * @param groupId The document ID of the group.
  * @returns Promise<Group | null> The group or null if not found.
  */
 export const getGroup = async (
-  db: Firestore,
   groupId: string
 ): Promise<Group | null> => {
   const groupRef = doc(db, 'groups', groupId);
@@ -69,10 +63,9 @@ export const getGroup = async (
 
 /**
  * Fetches all groups from Firestore, ordered by name.
- * @param db Firestore instance.
  * @returns Promise<Group[]> An array of groups.
  */
-export const getAllGroups = async (db: Firestore): Promise<Group[]> => {
+export const getAllGroups = async (): Promise<Group[]> => {
   const groupsRef = collection(db, 'groups');
   const snapshot = await getDocs(groupsRef);
   return snapshot.docs.map(doc => ({
@@ -85,15 +78,13 @@ export const getAllGroups = async (db: Firestore): Promise<Group[]> => {
 
 /**
  * Updates an existing group in Firestore (name, year, specialization).
- * @param db Firestore instance.
  * @param groupId The document ID of the group to update.
  * @param updates Partial data of Group to update (name, year, specialization).
  * @returns Promise<void>
  */
 export const updateGroup = async (
-  db: Firestore,
   groupId: string,
-  updates: Partial<Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId'>>
+  updates: Partial<Pick<Group, 'name' | 'year' | 'specialization' | 'students' | 'scheduleId' | 'curatorId'>>
 ): Promise<void> => {
   const groupRef = doc(db, 'groups', groupId);
   const updateData = {
@@ -108,12 +99,10 @@ export const updateGroup = async (
  * IMPORTANT: This function ONLY deletes the group document.
  * Unlinking students (clearing their groupId) MUST be handled separately, ideally in a batch
  * by the calling function in the page component to ensure data consistency.
- * @param db Firestore instance.
  * @param groupId The document ID of the group to delete.
  * @returns Promise<void>
  */
 export const deleteGroup = async (
-  db: Firestore,
   groupId: string
 ): Promise<void> => {
   const groupRef = doc(db, 'groups', groupId);
@@ -123,13 +112,11 @@ export const deleteGroup = async (
 /**
  * Adds a student's profile ID to the 'students' array of a group
  * AND updates the student's 'groupId' field. Uses a batch write for atomicity.
- * @param db Firestore instance.
  * @param groupId The document ID of the group.
  * @param studentProfileId The document ID of the student's profile.
  * @returns Promise<void>
  */
 export const addStudentToGroup = async (
-  db: Firestore,
   groupId: string,
   studentProfileId: string
 ): Promise<void> => {
@@ -155,13 +142,11 @@ export const addStudentToGroup = async (
 /**
  * Removes a student's profile ID from the 'students' array of a group
  * AND updates the student's 'groupId' field to an empty string (or null). Uses a batch write.
- * @param db Firestore instance.
  * @param groupId The document ID of the group.
  * @param studentProfileId The document ID of the student's profile.
  * @returns Promise<void>
  */
 export const removeStudentFromGroup = async (
-  db: Firestore,
   groupId: string,
   studentProfileId: string
 ): Promise<void> => {
@@ -186,56 +171,47 @@ export const removeStudentFromGroup = async (
 
 /**
  * Fetches student profile details for a list of student profile IDs.
- * @param db Firestore instance.
  * @param studentProfileIds Array of student profile document IDs.
  * @returns Promise<Student[]> An array of student profiles. Returns empty if input array is empty.
  */
 export const getStudentsInGroupDetails = async (
-  db: Firestore,
   studentProfileIds: string[]
 ): Promise<Student[]> => {
   if (!studentProfileIds || studentProfileIds.length === 0) {
     return [];
   }
   // Firestore 'in' queries are limited to 30 elements in the array.
-  // For larger groups, pagination or multiple queries would be needed.
-  // This implementation assumes group sizes are within this limit for simplicity.
-  if (studentProfileIds.length > 30) {
-    console.warn("Fetching student details for a group with >30 students. Consider pagination or splitting queries.");
-    // Potentially, split studentProfileIds into chunks of 30 and run multiple queries.
-    // For now, we'll proceed, but be aware of the limitation.
-  }
-
-  const studentsCollection = collection(db, 'students');
-  // Query where the document ID is in the list of studentProfileIds
-  const q = query(studentsCollection, where(documentId(), 'in', studentProfileIds));
-  const querySnapshot = await getDocs(q);
-  
-  return querySnapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  } as Student));
+  const studentsRef = collection(db, 'students');
+  const q = query(studentsRef, where(documentId(), 'in', studentProfileIds));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Student[];
 };
 
-export const getGroupsByTeacher = async (db: Firestore, teacherId: string): Promise<Group[]> => {
+export const getGroupsByTeacher = async (teacherId: string): Promise<Group[]> => {
   const groupsRef = collection(db, 'groups');
   const q = query(groupsRef, where('teacherId', '==', teacherId));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
-    createdAt: doc.data().createdAt,
-    updatedAt: doc.data().updatedAt,
   })) as Group[];
 };
 
 export const getGroups = async (): Promise<Group[]> => {
-  return getAllGroups(db);
+  const groupsRef = collection(db, 'groups');
+  const snapshot = await getDocs(groupsRef);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Group[];
 };
 
 export const deleteGroupInService = async (
-  db: Firestore,
   groupId: string
 ): Promise<void> => {
-  return deleteGroup(db, groupId);
+  const groupRef = doc(db, 'groups', groupId);
+  await deleteDoc(groupRef);
 };

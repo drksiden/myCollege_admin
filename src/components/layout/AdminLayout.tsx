@@ -6,17 +6,18 @@ import { useAuth } from '@/contexts/AuthContext'; // Убедитесь, что 
 import {
   Home,
   Users,
-  Library,
-  CalendarDays,
   LogOut,
   Settings,
   GraduationCap,
   UserCog,
   BookOpen,
-  FileText,
   ClipboardList,
   BookMarked,
   Menu,
+  Calendar,
+  CalendarCheck,
+  School,
+  BookOpenCheck,
 } from 'lucide-react'; // Иконки от lucide-react
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -50,56 +51,61 @@ const Sidebar: React.FC = () => {
       ],
     },
     {
-      title: 'Управление',
+      title: 'Управление данными',
       items: [
         {
           to: '/admin/manage/users',
           icon: <Users className="h-5 w-5" />,
-          label: 'Управление пользователями',
+          label: 'Пользователи',
         },
         {
           to: '/admin/manage/students',
           icon: <GraduationCap className="h-5 w-5" />,
-          label: 'Управление студентами',
+          label: 'Студенты',
         },
         {
           to: '/admin/manage/teachers',
           icon: <UserCog className="h-5 w-5" />,
-          label: 'Управление преподавателями',
+          label: 'Преподаватели',
         },
         {
           to: '/admin/manage/groups',
-          icon: <Library className="h-5 w-5" />,
-          label: 'Управление группами',
+          icon: <School className="h-5 w-5" />,
+          label: 'Группы',
         },
         {
           to: '/admin/manage/subjects',
           icon: <BookOpen className="h-5 w-5" />,
-          label: 'Управление предметами',
-        },
-        {
-          to: '/admin/manage/schedules',
-          icon: <CalendarDays className="h-5 w-5" />,
-          label: 'Управление расписанием',
-        },
-        {
-          to: '/admin/manage/journals',
-          icon: <BookMarked className="h-5 w-5" />,
-          label: 'Управление журналами',
+          label: 'Предметы',
         },
       ],
     },
     {
-      title: 'Просмотр',
+      title: 'Расписание',
       items: [
         {
+          to: '/admin/manage/schedules',
+          icon: <Calendar className="h-5 w-5" />,
+          label: 'Управление расписанием',
+        },
+        {
           to: '/admin/schedule',
-          icon: <CalendarDays className="h-5 w-5" />,
-          label: 'Расписание',
+          icon: <CalendarCheck className="h-5 w-5" />,
+          label: 'Просмотр расписания',
+        },
+      ],
+    },
+    {
+      title: 'Учебный процесс',
+      items: [
+        {
+          to: '/admin/manage/journals',
+          icon: <BookMarked className="h-5 w-5" />,
+          label: 'Журналы',
         },
         {
           to: '/admin/grades',
-          icon: <FileText className="h-5 w-5" />,
+          icon: <BookOpenCheck className="h-5 w-5" />,
           label: 'Оценки',
         },
         {

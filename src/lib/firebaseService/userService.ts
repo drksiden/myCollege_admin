@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { User } from '@/types';
-import { db } from './firebase';
+import { db } from '@/lib/firebase';
 import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth';
 import { format } from 'date-fns';
 
@@ -54,7 +54,7 @@ export interface CreateUserData {
  * @returns Promise<User>
  */
 export const createUserInAuth = async (userData: CreateUserData): Promise<User> => {
-  const functions = getFunctions();
+  const functions = getFunctions(undefined, 'asia-southeast1');
   const createUser = httpsCallable(functions, 'createUserFunction');
   
   try {
@@ -90,7 +90,7 @@ export const createUserInAuth = async (userData: CreateUserData): Promise<User> 
     if (error instanceof Error) {
       // Проверяем, является ли ошибка ошибкой Firebase Functions
       if ('code' in error) {
-        console.error('Firebase error code:', (error as any).code);
+        console.error('Firebase error code:', (error as { code: string }).code);
         console.error('Firebase error message:', error.message);
         throw new Error(`Firebase error: ${error.message}`);
       }
@@ -104,7 +104,7 @@ export const createUserInAuth = async (userData: CreateUserData): Promise<User> 
  * Creates a user document in Firestore.
  * @param db Firestore instance.
  * @param uid User's UID (from Auth).
- * @param userData Object containing firstName, lastName, email, role.
+ * @param userData Object containing firstName, lastName, email, role, teacherDetails, and studentDetails.
  * @returns Promise<void>
  */
 export const createUserDocument = async (
@@ -115,6 +115,14 @@ export const createUserDocument = async (
     lastName: string;
     email: string;
     role: User['role'];
+    teacherDetails?: {
+      specialization: string;
+      academicDegree: string;
+      education: string;
+    };
+    studentDetails?: {
+      groupId: string;
+    };
   }
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
@@ -123,6 +131,8 @@ export const createUserDocument = async (
     firstName: userData.firstName,
     lastName: userData.lastName,
     role: userData.role,
+    ...(userData.teacherDetails && { teacherDetails: userData.teacherDetails }),
+    ...(userData.studentDetails && { studentDetails: userData.studentDetails }),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -171,12 +181,43 @@ export const updateUserInFirestore = async (
  * @param uid User's UID.
  * @returns Promise<void>
  */
-export const deleteUserFromFirestore = async (
-  db: Firestore,
-  uid: string
-): Promise<void> => {
-  const userRef = doc(db, 'users', uid);
-  return deleteDoc(userRef);
+export const deleteUserFromFirestore = async (db: Firestore, uid: string): Promise<void> => {
+  try {
+    // Get user data first to check role
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (!userDoc.exists()) {
+      throw new Error('User not found');
+    }
+
+    const userData = userDoc.data() as User;
+
+    // Delete associated profile based on role
+    if (userData.role === 'student') {
+      const studentProfileQuery = query(
+        collection(db, 'students'),
+        where('userId', '==', uid)
+      );
+      const studentSnapshot = await getDocs(studentProfileQuery);
+      studentSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+    } else if (userData.role === 'teacher') {
+      const teacherProfileQuery = query(
+        collection(db, 'teachers'),
+        where('userId', '==', uid)
+      );
+      const teacherSnapshot = await getDocs(teacherProfileQuery);
+      teacherSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+    }
+
+    // Delete user document
+    await deleteDoc(doc(db, 'users', uid));
+  } catch (error) {
+    console.error('Error deleting user from Firestore:', error);
+    throw error;
+  }
 };
 
 /**

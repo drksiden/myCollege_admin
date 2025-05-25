@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,19 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
-import type { Group } from '@/types';
+import { getAllTeachers } from '@/lib/firebaseService/teacherService';
+import { getUsersByRole } from '@/lib/firebaseService/userService';
+import type { Group, Teacher, User } from '@/types';
 
 interface GroupFormDialogProps {
   open: boolean;
@@ -23,11 +32,45 @@ interface GroupFormDialogProps {
 
 export function GroupFormDialog({ open, onOpenChange, group, onSuccess }: GroupFormDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [formData, setFormData] = useState({
     name: group?.name || '',
     year: group?.year || new Date().getFullYear(),
     specialization: group?.specialization || '',
+    curatorId: group?.curatorId || '',
   });
+
+  useEffect(() => {
+    const loadTeachers = async () => {
+      try {
+        const [teacherProfiles, teacherUsers] = await Promise.all([
+          getAllTeachers(db),
+          getUsersByRole(db, 'teacher')
+        ]);
+        
+        // Создаем мапу пользователей для быстрого доступа
+        const userMap = new Map(teacherUsers.map(user => [user.uid, user]));
+        
+        // Объединяем данные профилей с данными пользователей
+        const teachersWithUserData = teacherProfiles.map(profile => {
+          const user = userMap.get(profile.userId);
+          return {
+            ...profile,
+            firstName: user?.firstName || '',
+            lastName: user?.lastName || '',
+          };
+        });
+        
+        setTeachers(teachersWithUserData);
+        setUsers(teacherUsers);
+      } catch (error) {
+        console.error('Error loading teachers:', error);
+        toast.error('Failed to load teachers');
+      }
+    };
+    loadTeachers();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,19 +79,21 @@ export function GroupFormDialog({ open, onOpenChange, group, onSuccess }: GroupF
     try {
       if (group) {
         // Update existing group
-        await updateGroup(db, group.id, {
+        await updateGroup(group.id, {
           name: formData.name,
           year: formData.year,
           specialization: formData.specialization,
+          curatorId: formData.curatorId,
         });
 
         toast.success('Group updated successfully');
       } else {
         // Create new group
-        await createGroup(db, {
+        await createGroup({
           name: formData.name,
           year: formData.year,
           specialization: formData.specialization,
+          curatorId: formData.curatorId,
         });
 
         toast.success('Group created successfully');
@@ -100,6 +145,25 @@ export function GroupFormDialog({ open, onOpenChange, group, onSuccess }: GroupF
               onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="curatorId">Curator</Label>
+            <Select
+              value={formData.curatorId}
+              onValueChange={(value) => setFormData({ ...formData, curatorId: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select curator" />
+              </SelectTrigger>
+              <SelectContent>
+                {teachers.map((teacher) => (
+                  <SelectItem key={teacher.id} value={teacher.userId}>
+                    {`${teacher.lastName} ${teacher.firstName}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>

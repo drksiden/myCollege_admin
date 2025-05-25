@@ -120,7 +120,7 @@ export const deleteSubject = async (
  * @param db Firestore instance
  * @returns Promise<Subject[]>
  */
-export const getSubjects = async (db: Firestore): Promise<Subject[]> => {
+export const getSubjects = async (): Promise<Subject[]> => {
   const subjectsCollection = collection(db, SUBJECTS_COLLECTION);
   const q = query(subjectsCollection, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);

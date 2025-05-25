@@ -80,7 +80,7 @@ export const initializeDatabase = async (adminData: {
     ];
 
     for (const group of groups) {
-      await createGroup(db, group);
+      await createGroup(group);
     }
 
     // 4. Создаем тестового преподавателя

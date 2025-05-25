@@ -6,8 +6,12 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  patronymic?: string;
-  role: 'admin' | 'teacher' | 'student';
+  middleName?: string;
+  iin: string;
+  birthDate: Timestamp;
+  phone?: string;
+  address?: string;
+  role: 'student' | 'teacher' | 'admin';
   createdAt: Timestamp;
   updatedAt: Timestamp;
   teacherId?: string;
@@ -25,9 +29,10 @@ export interface User {
 export interface Student {
   id: string;
   userId: string;
-  groupId: string;
   studentCardId: string;
+  groupId: string;
   enrollmentDate: Timestamp;
+  dateOfBirth: Timestamp;
   status: 'active' | 'inactive' | 'graduated';
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -41,11 +46,6 @@ export interface Teacher {
   specialization: string;
   experience: number;
   education: string;
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  email: string;
-  phone?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -57,6 +57,7 @@ export interface Group {
   specialization: string;
   students: string[];
   scheduleId: string;
+  curatorId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

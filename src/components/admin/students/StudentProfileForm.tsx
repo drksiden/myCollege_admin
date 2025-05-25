@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -19,15 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import DatePicker from "@/components/date-picker/date-picker";
+import SimpleDateInput from "@/components/date-picker/simple-date-input"
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import {
@@ -42,12 +35,19 @@ import { Timestamp } from 'firebase/firestore';
 
 // Обновленная Zod-схема для StudentProfileForm
 const studentProfileSchema = z.object({
-  studentCardId: z.string().min(1, 'Student Card ID is required').max(50, 'Student Card ID too long'),
-  groupId: z.string().min(1, 'Group ID is required').max(50, 'Group ID too long'),
-  enrollmentDate: z.date({ required_error: 'Enrollment date is required.' }),
-  status: z.enum(['active', 'inactive', 'graduated'], {
-    required_error: 'Status is required',
+  studentCardId: z.string().min(1, 'Номер студенческого билета обязателен'),
+  groupId: z.string().min(1, 'Выберите группу'),
+  enrollmentDate: z.date({
+    required_error: 'Дата зачисления обязательна',
   }),
+  dateOfBirth: z.date({
+    required_error: 'Дата рождения обязательна',
+  }),
+  status: z.enum(['active', 'inactive', 'graduated'], {
+    required_error: 'Выберите статус',
+  }),
+  address: z.string().min(1, 'Адрес обязателен'),
+  phone: z.string().min(1, 'Номер телефона обязателен'),
 });
 
 export type StudentProfileFormValues = z.infer<typeof studentProfileSchema>;
@@ -55,24 +55,23 @@ export type StudentProfileFormValues = z.infer<typeof studentProfileSchema>;
 // Обновленный интерфейс StudentProfileFormProps
 interface StudentProfileFormProps {
   mode: 'create' | 'edit';
-  userId?: string; // Required for 'create' mode
-  studentProfileId?: string; // Required for 'edit' mode
-  userName?: string; // For display
-  onFormSubmitSuccess: () => void;
+  studentProfileId?: string;
+  userId?: string;
+  userName?: string;
+  onFormSubmitSuccess?: () => void;
   onCancel?: () => void;
 }
 
 // Обновленный компонент StudentProfileForm
-const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
+export default function StudentProfileForm({
   mode,
-  userId,
   studentProfileId,
+  userId,
   userName,
   onFormSubmitSuccess,
   onCancel,
-}) => {
+}: StudentProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [initialDataLoading, setInitialDataLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
 
   const form = useForm<StudentProfileFormValues>({
@@ -80,133 +79,130 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
     defaultValues: {
       studentCardId: '',
       groupId: '',
-      enrollmentDate: new Date(), // Default for create mode
       status: 'active',
+      address: '',
+      phone: '',
     },
   });
 
+  // Загрузка групп при монтировании компонента
   useEffect(() => {
-    const fetchGroups = async () => {
+    const loadGroups = async () => {
       try {
-        const groupsList = await getAllGroups(db);
+        const groupsList = await getAllGroups();
         setGroups(groupsList);
       } catch (error) {
-        console.error('Error fetching groups:', error);
-        toast.error('Failed to load groups');
+        console.error('Ошибка при загрузке групп:', error);
+        toast.error('Не удалось загрузить список групп');
       }
     };
 
-    fetchGroups();
+    loadGroups();
   }, []);
 
+  // Загрузка данных профиля при редактировании
   useEffect(() => {
-    // Reset form fields when mode or key IDs change, especially for create mode
-    if (mode === 'create') {
-      form.reset({
-        studentCardId: '',
-        groupId: '',
-        enrollmentDate: new Date(),
-        status: 'active',
-      });
-    } else if (mode === 'edit' && studentProfileId) {
-      const fetchProfile = async () => {
-        setInitialDataLoading(true);
+    const loadProfile = async () => {
+      if (mode === 'edit' && studentProfileId) {
         try {
-          const profile = await getStudentProfile(db, studentProfileId);
+          const profile = await getStudentProfile(studentProfileId);
           if (profile) {
             form.reset({
               studentCardId: profile.studentCardId,
               groupId: profile.groupId,
-              enrollmentDate: profile.enrollmentDate.toDate(), // Convert Firestore Timestamp to Date
+              enrollmentDate: profile.enrollmentDate.toDate(),
+              dateOfBirth: profile.dateOfBirth.toDate(),
               status: profile.status,
+              address: profile.address || '',
+              phone: profile.phone || '',
             });
-          } else {
-            toast.error('Student profile not found.');
-            if (onCancel) onCancel();
           }
         } catch (error) {
-          console.error('Error fetching student profile:', error);
-          toast.error('Failed to load student profile.');
-          if (onCancel) onCancel();
-        } finally {
-          setInitialDataLoading(false);
+          console.error('Ошибка при загрузке профиля:', error);
+          toast.error('Не удалось загрузить данные профиля');
         }
-      };
-      fetchProfile();
-    }
-  }, [mode, studentProfileId, form, onCancel]); // Added onCancel to deps
+      }
+    };
+
+    loadProfile();
+  }, [mode, studentProfileId, form]);
 
   const onSubmit = async (values: StudentProfileFormValues) => {
+    console.log('Отправка формы:', values);
     setIsLoading(true);
     try {
-      // Prepare data for Firestore, converting Date to Timestamp
-      const profileDataForService = {
-        studentCardId: values.studentCardId,
-        groupId: values.groupId,
+      if (mode === 'create' && !userId) {
+        toast.error('Ошибка: не выбран пользователь');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!userId) {
+        throw new Error('ID пользователя не указан');
+      }
+
+      const profileData = {
+        ...values,
+        userId,
         enrollmentDate: Timestamp.fromDate(values.enrollmentDate),
-        status: values.status as Student['status'],
+        dateOfBirth: Timestamp.fromDate(values.dateOfBirth),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
       };
 
       if (mode === 'create') {
-        if (!userId) {
-          toast.error('User ID is missing. Cannot create student profile.');
-          setIsLoading(false);
-          return;
-        }
-        // Create student profile and then update user document
-        await createStudentProfile(db, { id: 'temp-id', ...profileDataForService, userId });
-        // Link this student profile ID to the user document
-        await updateUserInFirestore(db, userId, {});
-        toast.success(`Student profile created for ${userName || 'user'} and linked.`);
+        console.log('Создание профиля:', profileData);
+        await createStudentProfile(profileData);
+        toast.success('Профиль студента успешно создан');
       } else if (mode === 'edit' && studentProfileId) {
-        // Update existing student profile
-        await updateStudentProfile(db, studentProfileId, profileDataForService);
-        toast.success(`Student profile for ${userName || 'user'} updated.`);
+        console.log('Обновление профиля:', { id: studentProfileId, ...profileData });
+        await updateStudentProfile(studentProfileId, profileData);
+        toast.success('Профиль студента успешно обновлен');
       }
-      onFormSubmitSuccess(); // Callback to refresh list or close dialog
-      if (mode === 'create') form.reset(); // Reset form only on create for better UX
-    } catch (error: unknown) {
-      console.error('Error submitting student profile:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to save student profile.');
+
+      onFormSubmitSuccess?.();
+      if (mode === 'create') form.reset();
+    } catch (error) {
+      console.error('Ошибка при сохранении профиля:', error);
+      toast.error('Не удалось сохранить профиль студента');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (initialDataLoading && mode === 'edit') {
-    return <p className="text-center p-4">Loading profile data...</p>;
-  }
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6 p-1">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {userName && (
+          <div className="text-sm text-muted-foreground">
+            Студент: <span className="font-medium">{userName}</span>
+          </div>
+        )}
+
         <FormField
           control={form.control}
           name="studentCardId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Student Card ID (Номер студенческого)</FormLabel>
+              <FormLabel>Номер студенческого билета</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., S12345" {...field} disabled={isLoading} />
+                <Input placeholder="Введите номер студенческого билета" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="groupId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Group</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-                disabled={isLoading}
-              >
+              <FormLabel>Группа</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a group" />
+                    <SelectValue placeholder="Выберите группу" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -221,90 +217,101 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
-          name="enrollmentDate"
+          name="dateOfBirth"
           render={({ field }) => (
-            <FormItem className="flex flex-col">
-              <FormLabel>Enrollment Date</FormLabel>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <FormControl>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full pl-3 text-left font-normal",
-                        !field.value && "text-muted-foreground"
-                      )}
-                      disabled={isLoading}
-                    >
-                      {field.value ? (
-                        format(field.value, "PPP")
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </FormControl>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={field.value}
-                    onSelect={field.onChange}
-                    disabled={(date) =>
-                      date > new Date() || date < new Date("1900-01-01")
-                    }
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+            <FormItem>
+              <FormLabel>Дата рождения</FormLabel>
+              <FormControl>
+                <SimpleDateInput
+                  date={field.value}
+                  setDate={field.onChange}
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="enrollmentDate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Дата зачисления</FormLabel>
+              <FormControl>
+                <SimpleDateInput
+                  date={field.value}
+                  setDate={field.onChange}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="address"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Адрес</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите адрес" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="phone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Номер телефона</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите номер телефона" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="status"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Status</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-                disabled={isLoading}
-              >
+              <FormLabel>Статус</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
+                    <SelectValue placeholder="Выберите статус" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="graduated">Graduated</SelectItem>
+                  <SelectItem value="active">Активный</SelectItem>
+                  <SelectItem value="inactive">Неактивный</SelectItem>
+                  <SelectItem value="graduated">Выпускник</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}
         />
-        <div className="flex justify-end space-x-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-          >
-            Cancel
+
+        <div className="flex justify-end gap-4">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            Отмена
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Saving...' : 'Save'}
+            {isLoading ? 'Сохранение...' : mode === 'create' ? 'Создать' : 'Сохранить'}
           </Button>
         </div>
       </form>
     </Form>
   );
-};
-
-export default StudentProfileForm;
+}

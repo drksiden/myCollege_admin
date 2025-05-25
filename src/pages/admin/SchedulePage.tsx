@@ -1,32 +1,35 @@
 import React, { useEffect, useState } from 'react';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import type { Schedule, Group, Subject, Teacher } from '@/types';
+import { useAuth } from '../../contexts/AuthContext';
+import ScheduleFormDialog from '../../components/admin/ScheduleFormDialog';
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
-  Box,
-  Button,
-  Paper,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
+  TableHeader,
   TableRow,
-  Typography,
-  IconButton,
+} from "@/components/ui/table";
+import {
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogContentText,
-  DialogActions,
-  FormControl,
-  InputLabel,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
-  MenuItem,
-} from '@mui/material';
-import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import type { Schedule, Group, Subject, Teacher, Lesson } from '@/types';
-import { useAuth } from '../../contexts/AuthContext';
-import ScheduleFormDialog from '../../components/admin/ScheduleFormDialog';
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Pencil, Trash2 } from "lucide-react";
 
 const DAYS_OF_WEEK = [
   'Понедельник',
@@ -43,7 +46,7 @@ const SchedulePage: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
   const [isScheduleFormOpen, setIsScheduleFormOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
@@ -128,70 +131,64 @@ const SchedulePage: React.FC = () => {
 
   if (!isAdmin) {
     return (
-      <Box p={3}>
-        <Typography variant="h5" color="error">
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-destructive">
           Доступ запрещен. Требуются права администратора.
-        </Typography>
-      </Box>
+        </h2>
+      </div>
     );
   }
 
   if (loading) {
     return (
-      <Box p={3}>
-        <Typography>Загрузка...</Typography>
-      </Box>
+      <div className="p-6">
+        <p>Загрузка...</p>
+      </div>
     );
   }
 
-  const filteredSchedules = selectedGroup
-    ? schedules.filter(schedule => schedule.groupId === selectedGroup)
-    : schedules;
+  const filteredSchedules = selectedGroup === 'all'
+    ? schedules
+    : schedules.filter(schedule => schedule.groupId === selectedGroup);
 
   return (
-    <Box p={3}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Управление расписанием</Typography>
-        <Box display="flex" gap={2}>
-          <FormControl sx={{ minWidth: 200 }}>
-            <InputLabel>Группа</InputLabel>
-            <Select
-              value={selectedGroup}
-              label="Группа"
-              onChange={(e) => setSelectedGroup(e.target.value)}
-            >
-              <MenuItem value="">Все группы</MenuItem>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Управление расписанием</h1>
+        <div className="flex gap-4">
+          <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Выберите группу" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все группы</SelectItem>
               {groups.map((group) => (
-                <MenuItem key={group.id} value={group.id}>
+                <SelectItem key={group.id} value={group.id}>
                   {group.name}
-                </MenuItem>
+                </SelectItem>
               ))}
-            </Select>
-          </FormControl>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => setIsScheduleFormOpen(true)}
-          >
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setIsScheduleFormOpen(true)}>
             Добавить расписание
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
-      <TableContainer component={Paper}>
+      <Card>
         <Table>
-          <TableHead>
+          <TableHeader>
             <TableRow>
-              <TableCell>Группа</TableCell>
-              <TableCell>День недели</TableCell>
-              <TableCell>Время</TableCell>
-              <TableCell>Предмет</TableCell>
-              <TableCell>Преподаватель</TableCell>
-              <TableCell>Аудитория</TableCell>
-              <TableCell>Тип</TableCell>
-              <TableCell>Действия</TableCell>
+              <TableHead>Группа</TableHead>
+              <TableHead>День недели</TableHead>
+              <TableHead>Время</TableHead>
+              <TableHead>Предмет</TableHead>
+              <TableHead>Преподаватель</TableHead>
+              <TableHead>Аудитория</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead>Действия</TableHead>
             </TableRow>
-          </TableHead>
+          </TableHeader>
           <TableBody>
             {filteredSchedules.map((schedule) =>
               schedule.lessons.map((lesson) => (
@@ -206,46 +203,49 @@ const SchedulePage: React.FC = () => {
                   <TableCell>{lesson.room}</TableCell>
                   <TableCell>{lesson.type}</TableCell>
                   <TableCell>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditSchedule(schedule)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => setScheduleToDelete(schedule)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditSchedule(schedule)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setScheduleToDelete(schedule)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+      </Card>
 
-      <Dialog
-        open={!!scheduleToDelete}
-        onClose={() => setScheduleToDelete(null)}
-      >
-        <DialogTitle>Удалить расписание?</DialogTitle>
+      <Dialog open={!!scheduleToDelete} onOpenChange={() => setScheduleToDelete(null)}>
         <DialogContent>
-          <DialogContentText>
-            Вы уверены, что хотите удалить расписание для группы{' '}
-            {scheduleToDelete && getGroupName(scheduleToDelete.groupId)}?
-            Это действие нельзя отменить.
-          </DialogContentText>
+          <DialogHeader>
+            <DialogTitle>Удалить расписание?</DialogTitle>
+            <DialogDescription>
+              Вы уверены, что хотите удалить расписание для группы{' '}
+              {scheduleToDelete && getGroupName(scheduleToDelete.groupId)}?
+              Это действие нельзя отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleToDelete(null)}>
+              Отмена
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteSchedule}>
+              Удалить
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setScheduleToDelete(null)}>Отмена</Button>
-          <Button onClick={handleDeleteSchedule} color="error" variant="contained">
-            Удалить
-          </Button>
-        </DialogActions>
       </Dialog>
 
       <ScheduleFormDialog
@@ -257,7 +257,7 @@ const SchedulePage: React.FC = () => {
         onSuccess={handleScheduleCreatedOrUpdated}
         schedule={editingSchedule || undefined}
       />
-    </Box>
+    </div>
   );
 };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,8 @@ import {
 import { toast } from 'sonner';
 import { auth, db } from '@/lib/firebase';
 import { createUserInAuth, createUserDocument, updateUserInFirestore } from '@/lib/firebaseService/userService';
-import type { User } from '@/types';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import type { User, Group } from '@/types';
 
 interface UserFormDialogProps {
   open: boolean;
@@ -32,13 +33,31 @@ type UserRole = 'admin' | 'teacher' | 'student';
 
 export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserFormDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [formData, setFormData] = useState({
     email: user?.email || '',
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     role: (user?.role || 'student') as UserRole,
     password: '', // Only used for new users
+    groupId: user?.studentDetails?.groupId || '',
+    specialization: user?.teacherDetails?.specialization || '',
+    academicDegree: user?.teacherDetails?.academicDegree || '',
+    education: user?.teacherDetails?.education || '',
   });
+
+  useEffect(() => {
+    const loadGroups = async () => {
+      try {
+        const fetchedGroups = await getAllGroups(db);
+        setGroups(fetchedGroups);
+      } catch (error) {
+        console.error('Error loading groups:', error);
+        toast.error('Failed to load groups');
+      }
+    };
+    loadGroups();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +70,14 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           firstName: formData.firstName,
           lastName: formData.lastName,
           role: formData.role,
+          ...(formData.role === 'student' && { studentDetails: { groupId: formData.groupId } }),
+          ...(formData.role === 'teacher' && {
+            teacherDetails: {
+              specialization: formData.specialization,
+              academicDegree: formData.academicDegree,
+              education: formData.education,
+            },
+          }),
         });
 
         toast.success('User updated successfully');
@@ -66,6 +93,14 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           firstName: formData.firstName,
           lastName: formData.lastName,
           role: formData.role,
+          ...(formData.role === 'student' && { studentDetails: { groupId: formData.groupId } }),
+          ...(formData.role === 'teacher' && {
+            teacherDetails: {
+              specialization: formData.specialization,
+              academicDegree: formData.academicDegree,
+              education: formData.education,
+            },
+          }),
         });
 
         toast.success('User created successfully');
@@ -149,6 +184,61 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
               </SelectContent>
             </Select>
           </div>
+
+          {formData.role === 'student' && (
+            <div className="space-y-2">
+              <Label htmlFor="groupId">Group</Label>
+              <Select
+                value={formData.groupId}
+                onValueChange={(value) => setFormData({ ...formData, groupId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {formData.role === 'teacher' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="specialization">Specialization</Label>
+                <Input
+                  id="specialization"
+                  value={formData.specialization}
+                  onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="academicDegree">Academic Degree</Label>
+                <Input
+                  id="academicDegree"
+                  value={formData.academicDegree}
+                  onChange={(e) => setFormData({ ...formData, academicDegree: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="education">Education</Label>
+                <Input
+                  id="education"
+                  value={formData.education}
+                  onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+                  required
+                />
+              </div>
+            </>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

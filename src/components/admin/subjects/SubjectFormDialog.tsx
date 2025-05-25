@@ -12,7 +12,6 @@ interface SubjectFormDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubjectSubmitSuccess: (data: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>) => void;
   initialData?: Subject;
-  teachers: Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>;
 }
 
 export function SubjectFormDialog({
@@ -20,7 +19,6 @@ export function SubjectFormDialog({
   onOpenChange,
   onSubjectSubmitSuccess,
   initialData,
-  teachers,
 }: SubjectFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -33,7 +31,6 @@ export function SubjectFormDialog({
           subjectId={initialData?.id}
           onFormSubmitSuccess={onSubjectSubmitSuccess}
           onCancel={() => onOpenChange(false)}
-          teachers={teachers}
         />
       </DialogContent>
     </Dialog>

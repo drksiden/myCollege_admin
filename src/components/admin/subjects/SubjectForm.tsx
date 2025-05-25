@@ -10,6 +10,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,18 +28,16 @@ import {
   updateSubject,
   getSubject,
 } from '@/lib/firebaseService/subjectService';
+import { getUsersByRole } from '@/lib/firebaseService/userService';
 import type { Subject } from '@/types';
+import { serverTimestamp } from 'firebase/firestore';
 
 // Обновленная Zod-схема для SubjectForm
 const subjectSchema = z.object({
-  name: z.string().min(1, 'Subject name is required').max(100, 'Name too long'),
-  description: z.string().min(1, 'Description is required').max(500, 'Description too long'),
-  hoursPerSemester: z.coerce.number().min(1, 'Hours must be positive').max(500, 'Hours seem too high'),
-  type: z.enum(['lecture', 'practice', 'laboratory'], {
-    required_error: 'Type is required',
-  }),
-  teacherId: z.string().optional(),
-  groupId: z.string().optional(),
+  name: z.string().min(1, 'Название предмета обязательно'),
+  description: z.string().min(1, 'Описание предмета обязательно'),
+  hoursPerWeek: z.number().min(1, 'Количество часов должно быть положительным числом'),
+  teacherId: z.string().min(1, 'Преподаватель обязателен'),
 });
 
 export type SubjectFormValues = z.infer<typeof subjectSchema>;
@@ -48,7 +47,6 @@ interface SubjectFormProps {
   subjectId?: string;
   onFormSubmitSuccess: (data: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel?: () => void;
-  teachers: Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>;
 }
 
 const SubjectForm: React.FC<SubjectFormProps> = ({
@@ -56,32 +54,47 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
   subjectId,
   onFormSubmitSuccess,
   onCancel,
-  teachers,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  const [availableTeachers, setAvailableTeachers] = useState<Array<{ id: string; firstName: string; lastName: string; middleName?: string }>>([]);
 
   const form = useForm<SubjectFormValues>({
     resolver: zodResolver(subjectSchema),
     defaultValues: {
       name: '',
       description: '',
-      hoursPerSemester: 0,
-      type: undefined,
+      hoursPerWeek: 0,
       teacherId: undefined,
-      groupId: undefined,
     },
   });
+
+  useEffect(() => {
+    const loadTeachers = async () => {
+      try {
+        const teachers = await getUsersByRole(db, 'teacher');
+        setAvailableTeachers(teachers.map(teacher => ({
+          id: teacher.uid,
+          firstName: teacher.firstName,
+          lastName: teacher.lastName,
+          middleName: teacher.patronymic,
+        })));
+      } catch (error) {
+        console.error('Error loading teachers:', error);
+        toast.error('Failed to load teachers');
+      }
+    };
+
+    loadTeachers();
+  }, []);
 
   useEffect(() => {
     if (mode === 'create') {
       form.reset({
         name: '',
         description: '',
-        hoursPerSemester: 0,
-        type: undefined,
+        hoursPerWeek: 0,
         teacherId: undefined,
-        groupId: undefined,
       });
     } else if (mode === 'edit' && subjectId) {
       const fetchSubjectData = async () => {
@@ -92,10 +105,8 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
             form.reset({
               name: subject.name,
               description: subject.description,
-              hoursPerSemester: subject.hoursPerSemester,
-              type: subject.type,
+              hoursPerWeek: subject.hoursPerWeek,
               teacherId: subject.teacherId,
-              groupId: subject.groupId,
             });
           } else {
             toast.error('Subject not found.');
@@ -116,35 +127,40 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
   const onSubmit = async (values: SubjectFormValues) => {
     setIsLoading(true);
     try {
-      const subjectData: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'> = {
-        name: values.name,
-        description: values.description,
-        hoursPerSemester: values.hoursPerSemester,
-        type: values.type as Subject['type'],
-        teacherId: values.teacherId,
-        groupId: values.groupId,
-      };
-
       if (mode === 'create') {
+        const subjectData = {
+          name: values.name,
+          description: values.description,
+          hoursPerWeek: values.hoursPerWeek,
+          teacherId: values.teacherId || null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
         await createSubject(db, subjectData);
-        toast.success('Subject created successfully!');
+        toast.success('Предмет успешно создан');
       } else if (mode === 'edit' && subjectId) {
+        const subjectData = {
+          name: values.name,
+          description: values.description,
+          hoursPerWeek: values.hoursPerWeek,
+          teacherId: values.teacherId || null,
+          updatedAt: serverTimestamp(),
+        };
         await updateSubject(db, subjectId, subjectData);
-        toast.success('Subject updated successfully!');
+        toast.success('Предмет успешно обновлен');
       }
-      onFormSubmitSuccess(subjectData);
+      onFormSubmitSuccess();
       if (mode === 'create') form.reset();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error submitting subject form:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save subject.';
-      toast.error(errorMessage);
+      toast.error(error instanceof Error ? error.message : 'Ошибка при сохранении предмета');
     } finally {
       setIsLoading(false);
     }
   };
 
   if (initialDataLoading && mode === 'edit') {
-    return <p className="text-center p-4">Loading subject data...</p>;
+    return <p className="text-center p-4">Загрузка данных предмета...</p>;
   }
 
   return (
@@ -155,9 +171,9 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Subject Name</FormLabel>
+              <FormLabel>Название предмета</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Introduction to Programming" {...field} disabled={isLoading} />
+                <Input placeholder="Введите название предмета" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -168,9 +184,14 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Description</FormLabel>
+              <FormLabel>Описание</FormLabel>
               <FormControl>
-                <Textarea placeholder="Detailed description of the subject..." {...field} rows={3} disabled={isLoading} />
+                <Textarea 
+                  placeholder="Введите описание предмета" 
+                  {...field} 
+                  disabled={isLoading}
+                  className="min-h-[100px]"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -178,35 +199,23 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
         />
         <FormField
           control={form.control}
-          name="hoursPerSemester"
+          name="hoursPerWeek"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Hours Per Semester</FormLabel>
+              <FormLabel>Количество часов в неделю</FormLabel>
               <FormControl>
-                <Input type="number" placeholder="e.g., 60" {...field} disabled={isLoading} onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)} />
+                <Input 
+                  type="number" 
+                  min="1"
+                  placeholder="Введите количество часов" 
+                  {...field} 
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                  disabled={isLoading} 
+                />
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="type"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Type</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="lecture">Lecture</SelectItem>
-                  <SelectItem value="practice">Practice</SelectItem>
-                  <SelectItem value="laboratory">Laboratory</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormDescription>
+                Укажите, сколько часов в неделю отводится на этот предмет
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -216,33 +225,39 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
           name="teacherId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Teacher</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+              <FormLabel>Преподаватель</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select teacher" />
+                    <SelectValue placeholder="Выберите преподавателя" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {teachers.map(teacher => (
+                  {availableTeachers.map((teacher) => (
                     <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.firstName} ${teacher.lastName}${teacher.patronymic ? ` ${teacher.patronymic}` : ''}`}
+                      {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <FormDescription>
+                Выберите преподавателя для этого предмета
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        <div className="flex justify-end space-x-3 pt-2">
-          {onCancel && (
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-              Cancel
-            </Button>
-          )}
-          <Button type="submit" disabled={isLoading || (initialDataLoading && mode === 'edit')}>
-            {isLoading ? 'Saving...' : (mode === 'create' ? 'Create Subject' : 'Save Changes')}
+        <div className="flex justify-end space-x-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+          >
+            Отмена
+          </Button>
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? 'Сохранение...' : 'Сохранить'}
           </Button>
         </div>
       </form>

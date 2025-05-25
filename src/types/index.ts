@@ -5,7 +5,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'student' | 'teacher' | 'admin';
+  role?: 'admin' | 'teacher' | 'student';
   createdAt: Timestamp;
   updatedAt: Timestamp;
   teacherId?: string;
@@ -32,21 +32,22 @@ export interface Teacher {
 export interface Student {
   id: string;
   userId: string;
-  groupId: string;
   studentCardId: string;
-  status: 'active' | 'inactive';
+  groupId: string;
+  enrollmentDate: Timestamp;
+  dateOfBirth: Timestamp;
+  status: 'active' | 'inactive' | 'graduated';
+  address: string;
+  phone: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  attendance: number;
-  averageGrade: number;
 }
 
 export interface Group {
   id: string;
   name: string;
-  course: number;
-  specialization: string;
-  curatorId?: string;
+  description?: string;
+  students?: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

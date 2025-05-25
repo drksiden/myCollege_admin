@@ -6,7 +6,7 @@ import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 // Firebase configuration keys.
-// These should be stored in your .env.local file (see .env.local.example)
+// These should be stored in your .env file
 // Find these keys in your Firebase project console:
 // Project settings > General > Your apps > Firebase SDK snippet > Config
 const firebaseConfig = {
@@ -18,13 +18,42 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Validate Firebase configuration
+const requiredEnvVars = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID',
+];
+
+const missingEnvVars = requiredEnvVars.filter(
+  (envVar) => !import.meta.env[envVar]
+);
+
+if (missingEnvVars.length > 0) {
+  throw new Error(
+    `Missing required environment variables: ${missingEnvVars.join(
+      ', '
+    )}. Please check your .env file.`
+  );
+}
+
 // Инициализируем Firebase приложение
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('Firebase app initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firebase app:', error);
+  throw error;
+}
 
 // Получаем экземпляры сервисов
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, 'europe-west3');
+const functions = getFunctions(app, 'asia-southeast1');
 const storage = getStorage(app);
 
 // Подключаем эмуляторы в режиме разработки

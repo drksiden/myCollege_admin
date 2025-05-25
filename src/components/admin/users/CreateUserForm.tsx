@@ -1,411 +1,258 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { createUserInAuth } from '@/lib/firebaseService/userService';
-import { useGroups } from '@/hooks/useGroups';
-import type { Group } from '@/hooks/useGroups';
-import { format } from 'date-fns';
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
 
-const today = new Date();
-
-const formSchema = z.object({
-  email: z.string().email('Неверный формат email'),
+const createUserSchema = z.object({
+  email: z.string().email('Некорректный email'),
   password: z.string().min(6, 'Пароль должен содержать минимум 6 символов'),
   firstName: z.string().min(1, 'Имя обязательно'),
   lastName: z.string().min(1, 'Фамилия обязательна'),
   middleName: z.string().optional(),
-  iin: z.string()
-    .min(12, 'ИИН должен содержать 12 цифр')
-    .max(12, 'ИИН должен содержать 12 цифр')
-    .regex(/^\d{12}$/, 'ИИН должен содержать только цифры'),
-  role: z.enum(['student', 'teacher', 'admin']),
-  birthDate: z.date().optional().refine(
-    (date) => !date || date <= today,
-    { message: 'Дата рождения не может быть в будущем' }
-  ),
-  phone: z.string()
-    .min(10, 'Телефон должен содержать минимум 10 цифр')
-    .regex(/^[0-9+()-]*$/, 'Телефон может содержать только цифры, +, (, ), -')
-    .optional(),
-  address: z.string().min(5, 'Адрес должен содержать минимум 5 символов').optional(),
-  enrollmentDate: z.date().optional().refine(
-    (date) => !date || date <= today,
-    { message: 'Дата зачисления не может быть в будущем' }
-  ),
-  specialization: z.string().min(1, 'Специализация обязательна').optional(),
-  academicDegree: z.string().min(1, 'Ученая степень обязательна').optional(),
-  groupId: z.string().optional(),
-}).refine((data) => {
-  if (data.role === 'student') {
-    return !!data.enrollmentDate;
-  }
-  return true;
-}, {
-  message: 'Дата зачисления обязательна для студентов',
-  path: ['enrollmentDate'],
-}).refine((data) => {
-  if (data.role === 'teacher') {
-    return !!data.specialization;
-  }
-  return true;
-}, {
-  message: 'Специализация обязательна для преподавателей',
-  path: ['specialization'],
-}).refine((data) => {
-  if (data.role === 'teacher') {
-    return !!data.academicDegree;
-  }
-  return true;
-}, {
-  message: 'Ученая степень обязательна для преподавателей',
-  path: ['academicDegree'],
-}).refine((data) => {
-  if (data.role === 'student') {
-    return !!data.groupId;
-  }
-  return true;
-}, {
-  message: 'Группа обязательна для студентов',
-  path: ['groupId'],
+  iin: z.string().min(1, 'ИИН обязателен'),
+  role: z.enum(['student', 'teacher', 'admin'], {
+    required_error: 'Выберите роль',
+  }),
 });
 
-type FormData = z.infer<typeof formSchema>;
+type CreateUserFormValues = z.infer<typeof createUserSchema>;
 
-type CreateUserFormProps = {
-  onUserCreated?: () => void;
-};
+interface CreateUserFormProps {
+  onSuccess: () => void;
+  onCancel: () => void;
+}
 
-export default function CreateUserForm({ onUserCreated }: CreateUserFormProps) {
-  const { groups } = useGroups();
-  const [isLoading, setIsLoading] = React.useState(false);
+const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) => {
+  const [isLoading, setIsLoading] = useState(false);
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+  const form = useForm<CreateUserFormValues>({
+    resolver: zodResolver(createUserSchema),
     defaultValues: {
+      email: '',
+      password: '',
+      firstName: '',
+      lastName: '',
+      middleName: '',
+      iin: '',
       role: 'student',
-      academicDegree: '',
-      groupId: '',
-      specialization: '',
     },
   });
 
-  const role = form.watch('role');
-  const academicDegree = form.watch('academicDegree');
-  const groupId = form.watch('groupId');
-
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = async (values: CreateUserFormValues) => {
     setIsLoading(true);
     try {
-      console.log('Starting form submission...');
+      const functions = getFunctions(undefined, 'asia-southeast1');
+      connectFunctionsEmulator(functions, 'localhost', 5001);
       
-      // Проверяем валидацию формы
-      const isValid = await form.trigger();
-      console.log('Form validation result:', isValid);
-      console.log('Form errors:', form.formState.errors);
-      
-      if (!isValid) {
-        console.error('Form validation failed:', form.formState.errors);
-        toast.error('Пожалуйста, заполните все обязательные поля');
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('Form data before submission:', data);
-      
-      // Проверяем, что все обязательные поля заполнены
-      const requiredFields = ['email', 'password', 'firstName', 'lastName', 'iin', 'role'];
-      const missingFields = requiredFields.filter(field => !data[field as keyof FormData]);
-      
-      if (missingFields.length > 0) {
-        console.error('Missing required fields:', missingFields);
-        toast.error(`Пожалуйста, заполните обязательные поля: ${missingFields.join(', ')}`);
-        setIsLoading(false);
-        return;
-      }
-
-      // Добавляем специфичные проверки для ролей
-      if (data.role === 'teacher') {
-        if (!data.specialization || !data.academicDegree) {
-          console.error('Missing teacher fields:', { specialization: data.specialization, academicDegree: data.academicDegree });
-          toast.error('Для преподавателя необходимо указать специализацию и ученую степень');
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      if (data.role === 'student') {
-        if (!data.enrollmentDate || !data.groupId) {
-          console.error('Missing student fields:', { enrollmentDate: data.enrollmentDate, groupId: data.groupId });
-          toast.error('Для студента необходимо указать дату зачисления и группу');
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      console.log('Calling createUserInAuth with data:', {
-        ...data,
-        enrollmentDate: data.enrollmentDate ? format(data.enrollmentDate, 'yyyy-MM-dd') : undefined,
-        birthDate: data.birthDate ? format(data.birthDate, 'yyyy-MM-dd') : undefined,
-      });
-
-      const result = await createUserInAuth({
-        ...data,
-        enrollmentDate: data.enrollmentDate ? format(data.enrollmentDate, 'yyyy-MM-dd') : undefined,
-        birthDate: data.birthDate ? format(data.birthDate, 'yyyy-MM-dd') : undefined,
+      const createUserFn = httpsCallable(functions, 'createUserFunction');
+      const result = await createUserFn({
+        email: values.email,
+        password: values.password,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        middleName: values.middleName,
+        iin: values.iin,
+        role: values.role,
       });
       
-      console.log('User created successfully:', result);
-      toast.success('Пользователь успешно создан');
-      form.reset();
-      if (onUserCreated) onUserCreated();
-    } catch (error) {
-      console.error('Error creating user:', error);
-      if (error instanceof Error) {
-        toast.error(`Не удалось создать пользователя: ${error.message}`);
+      const data = result.data as { success: boolean; message: string; data: any };
+      if (data.success) {
+        toast.success(data.message);
+        if (typeof onSuccess === 'function') {
+          onSuccess();
+        }
       } else {
-        toast.error('Не удалось создать пользователя');
+        throw new Error(data.message || 'Ошибка при создании пользователя');
       }
+    } catch (error: unknown) {
+      console.error('Ошибка при создании пользователя:', error);
+      
+      // Обработка различных типов ошибок
+      if (error && typeof error === 'object') {
+        const errorObj = error as { code?: string; details?: string; message?: string };
+        
+        // Ошибка уже существующего email
+        if (errorObj.code === 'functions/already-exists' || errorObj.details === 'Пользователь с таким email уже существует.') {
+          form.setError('email', { message: 'Пользователь с таким email уже существует.' });
+          return;
+        }
+        
+        // Ошибка некорректного пароля
+        if (errorObj.code === 'functions/invalid-argument' && errorObj.details?.includes('пароль')) {
+          form.setError('password', { message: 'Пароль слишком простой или некорректный.' });
+          return;
+        }
+        
+        // Ошибка некорректного email
+        if (errorObj.code === 'functions/invalid-argument' && errorObj.details?.includes('email')) {
+          form.setError('email', { message: 'Некорректный email.' });
+          return;
+        }
+        
+        // Ошибка прав доступа
+        if (errorObj.code === 'functions/permission-denied') {
+          toast.error('У вас нет прав для создания пользователей');
+          return;
+        }
+        
+        // Ошибка аутентификации
+        if (errorObj.code === 'functions/unauthenticated') {
+          toast.error('Требуется аутентификация');
+          return;
+        }
+      }
+      
+      // Общая ошибка
+      toast.error(error instanceof Error ? error.message : 'Не удалось создать пользователя');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Создание пользователя</CardTitle>
-        <CardDescription>
-          Заполните форму для создания нового пользователя
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Фамилия</Label>
-              <Input
-                id="lastName"
-                {...form.register('lastName')}
-                placeholder="Введите фамилию"
-              />
-              {form.formState.errors.lastName && (
-                <p className="text-sm text-red-500">{form.formState.errors.lastName.message}</p>
-              )}
-            </div>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" aria-describedby="create-user-form-description">
+        <div id="create-user-form-description" className="sr-only">
+          Форма создания нового пользователя
+        </div>
+        
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" placeholder="Введите email" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="firstName">Имя</Label>
-              <Input
-                id="firstName"
-                {...form.register('firstName')}
-                placeholder="Введите имя"
-              />
-              {form.formState.errors.firstName && (
-                <p className="text-sm text-red-500">{form.formState.errors.firstName.message}</p>
-              )}
-            </div>
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Пароль</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder="Введите пароль" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="middleName">Отчество</Label>
-              <Input
-                id="middleName"
-                {...form.register('middleName')}
-                placeholder="Введите отчество"
-              />
-            </div>
+        <FormField
+          control={form.control}
+          name="firstName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Имя</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите имя" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="iin">ИИН</Label>
-              <Input
-                id="iin"
-                maxLength={12}
-                {...form.register('iin')}
-                placeholder="Введите ИИН"
-              />
-              {form.formState.errors.iin && (
-                <p className="text-sm text-red-500">{form.formState.errors.iin.message}</p>
-              )}
-            </div>
+        <FormField
+          control={form.control}
+          name="lastName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Фамилия</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите фамилию" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                {...form.register('email')}
-                placeholder="Введите email"
-              />
-              {form.formState.errors.email && (
-                <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
-              )}
-            </div>
+        <FormField
+          control={form.control}
+          name="middleName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Отчество</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите отчество" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Пароль</Label>
-              <Input
-                id="password"
-                type="password"
-                {...form.register('password')}
-                placeholder="Введите пароль"
-              />
-              {form.formState.errors.password && (
-                <p className="text-sm text-red-500">{form.formState.errors.password.message}</p>
-              )}
-            </div>
+        <FormField
+          control={form.control}
+          name="iin"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>ИИН</FormLabel>
+              <FormControl>
+                <Input placeholder="Введите ИИН" {...field} disabled={isLoading} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="role">Роль</Label>
-              <Select
-                onValueChange={(value) => {
-                  form.setValue('role', value as 'student' | 'teacher' | 'admin');
-                  // Сбрасываем специфичные поля при смене роли
-                  if (value === 'student') {
-                    form.setValue('specialization', '');
-                    form.setValue('academicDegree', '');
-                  } else if (value === 'teacher') {
-                    form.setValue('enrollmentDate', undefined);
-                    form.setValue('groupId', '');
-                  }
-                }}
-                value={role}
-                defaultValue={role}
-              >
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Выберите роль" />
-                </SelectTrigger>
+        <FormField
+          control={form.control}
+          name="role"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Роль</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите роль" />
+                  </SelectTrigger>
+                </FormControl>
                 <SelectContent>
                   <SelectItem value="student">Студент</SelectItem>
                   <SelectItem value="teacher">Преподаватель</SelectItem>
                   <SelectItem value="admin">Администратор</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-            <div className="space-y-2">
-              <Label htmlFor="birthDate">Дата рождения</Label>
-              <Input
-                id="birthDate"
-                type="date"
-                {...form.register('birthDate', {
-                  valueAsDate: true,
-                })}
-                placeholder="ГГГГ-ММ-ДД"
-              />
-              {form.formState.errors.birthDate && (
-                <p className="text-sm text-red-500">{form.formState.errors.birthDate.message}</p>
-              )}
-            </div>
-
-            {role === 'student' && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="enrollmentDate">Дата зачисления</Label>
-                  <Input
-                    id="enrollmentDate"
-                    type="date"
-                    {...form.register('enrollmentDate', {
-                      valueAsDate: true,
-                    })}
-                    placeholder="ГГГГ-ММ-ДД"
-                  />
-                  {form.formState.errors.enrollmentDate && (
-                    <p className="text-sm text-red-500">{form.formState.errors.enrollmentDate.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="groupId">Группа</Label>
-                  <Select
-                    onValueChange={(value) => form.setValue('groupId', value)}
-                    value={groupId}
-                    defaultValue={groupId}
-                  >
-                    <SelectTrigger id="groupId">
-                      <SelectValue placeholder="Выберите группу" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {groups.map((group: Group) => (
-                        <SelectItem key={group.id} value={group.id}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.groupId && (
-                    <p className="text-sm text-red-500">{form.formState.errors.groupId.message}</p>
-                  )}
-                </div>
-              </>
-            )}
-
-            {role === 'teacher' && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="specialization">Специализация *</Label>
-                  <Input
-                    id="specialization"
-                    {...form.register('specialization')}
-                    placeholder="Введите специализацию"
-                  />
-                  {form.formState.errors.specialization && (
-                    <p className="text-sm text-red-500">{form.formState.errors.specialization.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="academicDegree">Ученая степень *</Label>
-                  <Select
-                    onValueChange={(value) => form.setValue('academicDegree', value)}
-                    value={academicDegree}
-                    defaultValue={academicDegree}
-                  >
-                    <SelectTrigger id="academicDegree">
-                      <SelectValue placeholder="Выберите ученую степень" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bachelor">Бакалавр</SelectItem>
-                      <SelectItem value="master">Магистр</SelectItem>
-                      <SelectItem value="candidate">Кандидат наук</SelectItem>
-                      <SelectItem value="doctor">Доктор наук</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.academicDegree && (
-                    <p className="text-sm text-red-500">{form.formState.errors.academicDegree.message}</p>
-                  )}
-                </div>
-              </>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Телефон</Label>
-              <Input
-                id="phone"
-                {...form.register('phone')}
-                placeholder="Введите номер телефона"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="address">Адрес</Label>
-              <Input
-                id="address"
-                {...form.register('address')}
-                placeholder="Введите адрес"
-              />
-            </div>
-          </div>
-
+        <div className="flex justify-end space-x-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            Отмена
+          </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Создание...' : 'Создать пользователя'}
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      </form>
+    </Form>
   );
-}
+};
+
+export default CreateUserForm;
