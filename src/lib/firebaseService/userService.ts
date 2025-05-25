@@ -1,9 +1,9 @@
 import {
-  createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
+  // createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword, // unused
 } from 'firebase/auth';
 import type {
-  Auth,
-  UserCredential,
+  // Auth, // unused
+  // UserCredential, // unused
 } from 'firebase/auth';
 import {
   Firestore,
@@ -21,12 +21,13 @@ import {
   limit,
   startAfter,
   DocumentSnapshot,
+  documentId,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { User } from '@/types';
 import { db } from '@/lib/firebase';
-import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth';
-import { format } from 'date-fns';
+// import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth'; // unused
+// import { format } from 'date-fns'; // unused
 
 // Re-export User type for convenience
 export type { User };
@@ -58,40 +59,22 @@ export const createUserInAuth = async (userData: CreateUserData): Promise<User> 
   const createUser = httpsCallable(functions, 'createUserFunction');
   
   try {
-    console.log('Starting createUserInAuth...');
-    console.log('Functions instance:', functions);
-    console.log('User data:', userData);
-    
     // Проверяем, что все обязательные поля присутствуют
     if (!userData.email || !userData.password || !userData.firstName || !userData.lastName || !userData.role) {
-      console.error('Missing required fields:', {
-        email: !!userData.email,
-        password: !!userData.password,
-        firstName: !!userData.firstName,
-        lastName: !!userData.lastName,
-        role: !!userData.role
-      });
       throw new Error('Missing required fields');
     }
     
-    console.log('Calling createUser function...');
     const result = await createUser(userData);
-    console.log('Create user result:', result);
     
     if (!result.data) {
-      console.error('No data returned from createUser function');
       throw new Error('No data returned from createUser function');
     }
     
-    console.log('User created successfully:', result.data);
     return result.data as User;
   } catch (error) {
-    console.error('Error in createUserInAuth:', error);
     if (error instanceof Error) {
       // Проверяем, является ли ошибка ошибкой Firebase Functions
       if ('code' in error) {
-        console.error('Firebase error code:', (error as { code: string }).code);
-        console.error('Firebase error message:', error.message);
         throw new Error(`Firebase error: ${error.message}`);
       }
       throw new Error(`Failed to create user: ${error.message}`);
@@ -346,10 +329,10 @@ export const getUsers = async (): Promise<User[]> => {
 export const getUsersFromFirestoreByIds = async (db: Firestore, userIds: string[]): Promise<User[]> => {
   if (!Array.isArray(userIds) || userIds.length === 0) return [];
   const usersCollection = collection(db, 'users');
-  const q = query(usersCollection, where('uid', 'in', userIds));
+  const q = query(usersCollection, where(documentId(), 'in', userIds));
   const usersSnapshot = await getDocs(q);
   return usersSnapshot.docs.map(docSnapshot => ({
-    uid: docSnapshot.id,
+    id: docSnapshot.id,
     ...docSnapshot.data(),
   } as User));
 };

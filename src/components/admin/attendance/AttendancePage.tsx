@@ -1,21 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -32,238 +15,252 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { getGroups } from '@/lib/firebaseService/groupService';
 import { getSubjects } from '@/lib/firebaseService/subjectService';
-import { getAttendanceByDate, createAttendanceRecord } from '@/lib/firebaseService/attendanceService';
-import type { Group, Subject, Attendance } from '@/types';
+import { getAllJournals } from '@/lib/firebaseService/journalService';
+import { getStudents } from '@/lib/firebaseService/studentService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
+import { db } from '@/lib/firebase';
+import type { Group, Subject, Student, User, Journal } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Timestamp } from 'firebase/firestore';
-
-const formSchema = z.object({
-  groupId: z.string().min(1, 'Group is required'),
-  subjectId: z.string().min(1, 'Subject is required'),
-  date: z.string().min(1, 'Date is required'),
-  records: z.array(z.object({
-    studentId: z.string(),
-    status: z.enum(['present', 'absent', 'late', 'excused']),
-    notes: z.string().optional(),
-  })),
-});
-
-type AttendanceFormValues = z.infer<typeof formSchema>;
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AttendancePage() {
+  const [attendanceEntries, setAttendanceEntries] = useState<Record<string, any>[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
 
-  const form = useForm<AttendanceFormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      groupId: '',
-      subjectId: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
-      records: [],
-    },
+  // Фильтры
+  const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [selectedSemester, setSelectedSemester] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
+    start: format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'),
+    end: format(new Date(), 'yyyy-MM-dd'),
   });
-
-  const loadAttendance = useCallback(async () => {
-    try {
-      const data = await getAttendanceByDate(selectedDate);
-      setAttendance(data);
-    } catch (error) {
-      console.error('Error loading attendance:', error);
-      toast.error('Failed to load attendance records');
-    }
-  }, [selectedDate]);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const groupId = form.watch('groupId');
-  useEffect(() => {
-    if (groupId) {
-      loadAttendance();
-    }
-  }, [groupId, selectedDate, loadAttendance]);
-
   const loadData = async () => {
     try {
       setLoading(true);
-      const [groupsData, subjectsData] = await Promise.all([
+      const [journals, groupsData, subjectsData, studentsData, usersData] = await Promise.all([
+        getAllJournals(db),
         getGroups(),
         getSubjects(),
+        getStudents(),
+        getUsersFromFirestore(db),
       ]);
       setGroups(groupsData);
       setSubjects(subjectsData);
+      setStudents(studentsData);
+      setUsers(usersData);
+      // Собрать все entries с attendance
+      const allEntries = journals.flatMap((j: Journal) =>
+        (j.entries || []).map(e => ({ ...e, groupId: j.groupId, subjectId: j.subjectId, semester: j.semester }))
+      );
+      setAttendanceEntries(allEntries.filter(e => typeof e.attendance === 'string'));
     } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load data');
+      console.error('Ошибка загрузки данных:', error);
+      toast.error('Не удалось загрузить данные');
     } finally {
       setLoading(false);
     }
   };
 
-  const onSubmit = async (values: AttendanceFormValues) => {
-    try {
-      for (const record of values.records) {
-        await createAttendanceRecord({
-          studentId: record.studentId,
-          subjectId: values.subjectId,
-          groupId: values.groupId,
-          date: Timestamp.fromDate(new Date(values.date)),
-          status: record.status,
-          notes: record.notes,
-        });
+  // Получить студентов выбранной группы и отсортировать по фамилии
+  const filteredStudents = useMemo(() => {
+    if (!selectedGroup || selectedGroup === 'all') return [];
+    const groupStudents = students.filter(s => s.groupId === selectedGroup);
+    return groupStudents.slice().sort((a, b) => {
+      const userA = users.find(u => u.id === a.userId || u.uid === a.userId);
+      const userB = users.find(u => u.id === b.userId || u.uid === b.userId);
+      const lastA = userA?.lastName?.toLowerCase() || userA?.firstName?.toLowerCase() || '';
+      const lastB = userB?.lastName?.toLowerCase() || userB?.firstName?.toLowerCase() || '';
+      return lastA.localeCompare(lastB);
+    });
+  }, [students, selectedGroup, users]);
+
+  // Получить все даты, где есть посещаемость по фильтрам
+  const filteredDates = useMemo(() => {
+    if ([selectedGroup, selectedSubject, selectedSemester].includes('all')) return [];
+    const datesSet = new Set<string>();
+    attendanceEntries.forEach(entry => {
+      if (
+        entry.groupId === selectedGroup &&
+        entry.subjectId === selectedSubject &&
+        String(entry.semester) === selectedSemester &&
+        entry.date &&
+        typeof entry.attendance === 'string'
+      ) {
+        const d = format(entry.date.toDate(), 'yyyy-MM-dd');
+        datesSet.add(d);
       }
-      toast.success('Attendance records created successfully');
-      setIsDialogOpen(false);
-      form.reset();
-      loadAttendance();
-    } catch (error) {
-      console.error('Error saving attendance:', error);
-      toast.error('Failed to save attendance records');
-    }
+    });
+    return Array.from(datesSet).sort();
+  }, [attendanceEntries, selectedGroup, selectedSubject, selectedSemester]);
+
+  // Получить посещаемость для таблицы: { [studentId]: { [date]: attendance } }
+  const attendanceByStudent: Record<string, Record<string, string | undefined>> = useMemo(() => {
+    const map: Record<string, Record<string, string | undefined>> = {};
+    filteredStudents.forEach(s => {
+      map[s.id] = {};
+    });
+    attendanceEntries.forEach(entry => {
+      if (
+        entry.groupId === selectedGroup &&
+        entry.subjectId === selectedSubject &&
+        String(entry.semester) === selectedSemester &&
+        entry.date &&
+        typeof entry.attendance === 'string'
+      ) {
+        const d = format(entry.date.toDate(), 'yyyy-MM-dd');
+        if (map[entry.studentId]) map[entry.studentId][d] = entry.attendance;
+      }
+    });
+    return map;
+  }, [attendanceEntries, filteredStudents, selectedGroup, selectedSubject, selectedSemester]);
+
+  const getStudentName = (studentId: string) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return studentId;
+    const user = users.find(u => u.id === student.userId || u.uid === student.userId);
+    if (!user) return studentId;
+    return `${user.lastName || ''} ${user.firstName || ''}`.trim();
+  };
+
+  // Функция для отображения статуса посещаемости (можно заменить на иконки/цвета)
+  const renderAttendance = (status: string | undefined) => {
+    if (!status) return '';
+    if (status === 'present') return 'П';
+    if (status === 'absent') return 'Н';
+    if (status === 'late') return 'О';
+    if (status === 'excused') return 'У';
+    return status;
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <div>Загрузка...</div>;
   }
 
   return (
     <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Attendance</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Add Attendance</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Attendance Record</DialogTitle>
-              <DialogDescription>
-                Fill in the attendance information below.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="groupId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Group</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a group" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {groups.map((group) => (
-                            <SelectItem key={group.id} value={group.id}>
-                              {group.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Фильтры</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Select
+              value={selectedGroup}
+              onValueChange={setSelectedGroup}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите группу" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все группы</SelectItem>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-                <FormField
-                  control={form.control}
-                  name="subjectId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Subject</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a subject" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {subjects.map((subject) => (
-                            <SelectItem key={subject.id} value={subject.id}>
-                              {subject.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <Select
+              value={selectedSubject}
+              onValueChange={setSelectedSubject}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите предмет" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все предметы</SelectItem>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-                <FormField
-                  control={form.control}
-                  name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <Select
+              value={selectedSemester}
+              onValueChange={setSelectedSemester}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите семестр" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все семестры</SelectItem>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                  <SelectItem key={sem} value={sem.toString()}>
+                    {sem} семестр
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-                <Button type="submit">Save Attendance</Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                value={dateRange.start}
+                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+              />
+              <Input
+                type="date"
+                value={dateRange.end}
+                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="mb-4">
-        <Input
-          type="date"
-          value={format(selectedDate, 'yyyy-MM-dd')}
-          onChange={(e) => setSelectedDate(new Date(e.target.value))}
-        />
-      </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Student</TableHead>
-            <TableHead>Subject</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead>Date</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {attendance.map((record) => (
-            <TableRow key={record.id}>
-              <TableCell>{record.studentId}</TableCell>
-              <TableCell>{record.subjectId}</TableCell>
-              <TableCell>{record.status}</TableCell>
-              <TableCell>{record.notes}</TableCell>
-              <TableCell>
-                {format(record.date.toDate(), 'MMM dd, yyyy')}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {(selectedGroup !== 'all' && selectedSubject !== 'all' && selectedSemester !== 'all') ? (
+        <>
+          <div className="mb-4">
+            <span className="font-semibold">Группа:</span> {groups.find(g => g.id === selectedGroup)?.name || '-'} &nbsp;
+            <span className="font-semibold">Предмет:</span> {subjects.find(s => s.id === selectedSubject)?.name || '-'} &nbsp;
+            <span className="font-semibold">Семестр:</span> {selectedSemester}
+          </div>
+          <div className="overflow-x-auto">
+            <Table className="min-w-fit border border-border ml-2">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-center border border-border w-10">№</TableHead>
+                  <TableHead className="text-center border border-border w-40">Студент</TableHead>
+                  {filteredDates.map(date => (
+                    <TableHead key={date} className="text-center border border-border min-w-[90px]">{format(new Date(date), 'dd.MM.yyyy')}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredStudents.map((student, idx) => (
+                  <TableRow key={student.id}>
+                    <TableCell className="text-center border border-border w-10">{idx + 1}</TableCell>
+                    <TableCell className="text-center border border-border w-40">{getStudentName(student.id)}</TableCell>
+                    {filteredDates.map(date => (
+                      <TableCell key={date} className="text-center border border-border min-w-[90px]">
+                        {renderAttendance(attendanceByStudent[student.id]?.[date])}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      ) : (
+        <div className="text-muted-foreground text-center py-8">Выберите группу, предмет и семестр для просмотра посещаемости</div>
+      )}
     </div>
   );
 } 
