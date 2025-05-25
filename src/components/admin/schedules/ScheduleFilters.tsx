@@ -20,8 +20,9 @@ interface ScheduleFiltersProps {
 export interface ScheduleFilters {
   search: string;
   groupId: string;
-  semester?: number;
-  year?: number;
+  course?: string;
+  semester?: string;
+  year?: string;
 }
 
 const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
@@ -32,9 +33,12 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
   const [filters, setFilters] = React.useState<ScheduleFilters>({
     search: '',
     groupId: 'all',
+    course: '',
+    semester: '',
+    year: '',
   });
 
-  const handleFilterChange = (key: keyof ScheduleFilters, value: string | number) => {
+  const handleFilterChange = (key: keyof ScheduleFilters, value: string) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
     onFilterChange(newFilters);
@@ -44,6 +48,9 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
     const clearedFilters = {
       search: '',
       groupId: 'all',
+      course: '',
+      semester: '',
+      year: '',
     };
     setFilters(clearedFilters);
     onFilterChange(clearedFilters);
@@ -77,6 +84,42 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={filters.course}
+          onValueChange={(value) => handleFilterChange('course', value)}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder="Курс" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Все курсы</SelectItem>
+            <SelectItem value="1">1</SelectItem>
+            <SelectItem value="2">2</SelectItem>
+            <SelectItem value="3">3</SelectItem>
+            <SelectItem value="4">4</SelectItem>
+            <SelectItem value="5">5</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={filters.semester}
+          onValueChange={(value) => handleFilterChange('semester', value)}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder="Семестр" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Все семестры</SelectItem>
+            <SelectItem value="1">1</SelectItem>
+            <SelectItem value="2">2</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          placeholder="Год"
+          value={filters.year}
+          onChange={e => handleFilterChange('year', e.target.value)}
+          className="w-[100px]"
+        />
         <Button
           variant="outline"
           size="icon"

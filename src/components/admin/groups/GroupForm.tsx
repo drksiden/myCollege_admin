@@ -38,6 +38,7 @@ const groupSchema = z.object({
     .max(new Date().getFullYear() + 5, `Year too far in future`),
   specialization: z.string().min(1, 'Specialization is required').max(100, 'Specialization too long'),
   curatorId: z.string().min(1, 'Curator is required'),
+  course: z.number().min(1, 'Course is required').max(5, 'Course too high'),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
@@ -66,6 +67,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
       year: new Date().getFullYear(),
       specialization: '',
       curatorId: '',
+      course: 1,
     },
   });
 
@@ -106,6 +108,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
               year: group.year,
               specialization: group.specialization,
               curatorId: group.curatorId || '',
+              course: group.course,
             });
           }
         } catch (error) {
@@ -211,6 +214,30 @@ const GroupForm: React.FC<GroupFormProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="course"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Курс</FormLabel>
+              <FormControl>
+                <Select onValueChange={value => field.onChange(Number(value))} value={field.value?.toString() || ''}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите курс" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1</SelectItem>
+                    <SelectItem value="2">2</SelectItem>
+                    <SelectItem value="3">3</SelectItem>
+                    <SelectItem value="4">4</SelectItem>
+                    <SelectItem value="5">5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

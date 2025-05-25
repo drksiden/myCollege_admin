@@ -114,7 +114,7 @@ const ManageSubjectsPage: React.FC = () => {
     try {
       await deleteSubject(db, subjectToDelete.id);
       toast.success(`Subject "${subjectToDelete.name}" deleted successfully.`);
-      fetchData(); // Refresh data
+      await fetchData();
     } catch (error) {
       console.error('Error deleting subject:', error);
       toast.error('Failed to delete subject.');

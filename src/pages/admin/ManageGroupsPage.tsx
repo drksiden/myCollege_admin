@@ -127,7 +127,7 @@ const ManageGroupsPage: React.FC = () => {
               await batchRestore.commit();
             }
             toast.success('Группа и студенты восстановлены');
-            fetchData();
+            await fetchData();
             setLastDeletedGroup(null);
             if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
           },
@@ -136,7 +136,7 @@ const ManageGroupsPage: React.FC = () => {
       });
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       undoTimeoutRef.current = setTimeout(() => setLastDeletedGroup(null), 8000);
-      fetchData();
+      await fetchData();
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error('Failed to delete group. Students might still be linked.');

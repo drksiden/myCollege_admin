@@ -102,7 +102,7 @@ const ManageStudentsPage: React.FC = () => {
     try {
       await deleteStudentProfile(studentToDelete.id);
       toast.success(`Student profile deleted successfully.`);
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error('Failed to delete student:', err);
       toast.error('Failed to delete student.');

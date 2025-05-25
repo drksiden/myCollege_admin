@@ -147,7 +147,7 @@ const ManageTeachersPage: React.FC = () => {
 
       await batch.commit();
       toast.success(`Teacher profile for ${teacherToDelete.userName} deleted and user unlinked.`);
-      fetchData(); 
+      await fetchData();
     } catch (error) {
       console.error('Error deleting teacher profile:', error);
       toast.error('Failed to delete teacher profile.');

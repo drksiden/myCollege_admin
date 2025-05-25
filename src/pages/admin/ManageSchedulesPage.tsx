@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import ScheduleMetadataForm from '@/components/admin/schedules/ScheduleMetadataForm';
 import LessonForm from '@/components/admin/schedules/LessonForm';
-import ScheduleView from '@/components/admin/schedules/ScheduleView';
 import ScheduleCalendar from '@/components/admin/schedules/ScheduleCalendar';
 import ScheduleFilters, { type ScheduleFilters as ScheduleFiltersType } from '@/components/admin/schedules/ScheduleFilters';
 import BulkLessonForm from '@/components/admin/schedules/BulkLessonForm';
@@ -47,6 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { v4 as uuidv4 } from 'uuid';
 
 const ManageSchedulesPage: React.FC = () => {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -75,6 +75,9 @@ const ManageSchedulesPage: React.FC = () => {
   const [filters, setFilters] = useState<ScheduleFiltersType>({
     search: '',
     groupId: '',
+    course: '',
+    semester: '',
+    year: '',
   });
 
   const [showBulkLessonForm, setShowBulkLessonForm] = useState(false);
@@ -172,7 +175,7 @@ const ManageSchedulesPage: React.FC = () => {
       }
       await batch.commit();
       toast.success(`Расписание для группы ${getGroupName(scheduleToDelete.groupId)} успешно удалено.`);
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error('Не удалось удалить расписание:', err);
       toast.error('Не удалось удалить расписание.');
@@ -293,9 +296,10 @@ const ManageSchedulesPage: React.FC = () => {
     if (!currentManagingSchedule) return;
     setIsSubmitting(true);
     try {
-      const updatedLessons = [...currentManagingSchedule.lessons, ...template.schedule.lessons];
+      // Для каждого занятия из шаблона генерируем новый id
+      const lessonsFromTemplate = template.schedule.lessons.map(lesson => ({ ...lesson, id: uuidv4() }));
+      const updatedLessons = [...currentManagingSchedule.lessons, ...lessonsFromTemplate];
       await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedLessons });
-      
       const updatedSchedule = { ...currentManagingSchedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
       setCurrentManagingSchedule(updatedSchedule);
       setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
@@ -321,6 +325,7 @@ const ManageSchedulesPage: React.FC = () => {
       if (currentManagingSchedule && schedule.id === currentManagingSchedule.id) setCurrentManagingSchedule(updatedSchedule);
       setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
       toast.success("Занятие успешно удалено.");
+      await fetchData();
     } catch (err) {
       console.error('Не удалось удалить занятие:', err);
       toast.error("Не удалось удалить занятие.");
@@ -340,18 +345,20 @@ const ManageSchedulesPage: React.FC = () => {
 
   const filteredSchedules = React.useMemo(() => {
     return schedules.filter(schedule => {
+      const group = groups.find(g => g.id === schedule.groupId);
       const matchesSearch = filters.search === '' || 
         getGroupName(schedule.groupId).toLowerCase().includes(filters.search.toLowerCase()) ||
         schedule.lessons.some(lesson => 
           lesson.subjectId.toLowerCase().includes(filters.search.toLowerCase()) ||
           lesson.room.toLowerCase().includes(filters.search.toLowerCase())
         );
-      
       const matchesGroup = !filters.groupId || filters.groupId === 'all' || schedule.groupId === filters.groupId;
-      
-      return matchesSearch && matchesGroup;
+      const matchesCourse = !filters.course || (group && group.course?.toString() === filters.course);
+      const matchesSemester = !filters.semester || schedule.semester?.toString() === filters.semester;
+      const matchesYear = !filters.year || schedule.year?.toString() === filters.year;
+      return matchesSearch && matchesGroup && matchesCourse && matchesSemester && matchesYear;
     });
-  }, [schedules, filters, getGroupName]);
+  }, [schedules, filters, getGroupName, groups]);
 
   if (isLoading && schedules.length === 0 && groups.length === 0) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading schedules...</span></div>;
@@ -405,20 +412,13 @@ const ManageSchedulesPage: React.FC = () => {
                   <FileText className="mr-2 h-4 w-4" /> Применить шаблон
                 </Button>
               </div>
-              <div className="mb-4">
+              <div className="mb-4 flex-1 min-h-0 overflow-y-auto">
                 <ScheduleCalendar
                   schedule={currentManagingSchedule}
                   subjects={subjects}
                   teachers={teachers}
                   onLessonClick={(lesson) => handleLessonClick(lesson, currentManagingSchedule)}
                   hideWeekSwitcher={true}
-                />
-              </div>
-              <div className="flex-grow overflow-y-auto pr-1">
-                <ScheduleView
-                  schedule={currentManagingSchedule}
-                  subjects={subjects}
-                  teachers={teachers}
                 />
               </div>
               <DialogFooter className="mt-auto pt-4 border-t">
@@ -569,6 +569,7 @@ const ManageSchedulesPage: React.FC = () => {
                 <ScheduleFilters
                   groups={groups}
                   onFilterChange={setFilters}
+                  filters={filters}
                 />
               </div>
 

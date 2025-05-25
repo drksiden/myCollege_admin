@@ -169,7 +169,7 @@ const ManageJournalsPage: React.FC = () => {
     try {
       await deleteJournalService(db, journalToDelete.id);
       toast.success(`Journal deleted successfully.`);
-      fetchData(); 
+      await fetchData();
     } catch (error) {
       toast.error('Failed to delete journal.');
       console.error("Error deleting journal:", error);

@@ -58,7 +58,6 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
   const [selectedRoom, setSelectedRoom] = useState('');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [selectedTimeSlots, setSelectedTimeSlots] = useState<string[]>([]);
-  const [weeks, setWeeks] = useState('1-16');
   const [roomError, setRoomError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -70,34 +69,26 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
       return;
     }
 
-    const [startWeek, endWeek] = weeks.split('-').map(Number);
-    if (isNaN(startWeek) || isNaN(endWeek) || startWeek > endWeek || startWeek < 1 || endWeek > 16) {
-      toast.error('Пожалуйста, введите корректный диапазон недель (1-16)');
-      return;
-    }
-
     const lessons: Lesson[] = [];
     const subject = subjects.find(s => s.id === selectedSubject);
     if (!subject) {
       toast.error('Ошибка: предмет не найден');
       return;
     }
-    for (let week = startWeek; week <= endWeek; week++) {
-      for (const day of selectedDays) {
-        for (const timeSlot of selectedTimeSlots) {
-          const [startTime, endTime] = timeSlot.split('-');
-          lessons.push({
-            id: uuidv4(),
-            subjectId: selectedSubject,
-            teacherId: subject.teacherId || '',
-            room: selectedRoom,
-            dayOfWeek: DAYS_OF_WEEK.findIndex(d => d.value === day) + 1,
-            startTime,
-            endTime,
-            type: 'lecture',
-            weekType: 'all'
-          });
-        }
+    for (const day of selectedDays) {
+      for (const timeSlot of selectedTimeSlots) {
+        const [startTime, endTime] = timeSlot.split('-');
+        lessons.push({
+          id: uuidv4(),
+          subjectId: selectedSubject,
+          teacherId: subject.teacherId || '',
+          room: selectedRoom,
+          dayOfWeek: DAYS_OF_WEEK.findIndex(d => d.value === day) + 1,
+          startTime,
+          endTime,
+          type: 'lecture',
+          weekType: 'all'
+        });
       }
     }
 
@@ -111,7 +102,6 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
     setSelectedRoom('');
     setSelectedDays([]);
     setSelectedTimeSlots([]);
-    setWeeks('1-16');
   };
 
   const handleDayToggle = (day: string) => {
@@ -200,16 +190,6 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
                 </Button>
               ))}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="weeks">Недели</Label>
-            <Input
-              id="weeks"
-              value={weeks}
-              onChange={(e) => setWeeks(e.target.value)}
-              placeholder="Например: 1-16"
-            />
           </div>
 
           <DialogFooter>

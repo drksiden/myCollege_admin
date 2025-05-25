@@ -26,27 +26,15 @@ const DAYS_OF_WEEK = [
   'Воскресенье',
 ];
 
-const TIME_SLOTS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:10', '18:50'
+const PAIRS = [
+  { start: '08:00', end: '09:30', label: '1 пара' },
+  { start: '09:40', end: '11:10', label: '2 пара' },
+  { start: '11:25', end: '12:55', label: '3 пара' },
+  { start: '13:25', end: '14:55', label: '4 пара' },
+  { start: '15:05', end: '16:35', label: '5 пара' },
+  { start: '16:45', end: '18:15', label: '6 пара' },
+  { start: '18:25', end: '19:55', label: '7 пара' },
 ];
-
-const DAY_START = 8 * 60; // 08:00 в минутах
-const DAY_END = 21 * 60;  // 21:00 в минутах
-const DAY_DURATION = DAY_END - DAY_START;
-
-const getLessonStyle = (lesson: Lesson) => {
-  const [sh, sm] = lesson.startTime.split(':').map(Number);
-  const [eh, em] = lesson.endTime.split(':').map(Number);
-  const startMinutes = sh * 60 + sm;
-  const endMinutes = eh * 60 + em;
-  const duration = endMinutes - startMinutes;
-
-  // Высота и top в процентах от всего дня
-  const height = `${(duration / DAY_DURATION) * 100}%`;
-  const top = `${((startMinutes - DAY_START) / DAY_DURATION) * 100}%`;
-
-  return { height, top };
-};
 
 const getLessonTypeColor = (type: Lesson['type']) => {
   switch (type) {
@@ -114,10 +102,6 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
     });
   };
 
-  const getLessonsForDay = (dayIndex: number) => {
-    return schedule.lessons.filter(lesson => lesson.dayOfWeek === dayIndex + 1);
-  };
-
   return (
     <div className={cn('flex flex-col h-full', className)}>
       {!hideWeekSwitcher && (
@@ -148,12 +132,13 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
         {/* Time column */}
         <div className="bg-muted/50">
           <div className="h-12 border-b" /> {/* Header spacer */}
-          {TIME_SLOTS.map(time => (
+          {PAIRS.map(pair => (
             <div
-              key={time}
-              className="h-16 border-b last:border-b-0 flex items-center justify-center text-sm text-muted-foreground"
+              key={pair.label}
+              className="h-20 border-b last:border-b-0 flex flex-col items-center justify-center text-sm text-muted-foreground"
             >
-              {time}
+              <div className="font-medium">{pair.label}</div>
+              <div>{pair.start}–{pair.end}</div>
             </div>
           ))}
         </div>
@@ -164,30 +149,40 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
             <div className="h-12 border-b flex items-center justify-center text-sm font-medium">
               {day}
             </div>
-            <div className="relative" style={{ height: `${DAY_DURATION}px` }}>
-              {getLessonsForDay(dayIndex).map(lesson => {
-                const style = getLessonStyle(lesson);
-                return (
-                  <div
-                    key={lesson.id}
-                    className={cn(
-                      'absolute left-0 right-0 mx-1 rounded-md border p-2 cursor-pointer hover:shadow-md transition-shadow',
-                      getLessonTypeColor(lesson.type)
-                    )}
-                    style={style}
-                    onClick={() => onLessonClick?.(lesson)}
-                  >
-                    <div className="text-xs font-medium truncate">
-                      {getLessonTitle(lesson, subjects, teachers)}
-                      {getWeekTypeBadge(lesson.weekType)}
+            {PAIRS.map(pair => {
+              // Ищем все занятия, которые хотя бы частично попадают в интервал пары
+              const lessons = schedule.lessons.filter(l =>
+                l.dayOfWeek === dayIndex + 1 &&
+                l.startTime < pair.end &&
+                l.endTime > pair.start
+              );
+              return (
+                <div
+                  key={pair.label}
+                  className="h-20 border-b last:border-b-0 flex flex-row items-stretch justify-stretch relative"
+                >
+                  {lessons.map((lesson) => (
+                    <div
+                      key={lesson.id}
+                      className={cn(
+                        'h-full rounded-md border p-2 cursor-pointer hover:shadow-md transition-shadow flex flex-col justify-center',
+                        getLessonTypeColor(lesson.type)
+                      )}
+                      style={{ width: `${100 / lessons.length}%`, minWidth: 0 }}
+                      onClick={() => onLessonClick?.(lesson)}
+                    >
+                      <div className="text-xs font-medium truncate">
+                        {getLessonTitle(lesson, subjects, teachers)}
+                        {getWeekTypeBadge(lesson.weekType)}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {lesson.startTime} - {lesson.endTime}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {lesson.startTime} - {lesson.endTime}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
