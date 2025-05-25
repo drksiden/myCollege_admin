@@ -89,14 +89,13 @@ export const getSubject = async (
  * @param db Firestore instance.
  * @returns Promise<Subject[]> An array of subjects.
  */
-export const getAllSubjects = async (db: Firestore): Promise<Subject[]> => {
-  const subjectsCollection = collection(db, SUBJECTS_COLLECTION);
-  const q = query(subjectsCollection, orderBy('name', 'asc')); // Order by name
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  } as Subject));
+export const getAllSubjects = async (): Promise<Subject[]> => {
+  const subjectsRef = collection(db, SUBJECTS_COLLECTION);
+  const snapshot = await getDocs(subjectsRef);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Subject[];
 };
 
 /**

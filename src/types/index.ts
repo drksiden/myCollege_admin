@@ -10,21 +10,24 @@ export interface User {
   updatedAt: Timestamp;
   teacherId?: string;
   studentId?: string;
+  groupId?: string;
+  middleName?: string;
+  iin?: string;
+  phone?: string;
+  address?: string;
+  birthDate?: Timestamp;
+  enrollmentDate?: Timestamp;
 }
 
 export interface Teacher {
   id: string;
   userId: string;
-  subjects: string[];
-  groups: string[];
-  specialization: string;
-  experience: number;
-  education: string;
   firstName: string;
   lastName: string;
   middleName?: string;
-  email: string;
-  phone?: string;
+  specialization: string;
+  experience: number;
+  education: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -53,24 +56,31 @@ export interface Group {
 }
 
 export interface Subject {
-  id: string;                 // Firestore document ID
+  id: string;
   name: string;
-  description: string;        // Made required as per task
-  hoursPerSemester: number;   // Renamed from hours and clarified purpose
-  type: 'lecture' | 'practice' | 'laboratory'; // Added as per task
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  description?: string;
+  credits: number;
+  hours: number;
+  specialization: string;
 }
 
 export interface Lesson {
   id: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
+  groupId: string;
   subjectId: string;
   teacherId: string;
+  dayOfWeek: number;  // 1-6 for Monday-Saturday
+  startTime: string;
+  endTime: string;
   room: string;
   type: 'lecture' | 'practice' | 'laboratory';
+  weekType: 'all' | 'numerator' | 'denominator';
+  duration: number;
+  isFloating: boolean;
+  semester: number;
+  year: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Schedule {

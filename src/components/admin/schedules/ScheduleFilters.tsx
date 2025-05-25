@@ -33,9 +33,9 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
   const [filters, setFilters] = React.useState<ScheduleFilters>({
     search: '',
     groupId: 'all',
-    course: '',
-    semester: '',
-    year: '',
+    course: 'all',
+    semester: 'all',
+    year: 'all',
   });
 
   const handleFilterChange = (key: keyof ScheduleFilters, value: string) => {
@@ -48,9 +48,9 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
     const clearedFilters = {
       search: '',
       groupId: 'all',
-      course: '',
-      semester: '',
-      year: '',
+      course: 'all',
+      semester: 'all',
+      year: 'all',
     };
     setFilters(clearedFilters);
     onFilterChange(clearedFilters);
@@ -92,7 +92,7 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
             <SelectValue placeholder="Курс" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Все курсы</SelectItem>
+            <SelectItem value="all">Все курсы</SelectItem>
             <SelectItem value="1">1</SelectItem>
             <SelectItem value="2">2</SelectItem>
             <SelectItem value="3">3</SelectItem>
@@ -108,7 +108,7 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
             <SelectValue placeholder="Семестр" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Все семестры</SelectItem>
+            <SelectItem value="all">Все семестры</SelectItem>
             <SelectItem value="1">1</SelectItem>
             <SelectItem value="2">2</SelectItem>
           </SelectContent>
@@ -116,8 +116,8 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
         <Input
           type="number"
           placeholder="Год"
-          value={filters.year}
-          onChange={e => handleFilterChange('year', e.target.value)}
+          value={filters.year === 'all' ? '' : filters.year}
+          onChange={e => handleFilterChange('year', e.target.value === '' ? 'all' : e.target.value)}
           className="w-[100px]"
         />
         <Button

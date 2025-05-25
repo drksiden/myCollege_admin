@@ -170,7 +170,7 @@ const ManageTeachersPage: React.FC = () => {
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Toaster richColors position="top-right" />
       <Dialog open={showProfileDialog} onOpenChange={(open) => {
-        if (!open) { // Reset state when dialog is closed
+        if (!open) {
           setSelectedUserForProfile(null);
           setSelectedTeacherProfileForEdit(null);
         }
@@ -179,21 +179,21 @@ const ManageTeachersPage: React.FC = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {formMode === 'create' ? 'Create Teacher Profile' : 'Edit Teacher Profile'}
-              {selectedUserForProfile && ` for ${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}`}
-              {!selectedUserForProfile && selectedTeacherProfileForEdit && ` for ${getUserName(selectedTeacherProfileForEdit.userId)}`}
+              {formMode === 'create' ? 'Создать профиль преподавателя' : 'Редактировать профиль преподавателя'}
+              {selectedUserForProfile && ` для ${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}`}
+              {!selectedUserForProfile && selectedTeacherProfileForEdit && ` для ${getUserName(selectedTeacherProfileForEdit.userId)}`}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
-                ? 'Fill in the details to create a new teacher profile.'
-                : 'Update the teacher profile information.'}
+                ? 'Заполните данные для создания нового профиля преподавателя.'
+                : 'Обновите информацию о преподавателе.'}
             </DialogDescription>
           </DialogHeader>
-          {(selectedUserForProfile || selectedTeacherProfileForEdit) && ( // Ensure form has necessary IDs
+          {(selectedUserForProfile || selectedTeacherProfileForEdit) && (
             <TeacherProfileForm
               mode={formMode}
-              userId={selectedUserForProfile?.uid} // For create mode or context
-              teacherProfileId={selectedTeacherProfileForEdit?.id} // For edit mode
+              userId={selectedUserForProfile?.uid}
+              teacherProfileId={selectedTeacherProfileForEdit?.id}
               userName={selectedUserForProfile ? `${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}` : getUserName(selectedTeacherProfileForEdit?.userId)}
               onFormSubmitSuccess={handleFormSuccess}
               onCancel={() => setShowProfileDialog(false)}
@@ -206,100 +206,41 @@ const ManageTeachersPage: React.FC = () => {
         <AlertDialog open={!!teacherToDelete} onOpenChange={() => setTeacherToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
               <AlertDialogDescription>
-                This action will delete the teacher profile for <span className="font-semibold">{teacherToDelete.userName}</span>.
-                The associated user account will be unlinked from this profile. This cannot be undone.
+                Это действие удалит профиль преподавателя <span className="font-semibold">{teacherToDelete.userName}</span>.
+                Связанный пользователь будет отвязан от профиля. Это действие нельзя отменить.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteProfile} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Delete Profile</AlertDialogAction>
+              <AlertDialogCancel>Отмена</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteProfile} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Удалить профиль</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       )}
-      
       <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Teacher Management</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Преподаватели</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage teacher roles, profiles, and assignments.
+          Управление профилями преподавателей, их специализацией, опытом и образованием.
         </p>
       </header>
-
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserCheck2 className="mr-3 h-6 w-6 text-primary" /> Teacher Users
-        </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Users with the 'teacher' role. Create or edit their specific teacher profiles.
-        </p>
-        <div className="bg-card shadow sm:rounded-lg">
-          {teacherUsers.length === 0 && !isLoading ? (
-            <p className="p-6 text-muted-foreground">No users with 'teacher' role found.</p>
-          ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Profile Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teacherUsers.map(user => {
-                const profile = allTeacherProfiles.find(p => p.userId === user.uid);
-                return (
-                  <TableRow key={user.uid}>
-                    <TableCell className="font-medium">{`${user.firstName} ${user.lastName}`}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      {profile ? (
-                        <Badge variant="default" className="bg-green-600 hover:bg-green-700">Profile Linked</Badge>
-                      ) : (
-                        <Badge variant="secondary">No Profile</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {profile ? (
-                        <Button variant="outline" size="sm" onClick={() => handleOpenEditProfileDialog(user)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit Profile
-                        </Button>
-                      ) : (
-                        <Button variant="default" size="sm" onClick={() => handleOpenCreateProfileDialog(user)}>
-                          <PlusCircle className="mr-2 h-4 w-4" /> Create Profile
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          )}
-        </div>
-      </section>
-
       <section>
         <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserX2 className="mr-3 h-6 w-6 text-primary" /> All Created Teacher Profiles
+            <UserCheck2 className="mr-3 h-6 w-6 text-primary" /> Все преподаватели
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Direct list of all created teacher profiles. You can edit or delete them here.
-        </p>
         <div className="bg-card shadow sm:rounded-lg">
         {allTeacherProfiles.length === 0 && !isLoading ? (
-          <p className="p-6 text-muted-foreground">No teacher profiles created yet.</p>
+          <p className="p-6 text-muted-foreground">Профили преподавателей ещё не созданы.</p>
         ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Teacher Name</TableHead>
-              <TableHead>Specialization</TableHead>
-              <TableHead>Experience</TableHead>
-              <TableHead>Education</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>ФИО</TableHead>
+              <TableHead>Специализация</TableHead>
+              <TableHead>Опыт</TableHead>
+              <TableHead>Образование</TableHead>
+              <TableHead className="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -307,27 +248,27 @@ const ManageTeachersPage: React.FC = () => {
               <TableRow key={profile.id}>
                 <TableCell className="font-medium">{getUserName(profile.userId)}</TableCell>
                 <TableCell>{profile.specialization}</TableCell>
-                <TableCell>{profile.experience} years</TableCell>
+                <TableCell>{profile.experience} лет</TableCell>
                 <TableCell className="truncate max-w-xs" title={profile.education}>{profile.education}</TableCell>
                 <TableCell className="text-right">
                    <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
+                        <span className="sr-only">Открыть меню</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Profile Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => handleOpenEditProfileDialogFromProfilesList(profile)}>
-                        <Edit2 className="mr-2 h-4 w-4" /> Edit
+                        <Edit2 className="mr-2 h-4 w-4" /> Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem 
                         onClick={() => handleDeleteInitiate(profile)} 
                         className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
                       >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        <Trash2 className="mr-2 h-4 w-4" /> Удалить
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

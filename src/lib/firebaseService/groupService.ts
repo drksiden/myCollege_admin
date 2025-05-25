@@ -123,6 +123,14 @@ export const addStudentToGroup = async (
   const batch = writeBatch(db);
   const groupRef = doc(db, 'groups', groupId);
   const studentProfileRef = doc(db, 'students', studentProfileId);
+  const studentDoc = await getDoc(studentProfileRef);
+  
+  if (!studentDoc.exists()) {
+    throw new Error('Student profile not found');
+  }
+  
+  const studentData = studentDoc.data();
+  const userId = studentData.userId;
 
   // Add student to group's student list
   batch.update(groupRef, {
@@ -135,6 +143,15 @@ export const addStudentToGroup = async (
     groupId: groupId,
     updatedAt: serverTimestamp() as Timestamp,
   });
+
+  // Update user's groupId if userId exists
+  if (userId) {
+    const userRef = doc(db, 'users', userId);
+    batch.update(userRef, {
+      groupId: groupId,
+      updatedAt: serverTimestamp() as Timestamp,
+    });
+  }
 
   return batch.commit();
 };
@@ -153,6 +170,14 @@ export const removeStudentFromGroup = async (
   const batch = writeBatch(db);
   const groupRef = doc(db, 'groups', groupId);
   const studentProfileRef = doc(db, 'students', studentProfileId);
+  const studentDoc = await getDoc(studentProfileRef);
+  
+  if (!studentDoc.exists()) {
+    throw new Error('Student profile not found');
+  }
+  
+  const studentData = studentDoc.data();
+  const userId = studentData.userId;
 
   // Remove student from group's student list
   batch.update(groupRef, {
@@ -162,9 +187,18 @@ export const removeStudentFromGroup = async (
 
   // Clear student's groupId
   batch.update(studentProfileRef, {
-    groupId: "", // Set to empty string, or null if preferred and handled consistently
+    groupId: "",
     updatedAt: serverTimestamp() as Timestamp,
   });
+
+  // Clear user's groupId if userId exists
+  if (userId) {
+    const userRef = doc(db, 'users', userId);
+    batch.update(userRef, {
+      groupId: "",
+      updatedAt: serverTimestamp() as Timestamp,
+    });
+  }
 
   return batch.commit();
 };

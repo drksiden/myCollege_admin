@@ -201,11 +201,9 @@ const GroupForm: React.FC<GroupFormProps> = ({
             <FormItem>
               <FormLabel>Curator</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select curator" />
-                  </SelectTrigger>
-                </FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select curator" />
+                </SelectTrigger>
                 <SelectContent>
                   {teachers.map(teacher => (
                     <SelectItem key={teacher.id} value={teacher.id}>
@@ -224,20 +222,18 @@ const GroupForm: React.FC<GroupFormProps> = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Курс</FormLabel>
-              <FormControl>
-                <Select onValueChange={value => field.onChange(Number(value))} value={field.value?.toString() || ''}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите курс" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1</SelectItem>
-                    <SelectItem value="2">2</SelectItem>
-                    <SelectItem value="3">3</SelectItem>
-                    <SelectItem value="4">4</SelectItem>
-                    <SelectItem value="5">5</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormControl>
+              <Select onValueChange={value => field.onChange(Number(value))} value={field.value?.toString() || ''} disabled={isLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите курс" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1</SelectItem>
+                  <SelectItem value="2">2</SelectItem>
+                  <SelectItem value="3">3</SelectItem>
+                  <SelectItem value="4">4</SelectItem>
+                  <SelectItem value="5">5</SelectItem>
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}

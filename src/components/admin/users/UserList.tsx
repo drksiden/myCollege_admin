@@ -42,6 +42,9 @@ import { Progress } from "@/components/ui/progress";
 import { ru } from 'date-fns/locale';
 import { Search } from 'lucide-react';
 import type { CheckedState } from '@radix-ui/react-checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import type { Group } from '@/types';
 
 interface UserListProps {
   key?: number;
@@ -49,6 +52,7 @@ interface UserListProps {
 
 const UserList: React.FC<UserListProps> = () => {
   const [users, setUsers] = useState<User[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -56,9 +60,11 @@ const UserList: React.FC<UserListProps> = () => {
   const [lastDeletedUser, setLastDeletedUser] = useState<User | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'teacher' | 'admin'>('all');
+  const [groupFilter, setGroupFilter] = useState<string>('all');
   const [undoProgress, setUndoProgress] = useState(0);
-  const undoTimeoutRef = useRef<NodeJS.Timeout>();
-  const progressIntervalRef = useRef<NodeJS.Timeout>();
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -75,6 +81,7 @@ const UserList: React.FC<UserListProps> = () => {
 
   useEffect(() => {
     fetchUsers();
+    getAllGroups(db).then(setGroups);
   }, [fetchUsers]);
 
   const handleSelectUser = (checked: CheckedState, userId: string) => {
@@ -111,8 +118,13 @@ const UserList: React.FC<UserListProps> = () => {
     }, interval);
 
     undoTimeoutRef.current = setTimeout(() => {
-      if (progressIntervalRef.current) {
+      if (undoTimeoutRef.current !== null) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
+      }
+      if (progressIntervalRef.current !== null) {
         clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
       }
       setLastDeletedUser(null);
       setUndoProgress(0);
@@ -138,8 +150,8 @@ const UserList: React.FC<UserListProps> = () => {
               setUsers(prev => [...prev, lastDeletedUser]);
               toast.success('User restored');
               setLastDeletedUser(null);
-              if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-              if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+              if (undoTimeoutRef.current !== null) clearTimeout(undoTimeoutRef.current);
+              if (progressIntervalRef.current !== null) clearInterval(progressIntervalRef.current);
               setUndoProgress(0);
             } catch (e) {
               console.error('Error restoring user:', e);
@@ -210,12 +222,17 @@ const UserList: React.FC<UserListProps> = () => {
     fetchUsers();
   };
 
-  const filteredUsers = users.filter(user => 
-    user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.middleName && user.middleName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const matchesSearch =
+      user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.middleName && user.middleName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesGroup =
+      roleFilter !== 'student' || groupFilter === 'all' || (user.role === 'student' && user.groupId === groupFilter);
+    return matchesSearch && matchesRole && matchesGroup;
+  });
 
   if (loading) {
     return (
@@ -228,14 +245,40 @@ const UserList: React.FC<UserListProps> = () => {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Поиск пользователей..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 py-2 rounded-lg bg-background border border-border focus:ring-2 focus:ring-primary/30 transition"
-          />
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск пользователей..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 py-2 rounded-lg bg-background border border-border focus:ring-2 focus:ring-primary/30 transition"
+            />
+          </div>
+          <Select value={roleFilter} onValueChange={v => setRoleFilter(v as 'all' | 'student' | 'teacher' | 'admin')}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Роль" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все роли</SelectItem>
+              <SelectItem value="student">Студент</SelectItem>
+              <SelectItem value="teacher">Преподаватель</SelectItem>
+              <SelectItem value="admin">Администратор</SelectItem>
+            </SelectContent>
+          </Select>
+          {roleFilter === 'student' && (
+            <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Группа" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все группы</SelectItem>
+                {groups.map(group => (
+                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="flex items-center space-x-2 mt-2 sm:mt-0">
           {selectedUsers.size > 0 && (
@@ -263,11 +306,10 @@ const UserList: React.FC<UserListProps> = () => {
                   className="translate-y-[2px]"
                 />
               </TableHead>
-              <TableHead>Фамилия</TableHead>
-              <TableHead>Имя</TableHead>
-              <TableHead>Отчество</TableHead>
+              <TableHead>ФИО</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Роль</TableHead>
+              <TableHead>Группа</TableHead>
               <TableHead>Дата создания</TableHead>
               <TableHead className="w-[100px]">Действия</TableHead>
             </TableRow>
@@ -275,77 +317,81 @@ const UserList: React.FC<UserListProps> = () => {
           <TableBody>
             {filteredUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   Пользователи не найдены
                 </TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((user) => (
-                <TableRow key={user.uid} className="hover:bg-primary/5 transition">
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedUsers.has(user.uid)}
-                      onCheckedChange={(checked) => handleSelectUser(checked, user.uid)}
-                      className="translate-y-[2px]"
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium">{user.lastName}</TableCell>
-                  <TableCell className="font-medium">{user.firstName}</TableCell>
-                  <TableCell className="font-medium">{user.middleName || '-'}</TableCell>
-                  <TableCell className="font-medium">{user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={
-                      user.role === 'admin' ? 'destructive' :
-                      user.role === 'teacher' ? 'default' :
-                      'secondary'
-                    } className={
-                      user.role === 'admin' ? 'bg-red-500/80 text-white' :
-                      user.role === 'teacher' ? 'bg-blue-500/80 text-white' :
-                      'bg-green-500/80 text-white'
-                    }>
-                      {user.role === 'admin' ? 'Администратор' :
-                       user.role === 'teacher' ? 'Преподаватель' :
-                       'Студент'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {user.createdAt instanceof Timestamp
-                      ? format(user.createdAt.toDate(), 'd MMMM yyyy', { locale: ru })
-                      : 'Н/Д'}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0 rounded-full hover:bg-primary/10">
-                          <span className="sr-only">Открыть меню</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onClick={() => setEditingUser(user)}
-                          className="cursor-pointer"
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Редактировать
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="cursor-pointer text-destructive focus:text-destructive"
-                          onClick={() => {
-                            setDeletingUser(user);
-                            setShowDeleteConfirm(true);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Удалить
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
+              filteredUsers.map((user) => {
+                const group = groups.find(g => g.id === user.groupId);
+                return (
+                  <TableRow key={user.uid} className="hover:bg-primary/5 transition">
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedUsers.has(user.uid)}
+                        onCheckedChange={(checked) => handleSelectUser(checked, user.uid)}
+                        className="translate-y-[2px]"
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {user.lastName} {user.firstName} {user.middleName || ''}
+                    </TableCell>
+                    <TableCell className="font-medium">{user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        user.role === 'admin' ? 'destructive' :
+                        user.role === 'teacher' ? 'default' :
+                        'secondary'
+                      } className={
+                        user.role === 'admin' ? 'bg-red-500/80 text-white' :
+                        user.role === 'teacher' ? 'bg-blue-500/80 text-white' :
+                        'bg-green-500/80 text-white'
+                      }>
+                        {user.role === 'admin' ? 'Администратор' :
+                         user.role === 'teacher' ? 'Преподаватель' :
+                         'Студент'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{user.role === 'student' && group ? group.name : '-'}</TableCell>
+                    <TableCell>
+                      {user.createdAt instanceof Timestamp
+                        ? format(user.createdAt.toDate(), 'd MMMM yyyy', { locale: ru })
+                        : 'Н/Д'}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0 rounded-full hover:bg-primary/10">
+                            <span className="sr-only">Открыть меню</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => setEditingUser(user)}
+                            className="cursor-pointer"
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Редактировать
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="cursor-pointer text-destructive focus:text-destructive"
+                            onClick={() => {
+                              setDeletingUser(user);
+                              setShowDeleteConfirm(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Удалить
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

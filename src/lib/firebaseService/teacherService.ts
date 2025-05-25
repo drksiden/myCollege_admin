@@ -125,14 +125,13 @@ export const deleteTeacherProfileInService = async ( // Renamed to avoid conflic
  * @param db Firestore instance.
  * @returns Promise<Teacher[]> An array of teacher profiles.
  */
-export const getAllTeachers = async (db: Firestore): Promise<Teacher[]> => {
-  const teachersCollection = collection(db, 'teachers');
-  const q = query(teachersCollection, orderBy('createdAt', 'desc')); // Optional: order by creation
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  } as Teacher));
+export const getAllTeachers = async (): Promise<Teacher[]> => {
+  const teachersRef = collection(db, 'teachers');
+  const snapshot = await getDocs(teachersRef);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Teacher[];
 };
 
 export const getTeachersByGroup = async (groupId: string): Promise<Teacher[]> => {
@@ -191,4 +190,35 @@ export const removeTeacherFromGroup = async (
       updatedAt: serverTimestamp(),
     });
   }
+};
+
+export const getTeacher = async (teacherId: string): Promise<Teacher | null> => {
+  const teacherRef = doc(db, 'teachers', teacherId);
+  const teacherDoc = await getDoc(teacherRef);
+  
+  if (!teacherDoc.exists()) return null;
+  
+  return {
+    id: teacherDoc.id,
+    ...teacherDoc.data(),
+  } as Teacher;
+};
+
+export const createTeacher = async (teacherData: Omit<Teacher, 'id'>): Promise<string> => {
+  const teachersRef = collection(db, 'teachers');
+  const docRef = await addDoc(teachersRef, teacherData);
+  return docRef.id;
+};
+
+export const updateTeacher = async (
+  teacherId: string,
+  updates: Partial<Omit<Teacher, 'id'>>
+): Promise<void> => {
+  const teacherRef = doc(db, 'teachers', teacherId);
+  await updateDoc(teacherRef, updates);
+};
+
+export const deleteTeacher = async (teacherId: string): Promise<void> => {
+  const teacherRef = doc(db, 'teachers', teacherId);
+  await deleteDoc(teacherRef);
 };

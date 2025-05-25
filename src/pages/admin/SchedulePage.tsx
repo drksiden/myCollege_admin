@@ -1,24 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import type { Schedule, Group, Subject, Teacher } from '@/types';
-import { useAuth } from '../../contexts/AuthContext';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
+import type { Group, Subject, Teacher, Lesson as LessonType } from '@/types';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from '@/components/ui/badge';
+import { Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+
+const timeSlots = [
+  { start: '08:00', end: '09:30' },
+  { start: '09:45', end: '11:15' },
+  { start: '11:30', end: '13:00' },
+  { start: '13:30', end: '15:00' },
+  { start: '15:15', end: '16:45' },
+  { start: '17:00', end: '18:30' },
+  { start: '18:45', end: '20:15' },
+];
+
+const typeLabels = {
+  lecture: 'Лекция',
+  practice: 'Практика',
+  laboratory: 'Лабораторная',
+};
+
+const typeColors = {
+  lecture: 'bg-blue-100 text-blue-800',
+  practice: 'bg-green-100 text-green-800',
+  laboratory: 'bg-purple-100 text-purple-800',
+};
 
 const DAYS_OF_WEEK = [
   'Понедельник',
@@ -30,142 +41,209 @@ const DAYS_OF_WEEK = [
 ];
 
 const SchedulePage: React.FC = () => {
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [lessons, setLessons] = useState<LessonType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGroup, setSelectedGroup] = useState<string>('all');
-  const { isAdmin } = useAuth();
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
-  const fetchSchedules = async () => {
-    try {
-      const schedulesCollection = collection(db, 'schedules');
-      const schedulesSnapshot = await getDocs(schedulesCollection);
-      const schedulesList = schedulesSnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-      })) as Schedule[];
-      setSchedules(schedulesList);
-    } catch (error) {
-      console.error('Error fetching schedules:', error);
-    }
-  };
-
-  const fetchData = async () => {
-    try {
-      const [groupsSnapshot, subjectsSnapshot, teachersSnapshot] = await Promise.all([
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      const [groupsSnap, subjectsSnap, teachersSnap, lessonsSnap] = await Promise.all([
         getDocs(collection(db, 'groups')),
         getDocs(collection(db, 'subjects')),
         getDocs(collection(db, 'teachers')),
+        getDocs(collection(db, 'lessons')),
       ]);
-
-      setGroups(groupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[]);
-      setSubjects(subjectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[]);
-      setTeachers(teachersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Teacher[]);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
+      setGroups(groupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[]);
+      setSubjects(subjectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[]);
+      setTeachers(teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Teacher[]);
+      setLessons(lessonsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LessonType[]);
       setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSchedules();
+    };
     fetchData();
   }, []);
 
-  const getGroupName = (groupId: string) => {
-    const group = groups.find(g => g.id === groupId);
-    return group ? group.name : 'Неизвестная группа';
-  };
+  // Получаем список годов (курсов) из групп
+  const years = Array.from(new Set(groups.map(g => g.year))).sort((a, b) => b - a);
+  const filteredGroups = selectedYear ? groups.filter(g => g.year === selectedYear) : groups;
 
-  const getSubjectName = (subjectId: string) => {
-    const subject = subjects.find(s => s.id === subjectId);
-    return subject ? subject.name : 'Неизвестный предмет';
-  };
-
+  const getSubjectName = (subjectId: string) =>
+    subjects.find((s) => s.id === subjectId)?.name || '—';
   const getTeacherName = (teacherId: string) => {
-    const teacher = teachers.find(t => t.id === teacherId);
-    return teacher
-      ? `${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`
-      : 'Неизвестный преподаватель';
+    const t = teachers.find((t) => t.id === teacherId);
+    if (!t) return '—';
+    return t.middleName
+      ? `${t.lastName} ${t.firstName} ${t.middleName}`
+      : `${t.lastName} ${t.firstName}`;
   };
 
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <h2 className="text-lg font-semibold text-destructive">
-          Доступ запрещен. Требуются права администратора.
-        </h2>
-      </div>
+  // Формируем сетку: [день недели][пара][группа]
+  const buildGridData = () => {
+    // [day][time][group]
+    return DAYS_OF_WEEK.map((_, dayIndex) =>
+      timeSlots.map((timeSlot) =>
+        filteredGroups.map((group) => {
+          const cellLessons = lessons.filter((lesson: LessonType) =>
+            (lesson as any).groupId === group.id &&
+            lesson.dayOfWeek === dayIndex + 1 &&
+            lesson.startTime === timeSlot.start &&
+            lesson.endTime === timeSlot.end
+          );
+          return cellLessons;
+        })
+      )
     );
-  }
+  };
+
+  const exportToExcel = () => {
+    const grid = buildGridData();
+    // Заголовок: День/Время/№ пары, затем по одной колонке на каждую группу
+    const header = ['День', '№ пары', 'Время', ...filteredGroups.map(g => g.name)];
+    const data: string[][] = [];
+    DAYS_OF_WEEK.forEach((day, dayIdx) => {
+      timeSlots.forEach((slot, slotIdx) => {
+        const row: string[] = [day, (slotIdx + 1).toString(), `${slot.start} - ${slot.end}`];
+        filteredGroups.forEach((_, groupIdx) => {
+          const lessonsInCell = grid[dayIdx][slotIdx][groupIdx];
+          row.push(
+            lessonsInCell && lessonsInCell.length > 0
+              ? lessonsInCell.map(lesson =>
+                  `${getSubjectName(lesson.subjectId)}\n${getTeacherName(lesson.teacherId)}\n${lesson.room}\n${typeLabels[lesson.type]}`
+                ).join('\n---\n')
+              : ''
+          );
+        });
+        data.push(row);
+      });
+    });
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Расписание');
+    XLSX.writeFile(wb, `Расписание.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    const grid = buildGridData();
+    const header = ['День', '№ пары', 'Время', ...filteredGroups.map(g => g.name)];
+    const data: string[][] = [];
+    DAYS_OF_WEEK.forEach((day, dayIdx) => {
+      timeSlots.forEach((slot, slotIdx) => {
+        const row: string[] = [day, (slotIdx + 1).toString(), `${slot.start} - ${slot.end}`];
+        filteredGroups.forEach((_, groupIdx) => {
+          const lessonsInCell = grid[dayIdx][slotIdx][groupIdx];
+          row.push(
+            lessonsInCell && lessonsInCell.length > 0
+              ? lessonsInCell.map(lesson =>
+                  `${getSubjectName(lesson.subjectId)}\n${getTeacherName(lesson.teacherId)}\n${lesson.room}\n${typeLabels[lesson.type]}`
+                ).join('\n---\n')
+              : ''
+          );
+        });
+        data.push(row);
+      });
+    });
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(16);
+    doc.text(`Расписание`, 14, 15);
+    doc.setFontSize(10);
+    (doc as unknown as { autoTable: Function }).autoTable({
+      head: [header],
+      body: data,
+      startY: 30,
+      theme: 'grid',
+      styles: { cellWidth: 'wrap', fontSize: 9 },
+      headStyles: { fillColor: [41, 128, 185] },
+    });
+    doc.save(`Расписание.pdf`);
+  };
 
   if (loading) {
-    return (
-      <div className="p-6">
-        <p>Загрузка...</p>
-      </div>
-    );
+    return <div className="p-6">Загрузка...</div>;
   }
 
-  const filteredSchedules = selectedGroup === 'all'
-    ? schedules
-    : schedules.filter(schedule => schedule.groupId === selectedGroup);
+  const grid = buildGridData();
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Просмотр расписания</h1>
-        <div className="flex gap-4">
-          <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Выберите группу" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все группы</SelectItem>
-              {groups.map((group) => (
-                <SelectItem key={group.id} value={group.id}>
-                  {group.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <h1 className="text-2xl font-semibold">Общее расписание по группам</h1>
+        <div className="flex gap-2 items-center">
+          <span>Курс:</span>
+          <select
+            className="border rounded px-2 py-1"
+            value={selectedYear ?? ''}
+            onChange={e => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Все</option>
+            {years.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          <button className="btn btn-outline flex items-center gap-2" onClick={exportToExcel}>
+            <Download className="w-4 h-4" /> Excel
+          </button>
+          <button className="btn btn-outline flex items-center gap-2" onClick={exportToPDF}>
+            <Download className="w-4 h-4" /> PDF
+          </button>
         </div>
       </div>
-
       <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Группа</TableHead>
-              <TableHead>День недели</TableHead>
-              <TableHead>Время</TableHead>
-              <TableHead>Предмет</TableHead>
-              <TableHead>Преподаватель</TableHead>
-              <TableHead>Аудитория</TableHead>
-              <TableHead>Тип</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredSchedules.map((schedule) =>
-              schedule.lessons.map((lesson) => (
-                <TableRow key={lesson.id}>
-                  <TableCell>{getGroupName(schedule.groupId)}</TableCell>
-                  <TableCell>{DAYS_OF_WEEK[lesson.dayOfWeek - 1]}</TableCell>
-                  <TableCell>
-                    {lesson.startTime} - {lesson.endTime}
-                  </TableCell>
-                  <TableCell>{getSubjectName(lesson.subjectId)}</TableCell>
-                  <TableCell>{getTeacherName(lesson.teacherId)}</TableCell>
-                  <TableCell>{lesson.room}</TableCell>
-                  <TableCell>{lesson.type}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+        <CardHeader>
+          <CardTitle>Расписание занятий по группам</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto overflow-y-auto max-h-[80vh]">
+            <table className="w-full border-collapse text-center">
+              <thead>
+                <tr>
+                  <th className="border p-2 w-24">День</th>
+                  <th className="border p-2 w-12">№ пары</th>
+                  <th className="border p-2 w-28">Время</th>
+                  {filteredGroups.map((group) => (
+                    <th key={group.id} className="border p-2">{group.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DAYS_OF_WEEK.map((day, dayIdx) => (
+                  timeSlots.map((slot, slotIdx) => (
+                    <tr key={day + slot.start}>
+                      {slotIdx === 0 ? (
+                        <td className="border p-2 font-semibold w-24" rowSpan={timeSlots.length} style={{ verticalAlign: 'middle' }}>
+                          {day}
+                        </td>
+                      ) : null}
+                      <td className="border p-2 font-semibold w-12">{slotIdx + 1}</td>
+                      <td className="border p-2 font-semibold w-28">{slot.start}<br />{slot.end}</td>
+                      {filteredGroups.map((group, groupIdx) => {
+                        const lessonsInCell = grid[dayIdx][slotIdx][groupIdx];
+                        return (
+                          <td key={group.id} className="border p-2 min-w-[120px] align-top">
+                            {lessonsInCell && lessonsInCell.length > 0 ? (
+                              lessonsInCell.map(lesson => (
+                                <div key={lesson.id} className="mb-2 last:mb-0 p-2 rounded bg-card border">
+                                  <div className="font-medium">{getSubjectName(lesson.subjectId)}</div>
+                                  <div className="text-sm text-muted-foreground">{getTeacherName(lesson.teacherId)}</div>
+                                  <div className="text-xs text-muted-foreground">{lesson.room}</div>
+                                  <Badge className={typeColors[lesson.type]}>{typeLabels[lesson.type]}</Badge>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
       </Card>
     </div>
   );
