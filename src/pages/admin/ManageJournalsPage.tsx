@@ -6,8 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
-  DialogClose,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -17,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle, Edit2, Trash2, BookOpen, Users, ListChecks, Loader2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Edit2, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,9 +73,9 @@ const ManageJournalsPage: React.FC = () => {
     try {
       const [fetchedJournals, fetchedGroups, fetchedSubjects, fetchedTeacherProfiles, fetchedUsers] = await Promise.all([
         getAllJournals(db),
-        getAllGroups(db),
-        getAllSubjects(db),
-        getAllTeacherProfiles(db),
+        getAllGroups(),
+        getAllSubjects(),
+        getAllTeacherProfiles(),
         getUsersFromFirestore(db),
       ]);
       setJournals(fetchedJournals);
@@ -189,55 +187,110 @@ const ManageJournalsPage: React.FC = () => {
 
       <Dialog open={showMetadataDialog} onOpenChange={(open) => { if (!open) setSelectedJournalForMetadata(null); setShowMetadataDialog(open); }}>
         <DialogContent className="sm:max-w-lg"><DialogHeader>
-            <DialogTitle>{metadataFormMode === 'create' ? 'Create New Journal' : 'Edit Journal Details'}</DialogTitle>
-            <DialogDescription>{metadataFormMode === 'create' ? 'Select group, subject, teacher, semester and year.' : `Editing details for journal.`}</DialogDescription>
+            <DialogTitle>{metadataFormMode === 'create' ? 'Создать новый журнал' : 'Редактировать детали журнала'}</DialogTitle>
+            <DialogDescription>{metadataFormMode === 'create' ? 'Выберите группу, предмет, преподавателя, семестр и год.' : `Редактирование деталей журнала.`}</DialogDescription>
           </DialogHeader>{showMetadataDialog && <JournalMetadataForm mode={metadataFormMode} journalId={selectedJournalForMetadata?.id} onFormSubmitSuccess={handleMetadataFormSuccess} onCancel={() => setShowMetadataDialog(false)} />}</DialogContent></Dialog>
 
       <Dialog open={showManageEntriesDialog} onOpenChange={(open) => { if (!open) setCurrentManagingJournal(null); setShowManageEntriesDialog(open); }}>
         <DialogContent className="max-w-4xl lg:max-w-5xl xl:max-w-7xl h-[90vh] flex flex-col"><DialogHeader>
-            <DialogTitle>Manage Journal Entries</DialogTitle>
+            <DialogTitle>Управление записями журнала</DialogTitle>
             {currentManagingJournal && (<DialogDescription>
-                Group: {getGroupName(currentManagingJournal.groupId)} | Subject: {getSubjectName(currentManagingJournal.subjectId)} | Teacher: {getTeacherName(currentManagingJournal.teacherId)} <br/>
-                Year: {currentManagingJournal.year}, Semester: {currentManagingJournal.semester}
-            </DialogDescription>)}
-          </DialogHeader>{currentManagingJournal && (<div className="flex-grow overflow-hidden">
-              <ManageJournalEntriesView journal={currentManagingJournal} group={groups.find(g => g.id === currentManagingJournal.groupId) || null} onEntriesUpdated={handleEntriesUpdated} className="h-full"/>
-              </div>)}
-            <DialogFooter className="mt-auto pt-4 border-t"><DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose></DialogFooter>
-        </DialogContent></Dialog>
-      
-      {journalToDelete && (<AlertDialog open={!!journalToDelete} onOpenChange={() => setJournalToDelete(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>Delete journal for {getGroupName(journalToDelete.groupId)}, Subject: {getSubjectName(journalToDelete.subjectId)} ({journalToDelete.year}, Sem {journalToDelete.semester})? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteJournal} className="bg-red-600 hover:bg-red-700" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isSubmitting ? "Deleting..." : "Delete"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
+                Группа: {getGroupName(currentManagingJournal.groupId)} | Предмет: {getSubjectName(currentManagingJournal.subjectId)} | Преподаватель: {getTeacherName(currentManagingJournal.teacherId)} <br/>
+                Семестр: {currentManagingJournal.semester} | Год: {currentManagingJournal.year}
+              </DialogDescription>)}
+          </DialogHeader>
+          {currentManagingJournal && (
+            <ManageJournalEntriesView
+              journal={currentManagingJournal}
+              group={groups.find(g => g.id === currentManagingJournal.groupId) || null}
+              onEntriesUpdated={handleEntriesUpdated}
+              className="h-full"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
-      <header className="mb-8"><div className="flex items-center justify-between"><div>
-            <h1 className="text-3xl font-bold tracking-tight">Academic Journals</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Manage attendance and grades for groups and subjects.</p>
-          </div><Button onClick={handleOpenCreateJournalDialog} disabled={isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Create Journal</Button></div></header>
+      <AlertDialog open={!!journalToDelete} onOpenChange={(open) => !open && setJournalToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить журнал?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Это навсегда удалит журнал и все его записи.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteJournal} disabled={isSubmitting}>
+              {isSubmitting ? 'Удаление...' : 'Удалить'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <section><div className="bg-card shadow sm:rounded-lg">{journals.length === 0 && !isLoading ? (<div className="p-10 text-center text-muted-foreground">
-              <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" /><h3 className="text-lg font-medium">No journals found</h3>
-              <p className="mt-1 text-sm">Get started by creating a new journal.</p></div>) : (
-          <Table><TableHeader><TableRow><TableHead>Group</TableHead><TableHead>Subject</TableHead><TableHead>Teacher</TableHead>
-                <TableHead className="text-center">Year</TableHead><TableHead className="text-center">Semester</TableHead>
-                <TableHead className="text-center">Entries (Days)</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{journals.map(journal => {
-                // Calculate unique days with entries
-                const uniqueEntryDays = new Set(journal.entries.map(e => startOfDay(e.date.toDate()).toISOString())).size;
-                return (
-                <TableRow key={journal.id}><TableCell className="font-medium">{getGroupName(journal.groupId)}</TableCell>
-                  <TableCell>{getSubjectName(journal.subjectId)}</TableCell><TableCell>{getTeacherName(journal.teacherId)}</TableCell>
-                  <TableCell className="text-center">{journal.year}</TableCell><TableCell className="text-center">{journal.semester}</TableCell>
-                  <TableCell className="text-center">{uniqueEntryDays}</TableCell><TableCell className="text-right">
-                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Menu</span><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleOpenManageEntriesDialog(journal)}><Users className="mr-2 h-4 w-4" /> View/Manage Entries</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleOpenEditMetadataDialog(journal)}><Edit2 className="mr-2 h-4 w-4" /> Edit Details</DropdownMenuItem><DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleDeleteJournalInitiate(journal)} className="text-red-600 focus:text-red-600"><Trash2 className="mr-2 h-4 w-4" /> Delete Journal</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>
-                );
-            })}
-            </TableBody></Table>)}</div></section>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Журналы</h1>
+        <Button onClick={handleOpenCreateJournalDialog}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Создать журнал
+        </Button>
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Группа</TableHead>
+              <TableHead>Предмет</TableHead>
+              <TableHead>Преподаватель</TableHead>
+              <TableHead>Семестр</TableHead>
+              <TableHead>Год</TableHead>
+              <TableHead className="text-right">Действия</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {journals.map((journal) => (
+              <TableRow key={journal.id}>
+                <TableCell>{getGroupName(journal.groupId)}</TableCell>
+                <TableCell>{getSubjectName(journal.subjectId)}</TableCell>
+                <TableCell>{getTeacherName(journal.teacherId)}</TableCell>
+                <TableCell>{journal.semester}</TableCell>
+                <TableCell>{journal.year}</TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Открыть меню</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => handleOpenManageEntriesDialog(journal)}>
+                        <BookOpen className="mr-2 h-4 w-4" />
+                        Управление записями
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleOpenEditMetadataDialog(journal)}>
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Редактировать
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-red-600"
+                        onClick={() => handleDeleteJournalInitiate(journal)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Удалить
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 };
+
 export default ManageJournalsPage;

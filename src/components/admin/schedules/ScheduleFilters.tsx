@@ -15,6 +15,7 @@ interface ScheduleFiltersProps {
   groups: Group[];
   onFilterChange: (filters: ScheduleFilters) => void;
   className?: string;
+  filters: ScheduleFilters;
 }
 
 export interface ScheduleFilters {
@@ -29,14 +30,9 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
   groups,
   onFilterChange,
   className,
+  filters: externalFilters,
 }) => {
-  const [filters, setFilters] = React.useState<ScheduleFilters>({
-    search: '',
-    groupId: 'all',
-    course: 'all',
-    semester: 'all',
-    year: 'all',
-  });
+  const [filters, setFilters] = React.useState<ScheduleFilters>(externalFilters);
 
   const handleFilterChange = (key: keyof ScheduleFilters, value: string) => {
     const newFilters = { ...filters, [key]: value };

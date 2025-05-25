@@ -27,12 +27,12 @@ import { Timestamp } from 'firebase/firestore';
 
 // Zod schema for the form
 const scheduleMetadataSchema = z.object({
-  groupId: z.string().min(1, 'Group is required'),
-  semester: z.coerce.number().min(1, 'Semester must be 1 or 2').max(2, 'Semester must be 1 or 2'),
+  groupId: z.string().min(1, 'Группа обязательна'),
+  semester: z.coerce.number().min(1, 'Семестр должен быть 1 или 2').max(2, 'Семестр должен быть 1 или 2'),
   year: z.coerce
-    .number({invalid_type_error: "Year must be a number"})
-    .min(new Date().getFullYear() - 3, `Year too old`) 
-    .max(new Date().getFullYear() + 5, `Year too far in future`), 
+    .number({invalid_type_error: "Год должен быть числом"})
+    .min(new Date().getFullYear() - 3, `Слишком старый год`) 
+    .max(new Date().getFullYear() + 5, `Слишком далёкий год`), 
 });
 
 export type ScheduleMetadataFormValues = z.infer<typeof scheduleMetadataSchema>;
@@ -171,7 +171,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
           name="groupId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Group</FormLabel>
+              <FormLabel>Группа</FormLabel>
               <Select 
                 onValueChange={field.onChange} 
                 value={field.value} 
@@ -179,7 +179,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a group" />
+                    <SelectValue placeholder="Выберите группу" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -188,7 +188,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
                       {group.name} ({group.specialization} - {group.year})
                     </SelectItem>
                   ))}
-                  {groups.length === 0 && <p className="p-2 text-sm text-muted-foreground">No groups available.</p>}
+                  {groups.length === 0 && <p className="p-2 text-sm text-muted-foreground">Нет доступных групп</p>}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -200,7 +200,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
           name="semester"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Semester</FormLabel>
+              <FormLabel>Семестр</FormLabel>
               <Select 
                 onValueChange={(value) => field.onChange(parseInt(value, 10))} 
                 value={field.value?.toString()}
@@ -208,12 +208,12 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select semester" />
+                    <SelectValue placeholder="Выберите семестр" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="1">1st Semester</SelectItem>
-                  <SelectItem value="2">2nd Semester</SelectItem>
+                  <SelectItem value="1">1 Семестр</SelectItem>
+                  <SelectItem value="2">2 Семестр</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

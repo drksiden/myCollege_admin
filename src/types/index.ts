@@ -51,6 +51,10 @@ export interface Group {
   name: string;
   description?: string;
   students?: string[];
+  year: number;
+  specialization: string;
+  curatorId: string;
+  course: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

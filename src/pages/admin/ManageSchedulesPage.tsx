@@ -96,7 +96,7 @@ const ManageSchedulesPage: React.FC = () => {
       const [fetchedSchedules, fetchedGroups, fetchedTeachers, fetchedSubjects, fetchedTemplates] = await Promise.all([
         getAllSchedules(db),
         getAllGroups(),
-        getAllTeachers(db),
+        getAllTeachers(),
         getAllSubjects(),
         getAllScheduleTemplates(),
       ]);

@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import { getUsersFromFirestore, updateUserInFirestore } from '@/lib/firebaseService/userService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import {
   getAllTeachers,
   getTeacherProfileByUserId,
@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { writeBatch } from 'firebase/firestore';
 import { Toaster } from '@/components/ui/sonner';
+import { Dialog as SimpleDialog } from '@/components/ui/dialog';
 
 
 const ManageTeachersPage: React.FC = () => {
@@ -58,6 +59,7 @@ const ManageTeachersPage: React.FC = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [teacherToDelete, setTeacherToDelete] = useState<{profileId: string, userId: string, userName: string} | null>(null);
+  const [showUserSelectDialog, setShowUserSelectDialog] = useState(false);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -169,6 +171,52 @@ const ManageTeachersPage: React.FC = () => {
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Toaster richColors position="top-right" />
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-semibold">Все преподаватели</h2>
+        <Button
+          variant="default"
+          onClick={() => setShowUserSelectDialog(true)}
+          className="flex items-center gap-2"
+        >
+          <PlusCircle className="w-5 h-5" />
+          Создать преподавателя
+        </Button>
+      </div>
+      <SimpleDialog open={showUserSelectDialog} onOpenChange={setShowUserSelectDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Выберите пользователя для профиля преподавателя</DialogTitle>
+            <DialogDescription>
+              Выберите пользователя с ролью "teacher", для которого ещё не создан профиль.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {teacherUsers.filter(u => !allTeacherProfiles.some(p => p.userId === u.uid)).length === 0 ? (
+              <div className="text-muted-foreground">Нет пользователей без профиля преподавателя.</div>
+            ) : (
+              teacherUsers.filter(u => !allTeacherProfiles.some(p => p.userId === u.uid)).map(user => (
+                <Button
+                  key={user.uid}
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setShowUserSelectDialog(false);
+                    setSelectedUserForProfile(user);
+                    setSelectedTeacherProfileForEdit(null);
+                    setFormMode('create');
+                    setShowProfileDialog(true);
+                  }}
+                >
+                  {user.firstName} {user.lastName} ({user.email})
+                </Button>
+              ))
+            )}
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={() => setShowUserSelectDialog(false)}>Отмена</Button>
+          </div>
+        </DialogContent>
+      </SimpleDialog>
       <Dialog open={showProfileDialog} onOpenChange={(open) => {
         if (!open) {
           setSelectedUserForProfile(null);

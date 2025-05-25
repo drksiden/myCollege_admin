@@ -162,12 +162,12 @@ const ManageGroupsPage: React.FC = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {formMode === 'create' ? 'Create New Group' : 'Edit Group'}
+              {formMode === 'create' ? 'Создать новую группу' : 'Редактировать группу'}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
-                ? 'Fill in the details to add a new group.'
-                : `Editing group: ${selectedGroupForEdit?.name || ''}`}
+                ? 'Заполните данные для добавления новой группы.'
+                : `Редактирование группы: ${selectedGroupForEdit?.name || ''}`}
             </DialogDescription>
           </DialogHeader>
           {showGroupFormDialog && ( 
@@ -205,13 +205,13 @@ const ManageGroupsPage: React.FC = () => {
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Group Management</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Управление группами</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Organize students into groups, manage specializations, and enrollment years.
+              Организуйте студентов по группам, управляйте специализациями и годами поступления.
             </p>
           </div>
           <Button onClick={handleOpenCreateGroupDialog}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Group
+            <PlusCircle className="mr-2 h-4 w-4" /> Добавить новую группу
           </Button>
         </div>
       </header>
@@ -221,18 +221,18 @@ const ManageGroupsPage: React.FC = () => {
           {groups.length === 0 && !isLoading ? (
             <div className="p-10 text-center text-muted-foreground">
               <ListChecks className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium">No groups found</h3>
-              <p className="mt-1 text-sm">Get started by adding a new group.</p>
+              <h3 className="text-lg font-medium">Группы не найдены</h3>
+              <p className="mt-1 text-sm">Начните с добавления новой группы.</p>
             </div>
           ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[30%]">Name</TableHead>
-                <TableHead className="w-[25%]">Specialization</TableHead>
-                <TableHead className="w-[10%] text-center">Year</TableHead>
-                <TableHead className="w-[15%] text-center">Student Count</TableHead>
-                <TableHead className="text-right w-[20%]">Actions</TableHead>
+                <TableHead className="w-[30%]">Название</TableHead>
+                <TableHead className="w-[25%]">Специализация</TableHead>
+                <TableHead className="w-[10%] text-center">Год</TableHead>
+                <TableHead className="w-[15%] text-center">Количество студентов</TableHead>
+                <TableHead className="text-right w-[20%]">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -246,7 +246,7 @@ const ManageGroupsPage: React.FC = () => {
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
+                          <span className="sr-only">Открыть меню</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

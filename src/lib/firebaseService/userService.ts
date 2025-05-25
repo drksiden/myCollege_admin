@@ -339,3 +339,17 @@ export const getUsers = async (): Promise<User[]> => {
     ...doc.data()
   })) as User[];
 };
+
+/**
+ * Получить пользователей по массиву userIds. Если массив пустой — вернуть [].
+ */
+export const getUsersFromFirestoreByIds = async (db: Firestore, userIds: string[]): Promise<User[]> => {
+  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+  const usersCollection = collection(db, 'users');
+  const q = query(usersCollection, where('uid', 'in', userIds));
+  const usersSnapshot = await getDocs(q);
+  return usersSnapshot.docs.map(docSnapshot => ({
+    uid: docSnapshot.id,
+    ...docSnapshot.data(),
+  } as User));
+};

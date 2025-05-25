@@ -115,7 +115,7 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
         await createTeacherProfile(db, profileDataForService);
         // Link this teacher profile ID to the user document
         await updateUserInFirestore(db, userId, { role: 'teacher' });
-        toast.success(`Teacher profile created for ${userName || 'user'} and linked.`);
+        toast.success('Профиль преподавателя успешно создан и привязан к пользователю.');
       } else if (mode === 'edit' && teacherProfileId) {
         // Update existing teacher profile
         const profileDataForService = {
@@ -124,7 +124,7 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
           education: values.education,
         };
         await updateTeacherProfile(db, teacherProfileId, profileDataForService);
-        toast.success(`Teacher profile for ${userName || 'user'} updated.`);
+        toast.success('Профиль преподавателя успешно обновлён.');
       }
       onFormSubmitSuccess();
       if (mode === 'create') form.reset();

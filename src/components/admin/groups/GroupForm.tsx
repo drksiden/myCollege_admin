@@ -32,13 +32,13 @@ import type { Teacher } from '@/types';
 
 // Zod schema for the form
 const groupSchema = z.object({
-  name: z.string().min(1, 'Group name is required').max(100, 'Name too long'),
+  name: z.string().min(1, 'Название группы обязательно').max(100, 'Слишком длинное название'),
   year: z.number()
-    .min(new Date().getFullYear() - 10, `Year too old`) 
-    .max(new Date().getFullYear() + 5, `Year too far in future`),
-  specialization: z.string().min(1, 'Specialization is required').max(100, 'Specialization too long'),
-  curatorId: z.string().min(1, 'Curator is required'),
-  course: z.number().min(1, 'Course is required').max(5, 'Course too high'),
+    .min(new Date().getFullYear() - 10, `Слишком старый год`) 
+    .max(new Date().getFullYear() + 5, `Слишком далёкий год`),
+  specialization: z.string().min(1, 'Специализация обязательна').max(100, 'Слишком длинная специализация'),
+  curatorId: z.string().min(1, 'Куратор обязателен'),
+  course: z.number().min(1, 'Курс обязателен').max(5, 'Слишком большой номер курса'),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
@@ -89,7 +89,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
         setTeachers(teachersWithNames);
       } catch (error) {
         console.error('Error fetching teachers:', error);
-        toast.error('Failed to load teachers');
+        toast.error('Не удалось загрузить преподавателей');
       }
     };
 
@@ -113,7 +113,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
           }
         } catch (error) {
           console.error('Error fetching group:', error);
-          toast.error('Failed to load group data');
+          toast.error('Не удалось загрузить данные группы');
         } finally {
           setInitialDataLoading(false);
         }
@@ -127,22 +127,22 @@ const GroupForm: React.FC<GroupFormProps> = ({
     try {
       if (mode === 'create') {
         await createGroup(values);
-        toast.success('Group created successfully');
+        toast.success('Группа успешно создана');
       } else if (mode === 'edit' && groupId) {
         await updateGroup(groupId, values);
-        toast.success('Group updated successfully');
+        toast.success('Группа успешно обновлена');
       }
       onFormSubmitSuccess();
     } catch (error) {
       console.error('Error submitting group:', error);
-      toast.error('Failed to save group');
+      toast.error('Не удалось сохранить группу');
     } finally {
       setIsLoading(false);
     }
   };
 
   if (initialDataLoading && mode === 'edit') {
-    return <p className="text-center p-4">Loading group data...</p>;
+    return <p className="text-center p-4">Загрузка данных группы...</p>;
   }
 
   return (
@@ -153,9 +153,9 @@ const GroupForm: React.FC<GroupFormProps> = ({
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Group Name</FormLabel>
+              <FormLabel>Название группы</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., CS-101, Engineering Year 1" {...field} disabled={isLoading} />
+                <Input placeholder="например, ПИ-101, 1 курс" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -166,11 +166,11 @@ const GroupForm: React.FC<GroupFormProps> = ({
           name="year"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Enrollment Year</FormLabel>
+              <FormLabel>Год поступления</FormLabel>
               <FormControl>
                 <Input 
                   type="number" 
-                  placeholder="e.g., 2023" 
+                  placeholder="например, 2023" 
                   {...field} 
                   disabled={isLoading} 
                   onChange={e => field.onChange(Number(e.target.value))}
@@ -186,9 +186,9 @@ const GroupForm: React.FC<GroupFormProps> = ({
           name="specialization"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Specialization</FormLabel>
+              <FormLabel>Специализация</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Computer Science, Mechanical Engineering" {...field} disabled={isLoading} />
+                <Input placeholder="например, Информатика, Машиностроение" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -199,10 +199,10 @@ const GroupForm: React.FC<GroupFormProps> = ({
           name="curatorId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Curator</FormLabel>
+              <FormLabel>Куратор</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select curator" />
+                  <SelectValue placeholder="Выберите куратора" />
                 </SelectTrigger>
                 <SelectContent>
                   {teachers.map(teacher => (
@@ -241,11 +241,11 @@ const GroupForm: React.FC<GroupFormProps> = ({
         <div className="flex justify-end space-x-3 pt-2">
           {onCancel && (
             <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-              Cancel
+              Отмена
             </Button>
           )}
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Saving...' : (mode === 'create' ? 'Create Group' : 'Save Changes')}
+            {isLoading ? 'Сохранение...' : (mode === 'create' ? 'Создать группу' : 'Сохранить изменения')}
           </Button>
         </div>
       </form>

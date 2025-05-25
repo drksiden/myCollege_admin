@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import type { Group, Subject, Teacher, Lesson as LessonType } from '@/types';
+import type { Group, Subject, Teacher, Schedule } from '@/types';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from '@/components/ui/badge';
 import { Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { getAllSchedules } from '@/services/firestore';
 
 const timeSlots = [
   { start: '08:00', end: '09:30' },
@@ -44,50 +45,59 @@ const SchedulePage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [lessons, setLessons] = useState<LessonType[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const [groupsSnap, subjectsSnap, teachersSnap, lessonsSnap] = await Promise.all([
-        getDocs(collection(db, 'groups')),
-        getDocs(collection(db, 'subjects')),
-        getDocs(collection(db, 'teachers')),
-        getDocs(collection(db, 'lessons')),
-      ]);
-      setGroups(groupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[]);
-      setSubjects(subjectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[]);
-      setTeachers(teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Teacher[]);
-      setLessons(lessonsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LessonType[]);
-      setLoading(false);
+      try {
+        const [groupsSnap, subjectsSnap, teachersSnap, schedulesData] = await Promise.all([
+          getDocs(collection(db, 'groups')),
+          getDocs(collection(db, 'subjects')),
+          getDocs(collection(db, 'teachers')),
+          getAllSchedules(),
+        ]);
+        
+        setGroups(groupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[]);
+        setSubjects(subjectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[]);
+        setTeachers(teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Teacher[]);
+        setSchedules(schedulesData);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, []);
 
-  // Получаем список годов (курсов) из групп
-  const years = Array.from(new Set(groups.map(g => g.year))).sort((a, b) => b - a);
-  const filteredGroups = selectedYear ? groups.filter(g => g.year === selectedYear) : groups;
+  // Получаем список курсов из групп (только если поле course есть и не undefined/null)
+  const courses = Array.from(new Set(groups.map(g => g.course).filter((c): c is number => typeof c === 'number'))).sort((a, b) => a - b);
+  const filteredGroups = selectedYear ? groups.filter(g => g.course === selectedYear) : groups;
 
   const getSubjectName = (subjectId: string) =>
     subjects.find((s) => s.id === subjectId)?.name || '—';
   const getTeacherName = (teacherId: string) => {
     const t = teachers.find((t) => t.id === teacherId);
     if (!t) return '—';
-    return t.middleName
-      ? `${t.lastName} ${t.firstName} ${t.middleName}`
-      : `${t.lastName} ${t.firstName}`;
+    const lastName = t.lastName || '';
+    const firstName = t.firstName || '';
+    const middleName = t.middleName || '';
+    if (!lastName && !firstName && !middleName) return '—';
+    return [lastName, firstName, middleName].filter(Boolean).join(' ');
   };
 
   // Формируем сетку: [день недели][пара][группа]
   const buildGridData = () => {
-    // [day][time][group]
     return DAYS_OF_WEEK.map((_, dayIndex) =>
       timeSlots.map((timeSlot) =>
         filteredGroups.map((group) => {
-          const cellLessons = lessons.filter((lesson: LessonType) =>
-            (lesson as any).groupId === group.id &&
+          const schedule = schedules.find(s => s.groupId === group.id);
+          if (!schedule) return [];
+          
+          const cellLessons = schedule.lessons.filter((lesson) =>
             lesson.dayOfWeek === dayIndex + 1 &&
             lesson.startTime === timeSlot.start &&
             lesson.endTime === timeSlot.end
@@ -100,29 +110,98 @@ const SchedulePage: React.FC = () => {
 
   const exportToExcel = () => {
     const grid = buildGridData();
-    // Заголовок: День/Время/№ пары, затем по одной колонке на каждую группу
     const header = ['День', '№ пары', 'Время', ...filteredGroups.map(g => g.name)];
     const data: string[][] = [];
     DAYS_OF_WEEK.forEach((day, dayIdx) => {
       timeSlots.forEach((slot, slotIdx) => {
-        const row: string[] = [day, (slotIdx + 1).toString(), `${slot.start} - ${slot.end}`];
+        const row: string[] = [
+          slotIdx === 0 ? day : '', // Только в первой строке дня недели
+          (slotIdx + 1).toString(),
+          `${slot.start} - ${slot.end}`
+        ];
         filteredGroups.forEach((_, groupIdx) => {
           const lessonsInCell = grid[dayIdx][slotIdx][groupIdx];
           row.push(
             lessonsInCell && lessonsInCell.length > 0
               ? lessonsInCell.map(lesson =>
-                  `${getSubjectName(lesson.subjectId)}\n${getTeacherName(lesson.teacherId)}\n${lesson.room}\n${typeLabels[lesson.type]}`
-                ).join('\n---\n')
-              : ''
+                  [
+                    getSubjectName(lesson.subjectId),
+                    getTeacherName(lesson.teacherId),
+                    lesson.room,
+                    typeLabels[lesson.type]
+                  ].filter(Boolean).join('\n')
+                ).join('\n\n---\n\n')
+              : '—'
           );
         });
         data.push(row);
       });
     });
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    // Ширина столбцов
+    const wscols = [
+      { wch: 14 }, // День
+      { wch: 10 },  // № пары
+      { wch: 18 }, // Время
+      ...filteredGroups.map(() => ({ wch: 36 })),
+    ];
+    ws['!cols'] = wscols;
+    // Стилизация: заголовок, дни недели, зебра для строк
+    const range = XLSX.utils.decode_range(ws['!ref']!);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell_address = { c: C, r: R };
+        const cell_ref = XLSX.utils.encode_cell(cell_address);
+        if (!ws[cell_ref]) continue;
+        if (!ws[cell_ref].s) ws[cell_ref].s = {};
+        // Заголовок
+        if (R === 0) {
+          ws[cell_ref].s = {
+            font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 13 },
+            fill: { fgColor: { rgb: '2980B9' } },
+            border: {
+              top: { style: 'thin', color: { rgb: '000000' } },
+              bottom: { style: 'thin', color: { rgb: '000000' } },
+              left: { style: 'thin', color: { rgb: '000000' } },
+              right: { style: 'thin', color: { rgb: '000000' } },
+            },
+            alignment: { wrapText: true, vertical: 'center', horizontal: 'center' },
+          };
+        } else if (C === 0 && ws[cell_ref].v) { // День недели
+          ws[cell_ref].s = {
+            font: { bold: true, color: { rgb: '222222' }, sz: 12 },
+            fill: { fgColor: { rgb: 'D6EAF8' } },
+            border: {
+              top: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              bottom: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              left: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              right: { style: 'thin', color: { rgb: 'AAAAAA' } },
+            },
+            alignment: { wrapText: true, vertical: 'center', horizontal: 'center' },
+          };
+        } else {
+          // Зебра: разные цвета для чётных/нечётных строк (начиная с первой строки данных)
+          const isEvenRow = (R % 2 === 0);
+          ws[cell_ref].s = {
+            font: { color: { rgb: '222222' }, sz: 12 },
+            fill: { fgColor: { rgb: isEvenRow ? 'F4F6F7' : 'EBF5FB' } },
+            border: {
+              top: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              bottom: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              left: { style: 'thin', color: { rgb: 'AAAAAA' } },
+              right: { style: 'thin', color: { rgb: 'AAAAAA' } },
+            },
+            alignment: { wrapText: true, vertical: 'center', horizontal: 'center' },
+          };
+        }
+      }
+    }
+    // Высота строк (SheetJS не поддерживает напрямую, но можно подсказать Excel через ws['!rows'])
+    ws['!rows'] = Array(data.length + 1).fill({ hpt: 32 }); // 32pt высота строки
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Расписание');
     XLSX.writeFile(wb, `Расписание.xlsx`);
+    // Для расширенной стилизации (цвета, шрифты, заливки) используйте пакет xlsx-style или платные решения.
   };
 
   const exportToPDF = () => {
@@ -149,7 +228,9 @@ const SchedulePage: React.FC = () => {
     doc.setFontSize(16);
     doc.text(`Расписание`, 14, 15);
     doc.setFontSize(10);
-    (doc as unknown as { autoTable: Function }).autoTable({
+    // Для autoTable типизируем явно:
+    type AutoTableType = (options: Record<string, unknown>) => void;
+    (doc as unknown as { autoTable: AutoTableType }).autoTable({
       head: [header],
       body: data,
       startY: 30,
@@ -178,8 +259,8 @@ const SchedulePage: React.FC = () => {
             onChange={e => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">Все</option>
-            {years.map(year => (
-              <option key={year} value={year}>{year}</option>
+            {courses.map(course => (
+              <option key={course} value={course}>{course}</option>
             ))}
           </select>
           <button className="btn btn-outline flex items-center gap-2" onClick={exportToExcel}>

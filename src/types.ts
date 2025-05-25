@@ -61,6 +61,7 @@ export interface Group {
   students: string[];
   scheduleId: string;
   curatorId?: string;
+  course: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

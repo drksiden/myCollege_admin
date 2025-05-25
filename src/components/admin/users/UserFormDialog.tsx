@@ -17,8 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { auth, db } from '@/lib/firebase';
-import { createUserInAuth, createUserDocument, updateUserInFirestore } from '@/lib/firebaseService/userService';
+import { db } from '@/lib/firebase';
+import { createUserInAuth, updateUserInFirestore } from '@/lib/firebaseService/userService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import type { User, Group } from '@/types';
 
@@ -41,15 +41,15 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
     role: (user?.role || 'student') as UserRole,
     password: '', // Only used for new users
     groupId: user?.studentDetails?.groupId || '',
-    specialization: user?.teacherDetails?.specialization || '',
-    academicDegree: user?.teacherDetails?.academicDegree || '',
-    education: user?.teacherDetails?.education || '',
+    department: user?.teacherDetails?.department || '',
+    qualification: user?.teacherDetails?.qualification || '',
+    iin: user?.iin || '',
   });
 
   useEffect(() => {
     const loadGroups = async () => {
       try {
-        const fetchedGroups = await getAllGroups(db);
+        const fetchedGroups = await getAllGroups();
         setGroups(fetchedGroups);
       } catch (error) {
         console.error('Error loading groups:', error);
@@ -73,9 +73,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           ...(formData.role === 'student' && { studentDetails: { groupId: formData.groupId } }),
           ...(formData.role === 'teacher' && {
             teacherDetails: {
-              specialization: formData.specialization,
-              academicDegree: formData.academicDegree,
-              education: formData.education,
+              department: formData.department,
+              qualification: formData.qualification,
             },
           }),
         });
@@ -87,22 +86,21 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           throw new Error('Password is required for new users');
         }
 
-        const userCredential = await createUserInAuth(auth, formData.email, formData.password);
-        await createUserDocument(db, userCredential.user.uid, {
+        const userData = {
           email: formData.email,
+          password: formData.password,
           firstName: formData.firstName,
           lastName: formData.lastName,
           role: formData.role,
-          ...(formData.role === 'student' && { studentDetails: { groupId: formData.groupId } }),
+          iin: formData.iin,
+          ...(formData.role === 'student' && { groupId: formData.groupId }),
           ...(formData.role === 'teacher' && {
-            teacherDetails: {
-              specialization: formData.specialization,
-              academicDegree: formData.academicDegree,
-              education: formData.education,
-            },
+            department: formData.department,
+            qualification: formData.qualification,
           }),
-        });
+        };
 
+        await createUserInAuth(userData);
         toast.success('User created successfully');
       }
 
@@ -169,6 +167,16 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="iin">IIN</Label>
+            <Input
+              id="iin"
+              value={formData.iin}
+              onChange={(e) => setFormData({ ...formData, iin: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
             <Select
               value={formData.role}
@@ -209,31 +217,21 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           {formData.role === 'teacher' && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="specialization">Specialization</Label>
+                <Label htmlFor="department">Department</Label>
                 <Input
-                  id="specialization"
-                  value={formData.specialization}
-                  onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                  id="department"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="academicDegree">Academic Degree</Label>
+                <Label htmlFor="qualification">Qualification</Label>
                 <Input
-                  id="academicDegree"
-                  value={formData.academicDegree}
-                  onChange={(e) => setFormData({ ...formData, academicDegree: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="education">Education</Label>
-                <Input
-                  id="education"
-                  value={formData.education}
-                  onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+                  id="qualification"
+                  value={formData.qualification}
+                  onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
                   required
                 />
               </div>

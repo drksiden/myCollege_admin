@@ -115,6 +115,21 @@ const Sidebar: React.FC = () => {
         },
       ],
     },
+    {
+      title: 'Общение и новости',
+      items: [
+        {
+          to: '/admin/chat',
+          icon: <Users className="h-5 w-5" />,
+          label: 'Чат',
+        },
+        {
+          to: '/admin/news',
+          icon: <BookOpen className="h-5 w-5" />,
+          label: 'Новости',
+        },
+      ],
+    },
   ];
 
   const renderNavItems = () => (

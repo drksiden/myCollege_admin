@@ -146,7 +146,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a group" />
+                    <SelectValue placeholder="Выберите группу" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>

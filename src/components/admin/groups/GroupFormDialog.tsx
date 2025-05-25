@@ -17,157 +17,118 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
-import type { Group, Teacher, User } from '@/types';
+import type { Group, Teacher } from '@/types';
 
 interface GroupFormDialogProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   group?: Group;
-  onSuccess?: () => void;
+  onSubmit?: () => void;
 }
 
-export function GroupFormDialog({ open, onOpenChange, group, onSuccess }: GroupFormDialogProps) {
+export const GroupFormDialog: React.FC<GroupFormDialogProps> = ({ open, onClose, group, onSubmit }) => {
   const [loading, setLoading] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [formData, setFormData] = useState({
-    name: group?.name || '',
-    year: group?.year || new Date().getFullYear(),
-    specialization: group?.specialization || '',
-    curatorId: group?.curatorId || '',
+  const [formData, setFormData] = useState<Partial<Group>>({
+    name: '',
+    year: new Date().getFullYear(),
+    specialization: '',
+    students: [],
+    curatorId: '',
+    ...group
   });
 
   useEffect(() => {
-    const loadTeachers = async () => {
+    const fetchTeachers = async () => {
       try {
-        const [teacherProfiles, teacherUsers] = await Promise.all([
-          getAllTeachers(db),
-          getUsersByRole(db, 'teacher')
-        ]);
-        
-        // Создаем мапу пользователей для быстрого доступа
-        const userMap = new Map(teacherUsers.map(user => [user.uid, user]));
-        
-        // Объединяем данные профилей с данными пользователей
-        const teachersWithUserData = teacherProfiles.map(profile => {
-          const user = userMap.get(profile.userId);
-          return {
-            ...profile,
-            firstName: user?.firstName || '',
-            lastName: user?.lastName || '',
-          };
-        });
-        
-        setTeachers(teachersWithUserData);
-        setUsers(teacherUsers);
+        const fetchedTeachers = await getAllTeachers();
+        setTeachers(fetchedTeachers);
       } catch (error) {
-        console.error('Error loading teachers:', error);
+        console.error('Error fetching teachers:', error);
         toast.error('Failed to load teachers');
       }
     };
-    loadTeachers();
+    fetchTeachers();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
-      if (group) {
-        // Update existing group
-        await updateGroup(group.id, {
-          name: formData.name,
-          year: formData.year,
-          specialization: formData.specialization,
-          curatorId: formData.curatorId,
-        });
-
-        toast.success('Group updated successfully');
+      if (group?.id) {
+        await updateGroup(group.id, formData);
       } else {
-        // Create new group
-        await createGroup({
-          name: formData.name,
-          year: formData.year,
-          specialization: formData.specialization,
-          curatorId: formData.curatorId,
-        });
-
-        toast.success('Group created successfully');
+        await createGroup(formData as Pick<Group, 'name' | 'year' | 'specialization' | 'curatorId'>);
       }
-
-      onSuccess?.();
-      onOpenChange(false);
+      onSubmit?.();
+      onClose();
     } catch (error) {
       console.error('Error saving group:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to save group');
+      toast.error('Failed to save group');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{group ? 'Edit Group' : 'Create New Group'}</DialogTitle>
+          <DialogTitle>{group ? 'Edit Group' : 'Create Group'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Group Name</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-            />
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="year">Year</Label>
+              <Input
+                id="year"
+                type="number"
+                value={formData.year}
+                onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="specialization">Specialization</Label>
+              <Input
+                id="specialization"
+                value={formData.specialization}
+                onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="curator">Curator</Label>
+              <Select
+                value={formData.curatorId}
+                onValueChange={(value) => setFormData({ ...formData, curatorId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select curator" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers.map((teacher) => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      {teacher.firstName} {teacher.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="year">Year</Label>
-            <Input
-              id="year"
-              type="number"
-              value={formData.year}
-              onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="specialization">Specialization</Label>
-            <Input
-              id="specialization"
-              value={formData.specialization}
-              onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="curatorId">Curator</Label>
-            <Select
-              value={formData.curatorId}
-              onValueChange={(value) => setFormData({ ...formData, curatorId: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select curator" />
-              </SelectTrigger>
-              <SelectContent>
-                {teachers.map((teacher) => (
-                  <SelectItem key={teacher.id} value={teacher.userId}>
-                    {`${teacher.lastName} ${teacher.firstName}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onClose()}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

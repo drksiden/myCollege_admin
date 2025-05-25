@@ -33,7 +33,7 @@ import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { addOrUpdateJournalEntriesForDate, removeJournalEntriesForDate } from '@/lib/firebaseService/journalService';
 import { getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
-import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
+import { getUsersFromFirestoreByIds } from '@/lib/firebaseService/userService';
 import type { Journal, JournalEntry, Student, Group } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import {
@@ -97,6 +97,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   const [isStudentDataLoading, setIsStudentDataLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dateToDelete, setDateToDelete] = useState<Timestamp | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   const form = useForm<ManageEntriesFormValues>({
     resolver: zodResolver(manageEntriesSchema),
@@ -115,7 +116,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
 
   useEffect(() => {
     const fetchStudents = async () => {
-      if (!group || !group.students || group.students.length === 0) {
+      if (!group || !Array.isArray(group.students) || group.students.length === 0) {
         setStudentsInGroup([]);
         setIsStudentDataLoading(false);
         return;
@@ -123,28 +124,30 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       setIsStudentDataLoading(true);
       try {
         const studentProfiles = await getStudentsInGroupDetails(db, group.students);
-        const userIds = studentProfiles.map(s => s.userId);
-        if (userIds.length === 0) {
-          setStudentsInGroup(studentProfiles.map(sp => ({...sp, fullName: 'User data missing'})));
+        const userIds = studentProfiles.map(s => s.userId).filter(Boolean);
+        if (!userIds.length) {
+          setStudentsInGroup(studentProfiles.map(sp => ({...sp, fullName: 'Нет данных пользователя'})));
           setIsStudentDataLoading(false);
           return;
         }
-        const users = await getUsersFromFirestore(db);
+        let users = [];
+        if (userIds.length > 0) {
+          users = await getUsersFromFirestoreByIds(db, userIds);
+        }
         const userMap = new Map(users.map(u => [u.uid, u]));
-
         const studentsWithNames = studentProfiles.map(sp => ({
           ...sp,
-          fullName: `${userMap.get(sp.userId)?.firstName || ''} ${userMap.get(sp.userId)?.lastName || 'N/A'}`.trim() || 'Unnamed Student'
+          fullName: `${userMap.get(sp.userId)?.firstName || ''} ${userMap.get(sp.userId)?.lastName || 'Нет данных'}`.trim() || 'Безымянный студент'
         }));
         setStudentsInGroup(studentsWithNames);
       } catch (error) {
-        toast.error("Failed to load students for the group.");
-        console.error("Error fetching students:", error);
+        toast.error("Не удалось загрузить студентов для группы.");
+        console.error("Ошибка при загрузке студентов:", error);
       } finally {
         setIsStudentDataLoading(false);
       }
     };
-    if (group) fetchStudents(); else setIsStudentDataLoading(false);
+    fetchStudents();
   }, [group]);
 
   useEffect(() => {
@@ -242,18 +245,25 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
           <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b">
             <FormField control={form.control} name="selectedDate" render={({ field }) => (
               <FormItem className="flex flex-col">
-                <FormLabel className="mb-1">Date</FormLabel>
-                <Popover>
+                <FormLabel className="mb-1">Дата</FormLabel>
+                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                   <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                        {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
+                    <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                      onClick={() => setPopoverOpen(true)}>
+                      {field.value ? format(field.value, "PPP") : <span>Выберите дату</span>}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={date => {
+                        field.onChange(date);
+                        setPopoverOpen(false);
+                      }}
+                      initialFocus
+                    />
                   </PopoverContent>
                 </Popover>
                 <FormMessage />
@@ -261,27 +271,27 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
             )} />
             <div className="flex-grow"></div>
             <Button type="button" variant="destructive" onClick={openDeleteConfirm} disabled={isSubmitting || isStudentDataLoading || fields.length === 0} size="sm">
-              <Trash2 className="mr-2 h-4 w-4" /> Delete Entries for Date
+              <Trash2 className="mr-2 h-4 w-4" /> Удалить записи за дату
             </Button>
             <Button type="submit" disabled={isSubmitting || isStudentDataLoading || fields.length === 0} size="sm">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Entries for Date
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Сохранить записи за дату
             </Button>
           </div>
         </form>
       </Form>
 
-      {isStudentDataLoading && <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading student list...</div>}
-      {!isStudentDataLoading && studentsInGroup.length === 0 && <p className="text-muted-foreground text-center py-4">No students in this group to record entries for.</p>}
+      {isStudentDataLoading && <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Загрузка списка студентов...</div>}
+      {!isStudentDataLoading && studentsInGroup.length === 0 && <p className="text-muted-foreground text-center py-4">В этой группе нет студентов для заполнения журнала.</p>}
 
       {fields.length > 0 && !isStudentDataLoading && (
         <ScrollArea className="flex-grow">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Attendance</TableHead>
-                <TableHead>Grade</TableHead>
-                <TableHead>Comment</TableHead>
+                <TableHead>Студент</TableHead>
+                <TableHead>Посещаемость</TableHead>
+                <TableHead>Оценка</TableHead>
+                <TableHead>Комментарий</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -301,9 +311,9 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="present">Present</SelectItem>
-                              <SelectItem value="absent">Absent</SelectItem>
-                              <SelectItem value="late">Late</SelectItem>
+                              <SelectItem value="present">Присутствовал</SelectItem>
+                              <SelectItem value="absent">Отсутствовал</SelectItem>
+                              <SelectItem value="late">Опоздал</SelectItem>
                             </SelectContent>
                           </Select>
                         </FormItem>
@@ -339,7 +349,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                         <FormItem>
                           <FormControl>
                             <Textarea
-                              placeholder="Optional comment"
+                              placeholder="Комментарий (необязательно)"
                               className="resize-none"
                               {...field}
                               value={field.value || ""}
@@ -360,14 +370,14 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Entries</AlertDialogTitle>
+            <AlertDialogTitle>Удалить записи</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete all entries for {dateToDelete ? format(dateToDelete.toDate(), "PPP") : "this date"}? This action cannot be undone.
+              Вы уверены, что хотите удалить все записи за {dateToDelete ? format(dateToDelete.toDate(), "PPP") : "эту дату"}? Это действие нельзя отменить.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteEntriesForDate}>Delete</AlertDialogAction>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteEntriesForDate}>Удалить</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

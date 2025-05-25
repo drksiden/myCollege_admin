@@ -17,6 +17,8 @@ import ManageSchedulesPage from './pages/admin/ManageSchedulesPage';
 import ManageStudentsPage from './pages/admin/ManageStudentsPage';
 import ManageSubjectsPage from './pages/admin/ManageSubjectsPage';
 import ManageTeachersPage from './pages/admin/ManageTeachersPage';
+import ChatPage from './pages/admin/ChatPage';
+import NewsPage from './pages/admin/NewsPage';
 import { useAuth } from './contexts/AuthContext';
 
 function App() {
@@ -59,6 +61,10 @@ function App() {
           <Route path="manage/students" element={<ManageStudentsPage />} />
           <Route path="manage/subjects" element={<ManageSubjectsPage />} />
           <Route path="manage/teachers" element={<ManageTeachersPage />} />
+
+          {/* Новые разделы */}
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="news" element={<NewsPage />} />
 
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>

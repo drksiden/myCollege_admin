@@ -59,15 +59,14 @@ const ManageSubjectsPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [fetchedSubjects, fetchedTeacherProfiles, allUsers] = await Promise.all([
+      const [fetchedSubjects, fetchedTeacherProfiles] = await Promise.all([
         getAllSubjects(db),
         getAllTeacherProfiles(db),
-        getUsersFromFirestore(db),
       ]);
       setSubjects(fetchedSubjects);
 
       // Map teacher profiles to include user names
-      const userMap = new Map(allUsers.map(u => [u.uid, u]));
+      const userMap = new Map(fetchedTeacherProfiles.map(t => [t.userId, t]));
       const teachersWithNames = fetchedTeacherProfiles.map(t => ({
         id: t.id,
         firstName: userMap.get(t.userId)?.firstName || '',
