@@ -41,6 +41,9 @@ export interface Student {
 export interface Teacher {
   id: string;
   userId: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
   subjects: string[];
   groups: string[];
   specialization: string;
@@ -66,12 +69,13 @@ export interface Subject {
   id: string;
   name: string;
   description: string;
+  hoursPerWeek: number;
   hoursPerSemester: number;
   credits: number;
   hours: number;
   type: 'lecture' | 'practice' | 'laboratory';
   teacherId?: string;
-  groupId?: string;
+  groups: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

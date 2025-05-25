@@ -153,7 +153,7 @@ export const assignTeacherToGroup = async (
   teacherId: string,
   groupId: string
 ): Promise<void> => {
-  const teacherRef = doc(db, 'users', teacherId);
+  const teacherRef = doc(db, 'teachers', teacherId);
   const teacherDoc = await getDoc(teacherRef);
   
   if (!teacherDoc.exists()) {
@@ -166,6 +166,7 @@ export const assignTeacherToGroup = async (
   if (!groups.includes(groupId)) {
     await updateDoc(teacherRef, {
       groups: [...groups, groupId],
+      updatedAt: serverTimestamp(),
     });
   }
 };
@@ -174,7 +175,7 @@ export const removeTeacherFromGroup = async (
   teacherId: string,
   groupId: string
 ): Promise<void> => {
-  const teacherRef = doc(db, 'users', teacherId);
+  const teacherRef = doc(db, 'teachers', teacherId);
   const teacherDoc = await getDoc(teacherRef);
   
   if (!teacherDoc.exists()) {
@@ -187,6 +188,7 @@ export const removeTeacherFromGroup = async (
   if (groups.includes(groupId)) {
     await updateDoc(teacherRef, {
       groups: groups.filter((id: string) => id !== groupId),
+      updatedAt: serverTimestamp(),
     });
   }
 };

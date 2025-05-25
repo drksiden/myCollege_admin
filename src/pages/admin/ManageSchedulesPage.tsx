@@ -7,7 +7,6 @@ import { getAllSchedules, updateSchedule, getSchedule } from '@/lib/firebaseServ
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
 import { getAllSubjects } from '@/services/firestore';
-import { getAllRooms } from '@/lib/firebaseService/roomService';
 import { getAllScheduleTemplates, saveScheduleTemplate, deleteScheduleTemplate, updateScheduleTemplate, type ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
 import { updateDoc, writeBatch, doc, Timestamp } from 'firebase/firestore';
 import type { Schedule, Group, Teacher, Lesson, Subject } from '@/types';
@@ -33,7 +32,6 @@ import {
 import ScheduleMetadataForm from '@/components/admin/schedules/ScheduleMetadataForm';
 import LessonForm from '@/components/admin/schedules/LessonForm';
 import ScheduleView from '@/components/admin/schedules/ScheduleView';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ScheduleCalendar from '@/components/admin/schedules/ScheduleCalendar';
 import ScheduleFilters, { type ScheduleFilters as ScheduleFiltersType } from '@/components/admin/schedules/ScheduleFilters';
 import BulkLessonForm from '@/components/admin/schedules/BulkLessonForm';
@@ -55,7 +53,6 @@ const ManageSchedulesPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [rooms, setRooms] = useState<string[]>([]);
   
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
   const [metadataFormMode, setMetadataFormMode] = useState<'create' | 'edit'>('create');
@@ -67,6 +64,7 @@ const ManageSchedulesPage: React.FC = () => {
   const [showLessonFormDialog, setShowLessonFormDialog] = useState(false);
   const [lessonFormMode, setLessonFormMode] = useState<'create' | 'edit'>('create');
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [selectedLessonSchedule, setSelectedLessonSchedule] = useState<Schedule | null>(null);
 
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
   const [lessonToRemove, setLessonToRemove] = useState<{ lessonId: string} | null>(null); // scheduleId is in currentManagingSchedule
@@ -74,12 +72,9 @@ const ManageSchedulesPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true); // For initial data load
   const [isSubmitting, setIsSubmitting] = useState(false); // For any submit operation
 
-  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
-
   const [filters, setFilters] = useState<ScheduleFiltersType>({
     search: '',
     groupId: '',
-    teacherId: '',
   });
 
   const [showBulkLessonForm, setShowBulkLessonForm] = useState(false);
@@ -95,23 +90,21 @@ const ManageSchedulesPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [fetchedSchedules, fetchedGroups, fetchedTeachers, fetchedSubjects, fetchedRooms, fetchedTemplates] = await Promise.all([
+      const [fetchedSchedules, fetchedGroups, fetchedTeachers, fetchedSubjects, fetchedTemplates] = await Promise.all([
         getAllSchedules(db),
-        getAllGroups(db),
+        getAllGroups(),
         getAllTeachers(db),
         getAllSubjects(),
-        getAllRooms(),
         getAllScheduleTemplates(),
       ]);
       setSchedules(fetchedSchedules);
       setGroups(fetchedGroups);
       setTeachers(fetchedTeachers);
       setSubjects(fetchedSubjects);
-      setRooms(fetchedRooms);
       setTemplates(fetchedTemplates);
     } catch (err) {
-      console.error('Error fetching data:', err);
-      toast.error('Failed to load data.');
+      console.error('Ошибка при загрузке данных:', err);
+      toast.error('Не удалось загрузить данные.');
     } finally {
       setIsLoading(false);
     }
@@ -121,7 +114,10 @@ const ManageSchedulesPage: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  const getGroupName = (groupId: string) => groups.find(g => g.id === groupId)?.name || 'Unknown Group';
+  const getGroupName = useCallback(
+    (groupId: string) => groups.find(g => g.id === groupId)?.name || 'Unknown Group',
+    [groups]
+  );
 
   const handleOpenCreateScheduleDialog = () => {
     setSelectedScheduleForMetadata(null);
@@ -141,24 +137,23 @@ const ManageSchedulesPage: React.FC = () => {
     if (metadataFormMode === 'create') {
       const newSchedule = await getSchedule(db, scheduleId);
       if (newSchedule) {
-        // Update group's scheduleId
         const groupToUpdate = groups.find(g => g.id === newSchedule.groupId);
-        if (groupToUpdate && !groupToUpdate.scheduleId) { // Only link if group doesn't have a schedule
+        if (groupToUpdate && !groupToUpdate.scheduleId) {
           try {
             await updateDoc(doc(db, 'groups', newSchedule.groupId), { scheduleId: newSchedule.id });
-            toast.info(`Schedule linked to group ${getGroupName(newSchedule.groupId)}.`);
-            await fetchData(); // Refresh groups too
+            toast.info(`Расписание привязано к группе ${getGroupName(newSchedule.groupId)}.`);
+            await fetchData();
           } catch (error) {
-            console.error('Failed to link schedule to group:', error);
-            toast.error(`Failed to link schedule to group.`);
+            console.error('Не удалось привязать расписание к группе:', error);
+            toast.error('Не удалось привязать расписание к группе.');
           }
         } else if (groupToUpdate && groupToUpdate.scheduleId) {
-          toast.info(`Group ${getGroupName(newSchedule.groupId)} already has a schedule. Not linked.`);
+          toast.info(`Группа ${getGroupName(newSchedule.groupId)} уже имеет расписание. Привязка не выполнена.`);
         }
         setCurrentManagingSchedule(newSchedule);
         setShowManageLessonsDialog(true);
       } else {
-        toast.error("Could not load the new schedule to manage lessons.");
+        toast.error("Не удалось загрузить новое расписание для управления занятиями.");
       }
     }
   };
@@ -176,11 +171,11 @@ const ManageSchedulesPage: React.FC = () => {
         batch.update(doc(db, 'groups', groupToUpdate.id), { scheduleId: "" });
       }
       await batch.commit();
-      toast.success(`Schedule for ${getGroupName(scheduleToDelete.groupId)} deleted successfully.`);
+      toast.success(`Расписание для группы ${getGroupName(scheduleToDelete.groupId)} успешно удалено.`);
       fetchData();
     } catch (err) {
-      console.error('Failed to delete schedule:', err);
-      toast.error('Failed to delete schedule.');
+      console.error('Не удалось удалить расписание:', err);
+      toast.error('Не удалось удалить расписание.');
     } finally {
       setScheduleToDelete(null);
       setIsSubmitting(false);
@@ -208,19 +203,21 @@ const ManageSchedulesPage: React.FC = () => {
   };
 
   const handleLessonFormSuccess = async () => {
-    if (!currentManagingSchedule) return;
+    if (!currentManagingSchedule && !selectedLessonSchedule) return;
     setIsSubmitting(true);
     try {
-      const updatedSchedule = { ...currentManagingSchedule, updatedAt: Timestamp.now() };
-      await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedSchedule.lessons });
-      setCurrentManagingSchedule(updatedSchedule);
-      setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success(`Lesson ${lessonFormMode === 'create' ? 'added' : 'updated'} successfully.`);
+      await fetchData();
+      const updatedSchedule = await getSchedule(db, currentManagingSchedule?.id || selectedLessonSchedule?.id || '');
+      if (updatedSchedule) {
+        setCurrentManagingSchedule(updatedSchedule);
+      }
+      toast.success(`Занятие успешно ${lessonFormMode === 'create' ? 'добавлено' : 'обновлено'}.`);
       setShowLessonFormDialog(false);
       setSelectedLesson(null);
+      setSelectedLessonSchedule(null);
     } catch (err) {
-      console.error('Failed to update lesson:', err);
-      toast.error(`Failed to ${lessonFormMode} lesson.`);
+      console.error('Не удалось обновить занятие:', err);
+      toast.error(`Не удалось ${lessonFormMode === 'create' ? 'добавить' : 'обновить'} занятие.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -232,14 +229,15 @@ const ManageSchedulesPage: React.FC = () => {
     try {
       const updatedLessons = [...currentManagingSchedule.lessons, ...lessons];
       await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedLessons });
-      
-      const updatedSchedule = { ...currentManagingSchedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
-      setCurrentManagingSchedule(updatedSchedule);
-      setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success(`Added ${lessons.length} lessons successfully.`);
+      const freshSchedule = await getSchedule(db, currentManagingSchedule.id);
+      if (freshSchedule) {
+        setCurrentManagingSchedule(freshSchedule);
+        setSchedules(prevSchedules => prevSchedules.map(s => s.id === freshSchedule.id ? freshSchedule : s));
+      }
+      toast.success(`Успешно добавлено ${lessons.length} занятий.`);
     } catch (error) {
-      console.error('Failed to add lessons:', error);
-      toast.error('Failed to add lessons.');
+      console.error('Не удалось добавить занятия:', error);
+      toast.error('Не удалось добавить занятия.');
     } finally {
       setIsSubmitting(false);
     }
@@ -255,17 +253,17 @@ const ManageSchedulesPage: React.FC = () => {
           description: template.description,
           schedule: template.schedule,
         });
-        toast.success('Template updated successfully.');
+        toast.success('Шаблон успешно обновлен.');
       } else {
         await saveScheduleTemplate(template);
-        toast.success('Template saved successfully.');
+        toast.success('Шаблон успешно сохранен.');
       }
       const updatedTemplates = await getAllScheduleTemplates();
       setTemplates(updatedTemplates);
       setEditingTemplate(null);
     } catch (error) {
-      console.error('Failed to save template:', error);
-      toast.error(`Failed to ${editingTemplate ? 'update' : 'save'} template.`);
+      console.error('Не удалось сохранить шаблон:', error);
+      toast.error(`Не удалось ${editingTemplate ? 'обновить' : 'сохранить'} шаблон.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -282,10 +280,10 @@ const ManageSchedulesPage: React.FC = () => {
       await deleteScheduleTemplate(templateId);
       const updatedTemplates = await getAllScheduleTemplates();
       setTemplates(updatedTemplates);
-      toast.success('Template deleted successfully.');
+      toast.success('Шаблон успешно удален.');
     } catch (error) {
-      console.error('Failed to delete template:', error);
-      toast.error('Failed to delete template.');
+      console.error('Не удалось удалить шаблон:', error);
+      toast.error('Не удалось удалить шаблон.');
     } finally {
       setIsSubmitting(false);
     }
@@ -301,37 +299,41 @@ const ManageSchedulesPage: React.FC = () => {
       const updatedSchedule = { ...currentManagingSchedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
       setCurrentManagingSchedule(updatedSchedule);
       setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success('Template applied successfully.');
+      toast.success('Шаблон успешно применен.');
       setShowTemplatesList(false);
     } catch (error) {
-      console.error('Failed to apply template:', error);
-      toast.error('Failed to apply template.');
+      console.error('Не удалось применить шаблон:', error);
+      toast.error('Не удалось применить шаблон.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const confirmRemoveLesson = async () => {
-    if (!lessonToRemove || !currentManagingSchedule) return;
+    const schedule = selectedLessonSchedule || currentManagingSchedule;
+    if (!lessonToRemove || !schedule) return;
     setIsSubmitting(true);
     try {
-      const updatedLessons = currentManagingSchedule.lessons.filter(l => l.id !== lessonToRemove.lessonId);
-      await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedLessons });
-      const updatedSchedule = { ...currentManagingSchedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
-      setCurrentManagingSchedule(updatedSchedule);
+      const updatedLessons = schedule.lessons.filter(l => l.id !== lessonToRemove.lessonId);
+      await updateSchedule(db, schedule.id, { lessons: updatedLessons });
+      const updatedSchedule = { ...schedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
+      if (selectedLessonSchedule) setSelectedLessonSchedule(updatedSchedule);
+      if (currentManagingSchedule && schedule.id === currentManagingSchedule.id) setCurrentManagingSchedule(updatedSchedule);
       setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success("Lesson removed successfully.");
+      toast.success("Занятие успешно удалено.");
     } catch (err) {
-      console.error('Failed to remove lesson:', err);
-      toast.error("Failed to remove lesson.");
+      console.error('Не удалось удалить занятие:', err);
+      toast.error("Не удалось удалить занятие.");
     } finally {
       setLessonToRemove(null);
       setIsSubmitting(false);
+      setSelectedLessonSchedule(null);
     }
   };
 
-  const handleLessonClick = (lesson: Lesson) => {
+  const handleLessonClick = (lesson: Lesson, schedule: Schedule) => {
     setSelectedLesson(lesson);
+    setSelectedLessonSchedule(schedule);
     setLessonFormMode('edit');
     setShowLessonFormDialog(true);
   };
@@ -345,12 +347,9 @@ const ManageSchedulesPage: React.FC = () => {
           lesson.room.toLowerCase().includes(filters.search.toLowerCase())
         );
       
-      const matchesGroup = filters.groupId === '' || schedule.groupId === filters.groupId;
+      const matchesGroup = !filters.groupId || filters.groupId === 'all' || schedule.groupId === filters.groupId;
       
-      const matchesTeacher = filters.teacherId === '' || 
-        schedule.lessons.some(lesson => lesson.teacherId === filters.teacherId);
-
-      return matchesSearch && matchesGroup && matchesTeacher;
+      return matchesSearch && matchesGroup;
     });
   }, [schedules, filters, getGroupName]);
 
@@ -361,58 +360,154 @@ const ManageSchedulesPage: React.FC = () => {
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Dialog open={showMetadataDialog} onOpenChange={(open) => { if (!open) setSelectedScheduleForMetadata(null); setShowMetadataDialog(open); }}>
-        <DialogContent className="sm:max-w-md"><DialogHeader>
-            <DialogTitle>{metadataFormMode === 'create' ? 'Create New Schedule' : 'Edit Schedule Details'}</DialogTitle>
-            <DialogDescription>{metadataFormMode === 'create' ? 'Select group, semester, and year.' : `Editing: ${getGroupName(selectedScheduleForMetadata?.groupId || '')}`}</DialogDescription>
-          </DialogHeader>{showMetadataDialog && <ScheduleMetadataForm mode={metadataFormMode} scheduleId={selectedScheduleForMetadata?.id} onFormSubmitSuccess={handleMetadataFormSuccess} onCancel={() => setShowMetadataDialog(false)} />}</DialogContent></Dialog>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{metadataFormMode === 'create' ? 'Создать новое расписание' : 'Редактировать расписание'}</DialogTitle>
+            <DialogDescription>
+              {metadataFormMode === 'create' 
+                ? 'Выберите группу, семестр и учебный год' 
+                : `Редактирование расписания для группы: ${getGroupName(selectedScheduleForMetadata?.groupId || '')}`}
+            </DialogDescription>
+          </DialogHeader>
+          {showMetadataDialog && (
+            <ScheduleMetadataForm 
+              mode={metadataFormMode} 
+              scheduleId={selectedScheduleForMetadata?.id} 
+              onFormSubmitSuccess={handleMetadataFormSuccess} 
+              onCancel={() => setShowMetadataDialog(false)} 
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showManageLessonsDialog} onOpenChange={(open) => { if (!open) setCurrentManagingSchedule(null); setShowManageLessonsDialog(open); }}>
-        <DialogContent className="max-w-3xl lg:max-w-4xl xl:max-w-6xl h-[90vh] flex flex-col"><DialogHeader>
-            <DialogTitle>Manage Schedule: {getGroupName(currentManagingSchedule?.groupId || '')} ({currentManagingSchedule?.year} Sem {currentManagingSchedule?.semester})</DialogTitle>
-            <DialogDescription>Add, edit, or remove lessons from this schedule.</DialogDescription>
-          </DialogHeader>{currentManagingSchedule && (<><div className="py-2 border-b mb-2 flex items-center gap-2">
+        <DialogContent className="max-w-3xl lg:max-w-4xl xl:max-w-6xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              Управление расписанием: {getGroupName(currentManagingSchedule?.groupId || '')} 
+              ({currentManagingSchedule?.year} г., Семестр {currentManagingSchedule?.semester})
+            </DialogTitle>
+            <DialogDescription>Добавление, редактирование или удаление занятий в расписании.</DialogDescription>
+          </DialogHeader>
+          {currentManagingSchedule && (
+            <>
+              <div className="py-2 border-b mb-2 flex items-center gap-2">
                 <Button onClick={handleOpenAddLessonDialog} size="sm" disabled={isSubmitting}>
-                  <CalendarPlus className="mr-2 h-4 w-4" /> Add Lesson
+                  <CalendarPlus className="mr-2 h-4 w-4" /> Добавить занятие
                 </Button>
                 <Button onClick={() => setShowBulkLessonForm(true)} size="sm" disabled={isSubmitting}>
-                  <ListChecks className="mr-2 h-4 w-4" /> Bulk Add
+                  <ListChecks className="mr-2 h-4 w-4" /> Массовое добавление
                 </Button>
                 <Button onClick={() => setShowTemplateForm(true)} size="sm" disabled={isSubmitting}>
-                  <FileText className="mr-2 h-4 w-4" /> Save as Template
+                  <FileText className="mr-2 h-4 w-4" /> Сохранить как шаблон
                 </Button>
                 <Button onClick={() => setShowTemplatesList(true)} size="sm" disabled={isSubmitting}>
-                  <FileText className="mr-2 h-4 w-4" /> Apply Template
+                  <FileText className="mr-2 h-4 w-4" /> Применить шаблон
                 </Button>
-              </div><div className="flex-grow overflow-y-auto pr-1"><ScheduleView
-                schedule={currentManagingSchedule}
-                subjects={subjects}
-                teachers={teachers}
-              />
-              </div><DialogFooter className="mt-auto pt-4 border-t"><DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose></DialogFooter></>)}</DialogContent></Dialog>
+              </div>
+              <div className="mb-4">
+                <ScheduleCalendar
+                  schedule={currentManagingSchedule}
+                  subjects={subjects}
+                  teachers={teachers}
+                  onLessonClick={(lesson) => handleLessonClick(lesson, currentManagingSchedule)}
+                  hideWeekSwitcher={true}
+                />
+              </div>
+              <div className="flex-grow overflow-y-auto pr-1">
+                <ScheduleView
+                  schedule={currentManagingSchedule}
+                  subjects={subjects}
+                  teachers={teachers}
+                />
+              </div>
+              <DialogFooter className="mt-auto pt-4 border-t">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">Закрыть</Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showLessonFormDialog} onOpenChange={(open) => { if (!open) setSelectedLesson(null); setShowLessonFormDialog(open); }}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader>
-            <DialogTitle>{lessonFormMode === 'create' ? 'Add New Lesson' : 'Edit Lesson'}</DialogTitle>
-            <DialogDescription>For schedule: {getGroupName(currentManagingSchedule?.groupId || '')} ({currentManagingSchedule?.year} Sem {currentManagingSchedule?.semester})</DialogDescription>
-          </DialogHeader>{showLessonFormDialog && currentManagingSchedule && (
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {lessonFormMode === 'create'
+                ? 'Добавить новое занятие'
+                : `Редактировать занятие: ${selectedLesson ? (subjects.find(s => s.id === selectedLesson.subjectId)?.name || '') : ''}`}
+            </DialogTitle>
+            <DialogDescription>
+              Расписание: {getGroupName(currentManagingSchedule?.groupId || '')}
+              {currentManagingSchedule ? ` (${currentManagingSchedule.year} г., Семестр ${currentManagingSchedule.semester})` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {showLessonFormDialog && ((currentManagingSchedule && lessonFormMode === 'create') || (selectedLessonSchedule && lessonFormMode === 'edit')) && (
             <LessonForm
               mode={lessonFormMode}
-              scheduleId={currentManagingSchedule.id}
+              scheduleId={(lessonFormMode === 'create' ? currentManagingSchedule?.id : selectedLessonSchedule?.id) || ''}
               lessonId={selectedLesson?.id}
               subjects={subjects}
-              teachers={teachers}
               onFormSubmitSuccess={handleLessonFormSuccess}
-              onCancel={() => setShowLessonFormDialog(false)}
+              onCancel={() => { setShowLessonFormDialog(false); setSelectedLessonSchedule(null); }}
+              onRemoveLesson={selectedLesson ? () => setLessonToRemove({ lessonId: selectedLesson.id }) : undefined}
+              groupName={getGroupName((lessonFormMode === 'create' ? currentManagingSchedule?.groupId : selectedLessonSchedule?.groupId) || '')}
+              year={lessonFormMode === 'create' ? currentManagingSchedule?.year || 0 : selectedLessonSchedule?.year || 0}
+              semester={lessonFormMode === 'create' ? currentManagingSchedule?.semester || 0 : selectedLessonSchedule?.semester || 0}
             />
-          )}</DialogContent></Dialog>
+          )}
+        </DialogContent>
+      </Dialog>
       
-      {scheduleToDelete && (<AlertDialog open={!!scheduleToDelete} onOpenChange={() => setScheduleToDelete(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>Delete schedule for {getGroupName(scheduleToDelete.groupId)} ({scheduleToDelete.year}, Sem {scheduleToDelete.semester})? This is irreversible.</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteSchedule} className="bg-red-600 hover:bg-red-700" disabled={isSubmitting}>{isSubmitting ? "Deleting..." : "Delete"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
+      {scheduleToDelete && (
+        <AlertDialog open={!!scheduleToDelete} onOpenChange={() => setScheduleToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Удалить расписание для группы {getGroupName(scheduleToDelete.groupId)} 
+                ({scheduleToDelete.year} г., Семестр {scheduleToDelete.semester})? 
+                Это действие нельзя отменить.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Отмена</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDeleteSchedule} 
+                className="bg-red-600 hover:bg-red-700" 
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Удаление..." : "Удалить"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
       
-      {lessonToRemove && (<AlertDialog open={!!lessonToRemove} onOpenChange={() => setLessonToRemove(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove Lesson?</AlertDialogTitle>
-              <AlertDialogDescription>Are you sure you want to remove this lesson?</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmRemoveLesson} className="bg-red-600 hover:bg-red-700" disabled={isSubmitting}>{isSubmitting ? "Removing..." : "Remove"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
+      {lessonToRemove && (
+        <AlertDialog open={!!lessonToRemove} onOpenChange={() => setLessonToRemove(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Удалить занятие?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Вы уверены, что хотите удалить это занятие?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Отмена</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmRemoveLesson} 
+                className="bg-red-600 hover:bg-red-700" 
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Удаление..." : "Удалить"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {currentManagingSchedule && (
         <>
@@ -420,9 +515,7 @@ const ManageSchedulesPage: React.FC = () => {
             open={showBulkLessonForm}
             onOpenChange={setShowBulkLessonForm}
             onAddLessons={handleBulkAddLessons}
-            subjects={subjects.map(s => ({ id: s.id, name: s.name }))}
-            teachers={teachers.map(t => ({ id: t.id, name: `${t.firstName} ${t.lastName}`.trim() }))}
-            rooms={rooms}
+            subjects={subjects.map(s => ({ id: s.id, name: s.name, teacherId: s.teacherId }))}
           />
           <ScheduleTemplateForm
             open={showTemplateForm}
@@ -451,13 +544,13 @@ const ManageSchedulesPage: React.FC = () => {
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Schedule Management</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Управление расписаниями</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create, view, and manage academic schedules.
+              Создание и управление учебными расписаниями
             </p>
           </div>
           <Button onClick={handleOpenCreateScheduleDialog} disabled={isLoading}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Create Schedule
+            <PlusCircle className="mr-2 h-4 w-4" /> Создать расписание
           </Button>
         </div>
       </header>
@@ -467,148 +560,78 @@ const ManageSchedulesPage: React.FC = () => {
           {schedules.length === 0 && !isLoading ? (
             <div className="p-10 text-center text-muted-foreground">
               <ListChecks className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium">No schedules found</h3>
-              <p className="mt-1 text-sm">Get started by creating a new schedule.</p>
+              <h3 className="text-lg font-medium">Расписания не найдены</h3>
+              <p className="mt-1 text-sm">Начните с создания нового расписания.</p>
             </div>
           ) : (
             <>
               <div className="p-4 border-b">
                 <ScheduleFilters
                   groups={groups}
-                  teachers={teachers}
                   onFilterChange={setFilters}
                 />
               </div>
 
-              <Tabs defaultValue="table" value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'calendar')}>
-                <div className="border-b px-4 py-2">
-                  <TabsList>
-                    <TabsTrigger value="table">Table View</TabsTrigger>
-                    <TabsTrigger value="calendar">Calendar View</TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="table" className="p-4">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Group</TableHead>
-                        <TableHead className="text-center">Year</TableHead>
-                        <TableHead className="text-center">Semester</TableHead>
-                        <TableHead className="text-center">Lessons</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSchedules.map(schedule => (
-                        <TableRow key={schedule.id}>
-                          <TableCell className="font-medium">
-                            {getGroupName(schedule.groupId)}
-                          </TableCell>
-                          <TableCell className="text-center">{schedule.year}</TableCell>
-                          <TableCell className="text-center">{schedule.semester}</TableCell>
-                          <TableCell className="text-center">
-                            {schedule.lessons?.length || 0}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <ScheduleExport
-                                schedule={schedule}
-                                subjects={subjects.map(s => ({ id: s.id, name: s.name }))}
-                                teachers={teachers.map(t => ({ id: t.id, firstName: t.firstName, lastName: t.lastName }))}
-                                open={showExportDialog}
-                                onOpenChange={setShowExportDialog}
-                              />
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Menu</span>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                  <DropdownMenuItem onClick={() => handleOpenManageLessons(schedule)}>
-                                    <Eye className="mr-2 h-4 w-4" /> View/Manage Lessons
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleOpenEditScheduleMetadataDialog(schedule)}>
-                                    <Edit2 className="mr-2 h-4 w-4" /> Edit Details
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => handleDeleteScheduleInitiate(schedule)}
-                                    className="text-red-600 focus:text-red-600"
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" /> Delete Schedule
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TabsContent>
-
-                <TabsContent value="calendar" className="p-4">
-                  <div className="space-y-4">
-                    {filteredSchedules.map(schedule => (
-                      <div key={schedule.id} className="border rounded-lg overflow-hidden">
-                        <div className="bg-muted/50 px-4 py-2 border-b flex items-center justify-between">
-                          <div>
-                            <h3 className="font-medium">
-                              {getGroupName(schedule.groupId)} - Semester {schedule.semester}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              {schedule.year} Academic Year
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ScheduleExport
-                              schedule={schedule}
-                              subjects={subjects.map(s => ({ id: s.id, name: s.name }))}
-                              teachers={teachers.map(t => ({ id: t.id, firstName: t.firstName, lastName: t.lastName }))}
-                              open={showExportDialog}
-                              onOpenChange={setShowExportDialog}
-                            />
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <span className="sr-only">Menu</span>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => handleOpenManageLessons(schedule)}>
-                                  <Eye className="mr-2 h-4 w-4" /> View/Manage Lessons
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleOpenEditScheduleMetadataDialog(schedule)}>
-                                  <Edit2 className="mr-2 h-4 w-4" /> Edit Details
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => handleDeleteScheduleInitiate(schedule)}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" /> Delete Schedule
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </div>
-                        <div className="h-[600px]">
-                          <ScheduleCalendar
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Группа</TableHead>
+                    <TableHead className="text-center">Год</TableHead>
+                    <TableHead className="text-center">Семестр</TableHead>
+                    <TableHead className="text-center">Количество занятий</TableHead>
+                    <TableHead className="text-right">Действия</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredSchedules.map(schedule => (
+                    <TableRow key={schedule.id}>
+                      <TableCell className="font-medium">
+                        {getGroupName(schedule.groupId)}
+                      </TableCell>
+                      <TableCell className="text-center">{schedule.year}</TableCell>
+                      <TableCell className="text-center">{schedule.semester}</TableCell>
+                      <TableCell className="text-center">
+                        {schedule.lessons?.length || 0}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <ScheduleExport
                             schedule={schedule}
-                            onLessonClick={handleLessonClick}
+                            subjects={subjects.map(s => ({ id: s.id, name: s.name }))}
+                            teachers={teachers.map(t => ({ id: t.id, firstName: t.firstName, lastName: t.lastName }))}
+                            open={showExportDialog}
+                            onOpenChange={setShowExportDialog}
                           />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Меню</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleOpenManageLessons(schedule)}>
+                                <Eye className="mr-2 h-4 w-4" /> Просмотр/Управление занятиями
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenEditScheduleMetadataDialog(schedule)}>
+                                <Edit2 className="mr-2 h-4 w-4" /> Редактировать детали
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteScheduleInitiate(schedule)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Удалить расписание
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </>
           )}
         </div>

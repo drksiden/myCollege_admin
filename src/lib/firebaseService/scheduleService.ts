@@ -146,21 +146,35 @@ export const addLesson = async (
   scheduleId: string,
   lesson: Omit<Lesson, 'id'>
 ): Promise<void> => {
+  console.log('addLesson called with:', { scheduleId, lesson });
+  
   const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
+  console.log('Getting schedule document...');
+  
   const scheduleDoc = await getDoc(scheduleRef);
   if (!scheduleDoc.exists()) {
+    console.error('Schedule document not found');
     throw new Error('Schedule not found');
   }
+  
   const schedule = scheduleDoc.data() as Schedule;
+  console.log('Current schedule data:', schedule);
+  
   const newLesson = {
     ...lesson,
-    id: crypto.randomUUID(), // Генерируем уникальный ID для урока
+    id: doc(collection(db, 'lessons')).id,
   };
-  const updatedLessons = [...schedule.lessons, newLesson];
-  return updateDoc(scheduleRef, {
+  console.log('Created new lesson with ID:', newLesson);
+  
+  const updatedLessons = [...(schedule.lessons || []), newLesson];
+  console.log('Updated lessons array:', updatedLessons);
+  
+  console.log('Updating schedule document...');
+  await updateDoc(scheduleRef, {
     lessons: updatedLessons,
     updatedAt: serverTimestamp() as Timestamp,
   });
+  console.log('Schedule document updated successfully');
 };
 
 /**

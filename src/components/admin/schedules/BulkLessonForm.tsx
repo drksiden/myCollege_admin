@@ -26,9 +26,7 @@ interface BulkLessonFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddLessons: (lessons: Lesson[]) => void;
-  subjects: { id: string; name: string }[];
-  teachers: { id: string; name: string }[];
-  rooms: string[];
+  subjects: { id: string; name: string; teacherId?: string }[];
 }
 
 const DAYS_OF_WEEK = [
@@ -41,12 +39,13 @@ const DAYS_OF_WEEK = [
 ];
 
 const TIME_SLOTS = [
-  { value: '1', label: '1 пара (8:30 - 10:00)' },
-  { value: '2', label: '2 пара (10:10 - 11:40)' },
-  { value: '3', label: '3 пара (12:10 - 13:40)' },
-  { value: '4', label: '4 пара (14:00 - 15:30)' },
-  { value: '5', label: '5 пара (15:40 - 17:10)' },
-  { value: '6', label: '6 пара (17:20 - 18:50)' },
+  { value: '08:00-09:30', label: '1 пара (8:00 - 9:30)' },
+  { value: '09:40-11:10', label: '2 пара (9:40 - 11:10)' },
+  { value: '11:20-12:50', label: '3 пара (11:20 - 12:50)' },
+  { value: '13:20-14:50', label: '4 пара (13:20 - 14:50)' },
+  { value: '15:00-16:30', label: '5 пара (15:00 - 16:30)' },
+  { value: '16:40-18:10', label: '6 пара (16:40 - 18:10)' },
+  { value: '18:20-19:50', label: '7 пара (18:20 - 19:50)' },
 ];
 
 const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
@@ -54,20 +53,19 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
   onOpenChange,
   onAddLessons,
   subjects,
-  teachers,
-  rooms,
 }) => {
   const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedTeacher, setSelectedTeacher] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [selectedTimeSlots, setSelectedTimeSlots] = useState<string[]>([]);
   const [weeks, setWeeks] = useState('1-16');
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!selectedSubject || !selectedTeacher || !selectedRoom || selectedDays.length === 0 || selectedTimeSlots.length === 0) {
+    setRoomError(null);
+    if (!selectedSubject || !selectedRoom || selectedDays.length === 0 || selectedTimeSlots.length === 0) {
+      if (!selectedRoom) setRoomError('Аудитория обязательна');
       toast.error('Пожалуйста, заполните все обязательные поля');
       return;
     }
@@ -80,21 +78,18 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
 
     const lessons: Lesson[] = [];
     const subject = subjects.find(s => s.id === selectedSubject);
-    const teacher = teachers.find(t => t.id === selectedTeacher);
-
-    if (!subject || !teacher) {
-      toast.error('Ошибка: предмет или преподаватель не найдены');
+    if (!subject) {
+      toast.error('Ошибка: предмет не найден');
       return;
     }
-
     for (let week = startWeek; week <= endWeek; week++) {
       for (const day of selectedDays) {
         for (const timeSlot of selectedTimeSlots) {
-          const [startTime, endTime] = timeSlot.split(' - ');
+          const [startTime, endTime] = timeSlot.split('-');
           lessons.push({
             id: uuidv4(),
             subjectId: selectedSubject,
-            teacherId: selectedTeacher,
+            teacherId: subject.teacherId || '',
             room: selectedRoom,
             dayOfWeek: DAYS_OF_WEEK.findIndex(d => d.value === day) + 1,
             startTime,
@@ -113,7 +108,6 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
 
   const resetForm = () => {
     setSelectedSubject('');
-    setSelectedTeacher('');
     setSelectedRoom('');
     setSelectedDays([]);
     setSelectedTimeSlots([]);
@@ -140,9 +134,9 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Массовое добавление уроков</DialogTitle>
+          <DialogTitle>Массовое добавление занятий</DialogTitle>
           <DialogDescription>
-            Добавьте несколько уроков одновременно, выбрав предмет, преподавателя, аудиторию, дни недели и время.
+            Добавьте несколько занятий одновременно, выбрав предмет, аудиторию, дни недели и время.
           </DialogDescription>
         </DialogHeader>
 
@@ -164,35 +158,14 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="teacher">Преподаватель</Label>
-            <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите преподавателя" />
-              </SelectTrigger>
-              <SelectContent>
-                {teachers.map(teacher => (
-                  <SelectItem key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="room">Аудитория</Label>
-            <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите аудиторию" />
-              </SelectTrigger>
-              <SelectContent>
-                {rooms.map(room => (
-                  <SelectItem key={room} value={room}>
-                    {room}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Input
+              id="room"
+              value={selectedRoom}
+              onChange={e => setSelectedRoom(e.target.value)}
+              placeholder="Например: 101, Онлайн"
+            />
+            {roomError && <div className="text-red-500 text-xs mt-1">{roomError}</div>}
           </div>
 
           <div className="space-y-2">
@@ -245,7 +218,7 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
                 Отмена
               </Button>
             </DialogClose>
-            <Button type="submit">Добавить уроки</Button>
+            <Button type="submit">Добавить занятия</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -32,28 +32,35 @@ import { toast } from 'sonner';
 import { Trash2, Plus } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
-  { value: 'monday', label: 'Monday' },
-  { value: 'tuesday', label: 'Tuesday' },
-  { value: 'wednesday', label: 'Wednesday' },
-  { value: 'thursday', label: 'Thursday' },
-  { value: 'friday', label: 'Friday' },
-  { value: 'saturday', label: 'Saturday' },
+  { value: 1, label: 'Понедельник' },
+  { value: 2, label: 'Вторник' },
+  { value: 3, label: 'Среда' },
+  { value: 4, label: 'Четверг' },
+  { value: 5, label: 'Пятница' },
+  { value: 6, label: 'Суббота' },
 ];
 
 const entrySchema = z.object({
-  dayOfWeek: z.string(),
-  startTime: z.string(),
-  endTime: z.string(),
-  subject: z.string().min(1, 'Subject is required'),
-  teacherId: z.string().min(1, 'Teacher is required'),
-  room: z.string().min(1, 'Room is required'),
+  dayOfWeek: z.coerce.number().min(1, 'День недели обязателен (1-7)').max(7, 'День недели должен быть от 1 до 7'),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Неверный формат времени (ЧЧ:ММ)'),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Неверный формат времени (ЧЧ:ММ)'),
+  subjectId: z.string().min(1, 'Предмет обязателен'),
+  teacherId: z.string().min(1, 'Преподаватель обязателен'),
+  room: z.string().min(1, 'Аудитория обязательна'),
+  type: z.enum(['lecture', 'practice', 'laboratory'], {
+    required_error: 'Тип занятия обязателен',
+  }),
+  weekType: z.enum(['odd', 'even', 'all']).optional(),
+}).refine(data => data.startTime < data.endTime, {
+  message: 'Время окончания должно быть позже времени начала',
+  path: ['endTime'],
 });
 
 const formSchema = z.object({
-  groupId: z.string().min(1, 'Group is required'),
-  semester: z.coerce.number().min(1).max(8),
-  year: z.coerce.number().min(2000).max(2100),
-  entries: z.array(entrySchema),
+  groupId: z.string().min(1, 'Группа обязательна'),
+  semester: z.coerce.number().min(1, 'Семестр от 1 до 8').max(8, 'Семестр от 1 до 8'),
+  year: z.coerce.number().min(2000, 'Год от 2000 до 2100').max(2100, 'Год от 2000 до 2100'),
+  lessons: z.array(entrySchema),
 });
 
 type ScheduleFormValues = z.infer<typeof formSchema>;
@@ -101,13 +108,13 @@ export default function ScheduleFormDialog({
       groupId: schedule?.groupId || '',
       semester: schedule?.semester || 1,
       year: schedule?.year || new Date().getFullYear(),
-      entries: schedule?.entries || [],
+      lessons: schedule?.lessons || [],
     },
   });
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
-    name: 'entries',
+    name: 'lessons',
   });
 
   useEffect(() => {
@@ -166,10 +173,10 @@ export default function ScheduleFormDialog({
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>
-            {schedule ? 'Edit Schedule' : 'Create Schedule'}
+            {schedule ? 'Редактировать расписание' : 'Создать расписание'}
           </DialogTitle>
           <DialogDescription>
-            Fill in the schedule information below.
+            Заполните информацию о расписании ниже.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -179,14 +186,14 @@ export default function ScheduleFormDialog({
               name="groupId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Group</FormLabel>
+                  <FormLabel>Группа</FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a group" />
+                        <SelectValue placeholder="Выберите группу" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -208,7 +215,7 @@ export default function ScheduleFormDialog({
                 name="semester"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Semester</FormLabel>
+                    <FormLabel>Семестр</FormLabel>
                     <FormControl>
                       <Input type="number" min={1} max={8} {...field} />
                     </FormControl>
@@ -222,7 +229,7 @@ export default function ScheduleFormDialog({
                 name="year"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Year</FormLabel>
+                    <FormLabel>Год</FormLabel>
                     <FormControl>
                       <Input type="number" min={2000} max={2100} {...field} />
                     </FormControl>
@@ -234,29 +241,30 @@ export default function ScheduleFormDialog({
 
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium">Lessons</h3>
+                <h3 className="text-lg font-medium">Занятия</h3>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => append({
-                    dayOfWeek: 'monday',
+                    dayOfWeek: 1,
                     startTime: '09:00',
                     endTime: '10:30',
-                    subject: '',
+                    subjectId: '',
                     teacherId: '',
                     room: '',
+                    type: 'lecture',
                   })}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Lesson
+                  <Plus className="mr-2 h-4 w-4" />
+                  Добавить занятие
                 </Button>
               </div>
 
               {fields.map((field, index) => (
                 <div key={field.id} className="p-4 border rounded-lg space-y-4">
                   <div className="flex justify-between items-center">
-                    <h4 className="font-medium">Lesson {index + 1}</h4>
+                    <h4 className="font-medium">Занятие {index + 1}</h4>
                     <Button
                       type="button"
                       variant="ghost"
@@ -269,22 +277,22 @@ export default function ScheduleFormDialog({
 
                   <FormField
                     control={form.control}
-                    name={`entries.${index}.dayOfWeek`}
+                    name={`lessons.${index}.dayOfWeek`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Day</FormLabel>
+                        <FormLabel>День недели</FormLabel>
                         <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          onValueChange={(value) => field.onChange(Number(value))}
+                          value={field.value?.toString()}
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select day" />
+                              <SelectValue placeholder="Выберите день недели" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {DAYS_OF_WEEK.map((day) => (
-                              <SelectItem key={day.value} value={day.value}>
+                              <SelectItem key={day.value} value={day.value.toString()}>
                                 {day.label}
                               </SelectItem>
                             ))}
@@ -298,12 +306,12 @@ export default function ScheduleFormDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name={`entries.${index}.startTime`}
+                      name={`lessons.${index}.startTime`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Start Time</FormLabel>
+                          <FormLabel>Время начала</FormLabel>
                           <FormControl>
-                            <Input type="time" {...field} />
+                            <Input type="time" lang="ru" step="300" placeholder="08:30" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -312,12 +320,12 @@ export default function ScheduleFormDialog({
 
                     <FormField
                       control={form.control}
-                      name={`entries.${index}.endTime`}
+                      name={`lessons.${index}.endTime`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>End Time</FormLabel>
+                          <FormLabel>Время окончания</FormLabel>
                           <FormControl>
-                            <Input type="time" {...field} />
+                            <Input type="time" lang="ru" step="300" placeholder="10:00" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -328,17 +336,17 @@ export default function ScheduleFormDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name={`entries.${index}.subject`}
+                      name={`lessons.${index}.subjectId`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Subject</FormLabel>
+                          <FormLabel>Предмет</FormLabel>
                           <Select
                             onValueChange={field.onChange}
                             defaultValue={field.value}
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select subject" />
+                                <SelectValue placeholder="Выберите предмет" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -356,17 +364,17 @@ export default function ScheduleFormDialog({
 
                     <FormField
                       control={form.control}
-                      name={`entries.${index}.teacherId`}
+                      name={`lessons.${index}.teacherId`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Teacher</FormLabel>
+                          <FormLabel>Преподаватель</FormLabel>
                           <Select
                             onValueChange={field.onChange}
                             defaultValue={field.value}
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select teacher" />
+                                <SelectValue placeholder="Выберите преподавателя" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -385,12 +393,12 @@ export default function ScheduleFormDialog({
 
                   <FormField
                     control={form.control}
-                    name={`entries.${index}.room`}
+                    name={`lessons.${index}.room`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Room</FormLabel>
+                        <FormLabel>Аудитория</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input type="text" placeholder="Например: 101, Онлайн" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -407,10 +415,10 @@ export default function ScheduleFormDialog({
                 onClick={onClose}
                 disabled={loading}
               >
-                Cancel
+                Отмена
               </Button>
               <Button type="submit" disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
+                {loading ? 'Сохранение...' : schedule ? 'Сохранить изменения' : 'Создать расписание'}
               </Button>
             </div>
           </form>

@@ -5,45 +5,47 @@ import { cn } from '@/lib/utils';
 import type { Schedule, Lesson } from '@/types';
 import { format } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ru } from 'date-fns/locale';
 
 interface ScheduleCalendarProps {
   schedule: Schedule;
+  subjects: { id: string; name: string }[];
+  teachers: { id: string; firstName: string; lastName: string; middleName?: string }[];
   onLessonClick?: (lesson: Lesson) => void;
   className?: string;
+  hideWeekSwitcher?: boolean;
 }
 
 const DAYS_OF_WEEK = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
+  'Понедельник',
+  'Вторник',
+  'Среда',
+  'Четверг',
+  'Пятница',
+  'Суббота',
+  'Воскресенье',
 ];
 
 const TIME_SLOTS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00',
-  '16:00', '17:00', '18:00', '19:00', '20:00',
+  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:10', '18:50'
 ];
 
-const getLessonStyle = (lesson: Lesson) => {
-  const start = lesson.startTime.split(':').map(Number);
-  const end = lesson.endTime.split(':').map(Number);
-  const startMinutes = start[0] * 60 + start[1];
-  const endMinutes = end[0] * 60 + end[1];
-  const duration = endMinutes - startMinutes;
-  
-  // Высота в процентах от 60-минутного слота
-  const height = `${(duration / 60) * 100}%`;
-  
-  // Отступ сверху в процентах от 60-минутного слота
-  const top = `${((startMinutes - 8 * 60) / 60) * 100}%`;
+const DAY_START = 8 * 60; // 08:00 в минутах
+const DAY_END = 21 * 60;  // 21:00 в минутах
+const DAY_DURATION = DAY_END - DAY_START;
 
-  return {
-    height,
-    top,
-  };
+const getLessonStyle = (lesson: Lesson) => {
+  const [sh, sm] = lesson.startTime.split(':').map(Number);
+  const [eh, em] = lesson.endTime.split(':').map(Number);
+  const startMinutes = sh * 60 + sm;
+  const endMinutes = eh * 60 + em;
+  const duration = endMinutes - startMinutes;
+
+  // Высота и top в процентах от всего дня
+  const height = `${(duration / DAY_DURATION) * 100}%`;
+  const top = `${((startMinutes - DAY_START) / DAY_DURATION) * 100}%`;
+
+  return { height, top };
 };
 
 const getLessonTypeColor = (type: Lesson['type']) => {
@@ -68,10 +70,31 @@ const getWeekTypeBadge = (weekType?: string) => {
   );
 };
 
+const getLessonTitle = (
+  lesson: Lesson,
+  subjects: { id: string; name: string }[],
+  teachers: { id: string; firstName: string; lastName: string; middleName?: string }[]
+) => {
+  const subject = subjects.find(s => s.id === lesson.subjectId)?.name || lesson.subjectId;
+  const teacher = teachers.find(t => t.id === lesson.teacherId);
+  let teacherName = '';
+  if (teacher && teacher.firstName && teacher.lastName) {
+    teacherName = `${teacher.lastName} ${teacher.firstName[0]}.`;
+    if (teacher.middleName) teacherName += `${teacher.middleName[0]}.`;
+  }
+  // Если преподавателя нет — не добавлять его в строку
+  return teacherName
+    ? `${subject} (${lesson.room}) ${teacherName}`
+    : `${subject} (${lesson.room})`;
+};
+
 const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
   schedule,
+  subjects,
+  teachers,
   onLessonClick,
   className,
+  hideWeekSwitcher,
 }) => {
   const [currentWeek, setCurrentWeek] = React.useState(new Date());
 
@@ -97,27 +120,29 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      <div className="flex items-center justify-between mb-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={prevWeek}
-          className="h-8 w-8 p-0"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="text-sm font-medium">
-          {format(currentWeek, 'MMMM d')} - {format(new Date(currentWeek.getTime() + 6 * 24 * 60 * 60 * 1000), 'MMMM d, yyyy')}
+      {!hideWeekSwitcher && (
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={prevWeek}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="text-sm font-medium">
+            {format(currentWeek, 'd MMMM', { locale: ru })} - {format(new Date(currentWeek.getTime() + 6 * 24 * 60 * 60 * 1000), 'd MMMM, yyyy', { locale: ru })}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={nextWeek}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={nextWeek}
-          className="h-8 w-8 p-0"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
+      )}
 
       <div className="grid grid-cols-8 gap-px bg-border rounded-lg overflow-hidden">
         {/* Time column */}
@@ -139,7 +164,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
             <div className="h-12 border-b flex items-center justify-center text-sm font-medium">
               {day}
             </div>
-            <div className="relative h-[calc(16*16px)]">
+            <div className="relative" style={{ height: `${DAY_DURATION}px` }}>
               {getLessonsForDay(dayIndex).map(lesson => {
                 const style = getLessonStyle(lesson);
                 return (
@@ -153,14 +178,11 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({
                     onClick={() => onLessonClick?.(lesson)}
                   >
                     <div className="text-xs font-medium truncate">
-                      {lesson.subjectId}
+                      {getLessonTitle(lesson, subjects, teachers)}
                       {getWeekTypeBadge(lesson.weekType)}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">
                       {lesson.startTime} - {lesson.endTime}
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {lesson.room}
                     </div>
                   </div>
                 );

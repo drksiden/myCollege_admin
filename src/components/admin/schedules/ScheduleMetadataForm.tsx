@@ -20,8 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
-import { createSchedule, updateSchedule, getSchedule } from '@/lib/firebaseService/scheduleService';
+import { createSchedule, updateSchedule, getSchedule } from '@/services/firestore';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import type { Group } from '@/types';
 import { Timestamp } from 'firebase/firestore';
@@ -68,7 +67,7 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
     const fetchGroups = async () => {
       setIsLoading(true); // Combined loading state for initial setup
       try {
-        const fetchedGroups = await getAllGroups(db);
+        const fetchedGroups = await getAllGroups();
         setGroups(fetchedGroups);
         if (fetchedGroups.length === 0) {
             toast.warning("No groups available. Please create groups first to assign schedules.");
@@ -125,16 +124,15 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
       let resultingScheduleId = scheduleId; 
 
       if (mode === 'create') {
-        const now = Timestamp.now();
-        const newSchedule = await createSchedule(values.groupId, {
+        const newScheduleId = await createSchedule({
           groupId: values.groupId,
           semester: values.semester,
           year: values.year,
           lessons: [],
-          createdAt: now,
-          updatedAt: now,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         });
-        resultingScheduleId = newSchedule.id;
+        resultingScheduleId = newScheduleId;
         toast.success('Schedule created successfully! You can now add lessons.');
       } else if (mode === 'edit' && scheduleId) {
         await updateSchedule(scheduleId, {
@@ -227,11 +225,11 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
           name="year"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Academic Year (Start Year)</FormLabel>
+              <FormLabel>Учебный год (начальный год)</FormLabel>
               <FormControl>
                 <Input 
                   type="number" 
-                  placeholder={`e.g., ${new Date().getFullYear()}`} 
+                  placeholder={`например, ${new Date().getFullYear()}`} 
                   {...field} 
                   disabled={isLoading}
                   // RHF handles string-to-number conversion with Zod schema
@@ -244,11 +242,11 @@ const ScheduleMetadataForm: React.FC<ScheduleMetadataFormProps> = ({
         <div className="flex justify-end space-x-3 pt-2">
           {onCancel && (
             <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-              Cancel
+              Отмена
             </Button>
           )}
           <Button type="submit" disabled={isLoading || (mode === 'create' && groups.length === 0)}>
-            {isLoading ? 'Saving...' : (mode === 'create' ? 'Create & Add Lessons' : 'Save Changes')}
+            {isLoading ? 'Saving...' : (mode === 'create' ? 'Создать и добавить занятия' : 'Сохранить изменения')}
           </Button>
         </div>
       </form>

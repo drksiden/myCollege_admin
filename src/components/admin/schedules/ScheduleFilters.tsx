@@ -9,11 +9,10 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Search, X } from 'lucide-react';
-import type { Group, Teacher } from '@/types';
+import type { Group } from '@/types';
 
 interface ScheduleFiltersProps {
   groups: Group[];
-  teachers: Teacher[];
   onFilterChange: (filters: ScheduleFilters) => void;
   className?: string;
 }
@@ -21,21 +20,18 @@ interface ScheduleFiltersProps {
 export interface ScheduleFilters {
   search: string;
   groupId: string;
-  teacherId: string;
   semester?: number;
   year?: number;
 }
 
 const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
   groups,
-  teachers,
   onFilterChange,
   className,
 }) => {
   const [filters, setFilters] = React.useState<ScheduleFilters>({
     search: '',
-    groupId: '',
-    teacherId: '',
+    groupId: 'all',
   });
 
   const handleFilterChange = (key: keyof ScheduleFilters, value: string | number) => {
@@ -47,8 +43,7 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
   const clearFilters = () => {
     const clearedFilters = {
       search: '',
-      groupId: '',
-      teacherId: '',
+      groupId: 'all',
     };
     setFilters(clearedFilters);
     onFilterChange(clearedFilters);
@@ -60,7 +55,7 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search schedules..."
+            placeholder="Поиск расписаний..."
             value={filters.search}
             onChange={(e) => handleFilterChange('search', e.target.value)}
             className="pl-8"
@@ -71,29 +66,13 @@ const ScheduleFilters: React.FC<ScheduleFiltersProps> = ({
           onValueChange={(value) => handleFilterChange('groupId', value)}
         >
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select group" />
+            <SelectValue placeholder="Выберите группу" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Groups</SelectItem>
+            <SelectItem value="all">Все группы</SelectItem>
             {groups.map((group) => (
               <SelectItem key={group.id} value={group.id}>
                 {group.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.teacherId}
-          onValueChange={(value) => handleFilterChange('teacherId', value)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select teacher" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All Teachers</SelectItem>
-            {teachers.map((teacher) => (
-              <SelectItem key={teacher.id} value={teacher.id}>
-                {teacher.firstName} {teacher.lastName}
               </SelectItem>
             ))}
           </SelectContent>

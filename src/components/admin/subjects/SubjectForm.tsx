@@ -10,7 +10,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,24 +22,25 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import {
-  createSubject,
-  updateSubject,
-  getSubject,
-} from '@/lib/firebaseService/subjectService';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
-import type { Subject } from '@/types';
-import { serverTimestamp } from 'firebase/firestore';
+import { createSubject, updateSubject, getSubject } from '@/lib/firebaseService/subjectService';
+import { getAllTeachers, assignTeacherToGroup, removeTeacherFromGroup } from '@/lib/firebaseService/teacherService';
+import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import type { Subject, Teacher, Group } from '@/types';
 
-// Обновленная Zod-схема для SubjectForm
-const subjectSchema = z.object({
-  name: z.string().min(1, 'Название предмета обязательно'),
-  description: z.string().min(1, 'Описание предмета обязательно'),
-  hoursPerWeek: z.number().min(1, 'Количество часов должно быть положительным числом'),
-  teacherId: z.string().min(1, 'Преподаватель обязателен'),
+const subjectFormSchema = z.object({
+  name: z.string().min(1, 'Название обязательно'),
+  description: z.string().min(1, 'Описание обязательно'),
+  hoursPerWeek: z.number().min(0, 'Часов в неделю должно быть положительным числом'),
+  type: z.enum(['lecture', 'practice', 'laboratory']),
+  teacherId: z.string().optional(),
+  groups: z.array(z.string()),
+  hoursPerSemester: z.number(),
+  credits: z.number(),
+  hours: z.number(),
 });
 
-export type SubjectFormValues = z.infer<typeof subjectSchema>;
+type SubjectFormValues = z.infer<typeof subjectFormSchema>;
 
 interface SubjectFormProps {
   mode: 'create' | 'edit';
@@ -55,48 +55,55 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
   onFormSubmitSuccess,
   onCancel,
 }) => {
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [initialDataLoading, setInitialDataLoading] = useState(false);
-  const [availableTeachers, setAvailableTeachers] = useState<Array<{ id: string; firstName: string; lastName: string; middleName?: string }>>([]);
 
   const form = useForm<SubjectFormValues>({
-    resolver: zodResolver(subjectSchema),
+    resolver: zodResolver(subjectFormSchema),
     defaultValues: {
       name: '',
       description: '',
       hoursPerWeek: 0,
-      teacherId: undefined,
+      type: 'lecture' as const,
+      teacherId: 'none',
+      groups: [] as string[],
+      hoursPerSemester: 0,
+      credits: 0,
+      hours: 0,
     },
   });
 
   useEffect(() => {
-    const loadTeachers = async () => {
+    const loadData = async () => {
       try {
-        const teachers = await getUsersByRole(db, 'teacher');
-        setAvailableTeachers(teachers.map(teacher => ({
-          id: teacher.uid,
-          firstName: teacher.firstName,
-          lastName: teacher.lastName,
-          middleName: teacher.patronymic,
-        })));
+        const [teacherProfiles, allUsers, allGroups] = await Promise.all([
+          getAllTeachers(db),
+          getUsersFromFirestore(db),
+          getAllGroups(),
+        ]);
+
+        // Map teacher profiles to include user names
+        const userMap = new Map(allUsers.map(u => [u.uid, u]));
+        const teachersWithNames = teacherProfiles.map(t => ({
+          ...t,
+          firstName: userMap.get(t.userId)?.firstName || '',
+          lastName: userMap.get(t.userId)?.lastName || '',
+          middleName: userMap.get(t.userId)?.middleName,
+        }));
+        setTeachers(teachersWithNames);
+        setGroups(allGroups);
       } catch (error) {
-        console.error('Error loading teachers:', error);
-        toast.error('Failed to load teachers');
+        console.error('Error loading data:', error);
+        toast.error('Не удалось загрузить данные');
       }
     };
-
-    loadTeachers();
+    loadData();
   }, []);
 
   useEffect(() => {
-    if (mode === 'create') {
-      form.reset({
-        name: '',
-        description: '',
-        hoursPerWeek: 0,
-        teacherId: undefined,
-      });
-    } else if (mode === 'edit' && subjectId) {
+    if (mode === 'edit' && subjectId) {
       const fetchSubjectData = async () => {
         setInitialDataLoading(true);
         try {
@@ -106,15 +113,20 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
               name: subject.name,
               description: subject.description,
               hoursPerWeek: subject.hoursPerWeek,
-              teacherId: subject.teacherId,
+              type: subject.type,
+              teacherId: subject.teacherId || 'none',
+              groups: subject.groups,
+              hoursPerSemester: subject.hoursPerSemester,
+              credits: subject.credits,
+              hours: subject.hours,
             });
           } else {
-            toast.error('Subject not found.');
+            toast.error('Предмет не найден');
             if (onCancel) onCancel();
           }
         } catch (error) {
           console.error('Error fetching subject:', error);
-          toast.error('Failed to load subject details.');
+          toast.error('Не удалось загрузить данные предмета');
           if (onCancel) onCancel();
         } finally {
           setInitialDataLoading(false);
@@ -124,43 +136,57 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
     }
   }, [mode, subjectId, form, onCancel]);
 
-  const onSubmit = async (values: SubjectFormValues) => {
+  const onSubmit = async (data: SubjectFormValues) => {
     setIsLoading(true);
     try {
-      if (mode === 'create') {
-        const subjectData = {
-          name: values.name,
-          description: values.description,
-          hoursPerWeek: values.hoursPerWeek,
-          teacherId: values.teacherId || null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        await createSubject(db, subjectData);
-        toast.success('Предмет успешно создан');
-      } else if (mode === 'edit' && subjectId) {
-        const subjectData = {
-          name: values.name,
-          description: values.description,
-          hoursPerWeek: values.hoursPerWeek,
-          teacherId: values.teacherId || null,
-          updatedAt: serverTimestamp(),
-        };
+      const subjectData: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'> = {
+        name: data.name,
+        description: data.description,
+        hoursPerWeek: data.hoursPerWeek,
+        type: data.type,
+        teacherId: data.teacherId === 'none' ? undefined : data.teacherId,
+        hoursPerSemester: data.hoursPerWeek * 16, // Примерный расчет на семестр
+        credits: Math.ceil(data.hoursPerWeek * 16 / 36), // Примерный расчет кредитов
+        hours: data.hoursPerWeek * 16, // Общее количество часов
+        groups: data.groups,
+      };
+
+      if (mode === 'edit' && subjectId) {
+        // Получаем старый предмет для сравнения групп
+        const oldSubject = await getSubject(db, subjectId);
+        if (oldSubject) {
+          // Удаляем старые группы у преподавателя
+          if (oldSubject.teacherId) {
+            for (const groupId of oldSubject.groups) {
+              await removeTeacherFromGroup(oldSubject.teacherId, groupId);
+            }
+          }
+        }
         await updateSubject(db, subjectId, subjectData);
         toast.success('Предмет успешно обновлен');
+      } else {
+        await createSubject(db, subjectData);
+        toast.success('Предмет успешно создан');
       }
-      onFormSubmitSuccess();
-      if (mode === 'create') form.reset();
-    } catch (error: unknown) {
-      console.error('Error submitting subject form:', error);
-      toast.error(error instanceof Error ? error.message : 'Ошибка при сохранении предмета');
+
+      // Добавляем новые группы преподавателю
+      if (subjectData.teacherId) {
+        for (const groupId of subjectData.groups) {
+          await assignTeacherToGroup(subjectData.teacherId, groupId);
+        }
+      }
+
+      onFormSubmitSuccess(subjectData);
+    } catch (error) {
+      console.error('Error saving subject:', error);
+      toast.error('Не удалось сохранить предмет');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (initialDataLoading && mode === 'edit') {
-    return <p className="text-center p-4">Загрузка данных предмета...</p>;
+  if (initialDataLoading) {
+    return <div>Загрузка...</div>;
   }
 
   return (
@@ -171,14 +197,15 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Название предмета</FormLabel>
+              <FormLabel>Название</FormLabel>
               <FormControl>
-                <Input placeholder="Введите название предмета" {...field} disabled={isLoading} />
+                <Input placeholder="Введите название предмета" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="description"
@@ -186,78 +213,150 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
             <FormItem>
               <FormLabel>Описание</FormLabel>
               <FormControl>
-                <Textarea 
-                  placeholder="Введите описание предмета" 
-                  {...field} 
-                  disabled={isLoading}
-                  className="min-h-[100px]"
+                <Textarea
+                  placeholder="Введите описание предмета"
+                  className="resize-none"
+                  {...field}
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="hoursPerWeek"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Количество часов в неделю</FormLabel>
+              <FormLabel>Часов в неделю</FormLabel>
               <FormControl>
-                <Input 
-                  type="number" 
-                  min="1"
-                  placeholder="Введите количество часов" 
-                  {...field} 
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="Введите количество часов в неделю"
+                  {...field}
                   onChange={(e) => field.onChange(Number(e.target.value))}
-                  disabled={isLoading} 
                 />
               </FormControl>
-              <FormDescription>
-                Укажите, сколько часов в неделю отводится на этот предмет
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="type"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Тип занятий</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите тип занятий" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="lecture">Лекция</SelectItem>
+                  <SelectItem value="practice">Практика</SelectItem>
+                  <SelectItem value="laboratory">Лабораторная работа</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="teacherId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Преподаватель</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+              <Select 
+                onValueChange={field.onChange} 
+                defaultValue={field.value || ''}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Выберите преподавателя" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {availableTeachers.map((teacher) => (
+                  <SelectItem value="none">Не выбрано</SelectItem>
+                  {teachers.map((teacher) => (
                     <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
+                      {`${teacher.lastName} ${teacher.firstName}${teacher.middleName ? ` ${teacher.middleName}` : ''}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <FormDescription>
-                Выберите преподавателя для этого предмета
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="groups"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Группы</FormLabel>
+              <Select 
+                onValueChange={(value) => {
+                  const currentGroups = field.value || [];
+                  if (!currentGroups.includes(value)) {
+                    field.onChange([...currentGroups, value]);
+                  }
+                }}
+                value=""
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите группы" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {`${group.name} (${group.specialization} - ${group.year})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-2 space-y-2">
+                {field.value?.map((groupId) => {
+                  const group = groups.find(g => g.id === groupId);
+                  return group ? (
+                    <div key={groupId} className="flex items-center justify-between bg-secondary p-2 rounded-md">
+                      <span>{`${group.name} (${group.specialization} - ${group.year})`}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          field.onChange(field.value?.filter(id => id !== groupId));
+                        }}
+                      >
+                        Удалить
+                      </Button>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <div className="flex justify-end space-x-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-          >
-            Отмена
-          </Button>
+          {onCancel && (
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Отмена
+            </Button>
+          )}
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Сохранение...' : 'Сохранить'}
+            {isLoading ? 'Сохранение...' : mode === 'create' ? 'Создать' : 'Сохранить'}
           </Button>
         </div>
       </form>
