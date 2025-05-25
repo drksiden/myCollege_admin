@@ -1,16 +1,59 @@
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import type { Chat, Message } from '@/types';
+import { ChatType } from '@/types';
 
 // Chat functions
-export async function createChat(participants: string[]) {
+export async function createChat(participants: string[], type: ChatType = ChatType.DIRECT, name?: string) {
   const chatsRef = collection(db, 'chats');
   const chatData = {
+    type,
+    name,
     participants,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
   return addDoc(chatsRef, chatData);
+}
+
+export async function createGroupChat(name: string, participants: string[]) {
+  return createChat(participants, ChatType.GROUP, name);
+}
+
+export async function createBroadcastChat(participants: string[]) {
+  return createChat(participants, ChatType.BROADCAST, 'Broadcast Message');
+}
+
+export async function addParticipantsToChat(chatId: string, newParticipants: string[]) {
+  const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+  if (!chatDoc.exists()) throw new Error('Chat not found');
+  
+  const chat = chatDoc.data() as Chat;
+  const updatedParticipants = [...new Set([...chat.participants, ...newParticipants])];
+  
+  await updateDoc(chatRef, {
+    participants: updatedParticipants,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+export async function removeParticipantFromChat(chatId: string, participantId: string) {
+  const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+  if (!chatDoc.exists()) throw new Error('Chat not found');
+  
+  const chat = chatDoc.data() as Chat;
+  const updatedParticipants = chat.participants.filter(id => id !== participantId);
+  
+  if (updatedParticipants.length === 0) {
+    await deleteChat(chatId);
+  } else {
+    await updateDoc(chatRef, {
+      participants: updatedParticipants,
+      updatedAt: Timestamp.now(),
+    });
+  }
 }
 
 export async function getUserChats(userId: string) {
@@ -80,6 +123,38 @@ export async function deleteMessage(messageId: string) {
     isDeleted: true,
     updatedAt: Timestamp.now(),
   });
+}
+
+export async function sendMassMessage(senderId: string, content: string, recipientIds: string[]) {
+  const messagesRef = collection(db, 'messages');
+  
+  // Create a broadcast chat if it doesn't exist
+  const broadcastChat = await createBroadcastChat([senderId, ...recipientIds]);
+  
+  // Send message to all recipients
+  const messageData = {
+    chatId: broadcastChat.id,
+    senderId,
+    content,
+    isDeleted: false,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  
+  const messageRef = await addDoc(messagesRef, messageData);
+  
+  // Update chat's last message
+  const chatRef = doc(db, 'chats', broadcastChat.id);
+  await updateDoc(chatRef, {
+    lastMessage: {
+      content,
+      senderId,
+      timestamp: Timestamp.now(),
+    },
+    updatedAt: Timestamp.now(),
+  });
+  
+  return messageRef;
 }
 
 // Real-time listeners

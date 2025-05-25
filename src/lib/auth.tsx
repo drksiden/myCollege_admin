@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { auth } from './firebaseService/firebase';
+import { auth } from './firebase';
 import type { User } from '@/types';
 import { getUserById } from './firebaseService/userService';
 

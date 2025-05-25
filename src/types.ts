@@ -176,8 +176,16 @@ export interface News {
   updatedAt: Timestamp;
 }
 
+export enum ChatType {
+  DIRECT = 'direct',
+  GROUP = 'group',
+  BROADCAST = 'broadcast'
+}
+
 export interface Chat {
   id: string;
+  type: ChatType;
+  name?: string; // For group chats
   participants: string[];
   lastMessage?: {
     content: string;
