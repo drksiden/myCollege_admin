@@ -131,4 +131,21 @@ export interface Grade {
   value: number;
   date: Timestamp;
   comment?: string;
+}
+
+export interface News {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  images: {
+    url: string;
+    alt: string;
+    order: number;
+  }[];
+  isPublished: boolean;
+  publishedAt?: Timestamp;
+  tags: string[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 } 

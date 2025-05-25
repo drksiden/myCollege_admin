@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { Trash2, Send, Users, MessageSquare, Megaphone } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { requestNotificationPermission, onMessageListener } from '@/lib/firebaseService/notificationService';
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -52,6 +53,24 @@ export default function ChatPage() {
       return () => unsubscribe();
     }
   }, [selectedChat]);
+
+  useEffect(() => {
+    // Initialize notifications
+    const initializeNotifications = async () => {
+      try {
+        await requestNotificationPermission();
+        onMessageListener().then(payload => {
+          console.log('Received foreground message:', payload);
+          // Можно показать уведомление через toast или другое UI
+          toast.info('Новое сообщение');
+        });
+      } catch (error) {
+        console.error('Failed to initialize notifications:', error);
+      }
+    };
+
+    initializeNotifications();
+  }, []);
 
   const loadUsers = async () => {
     try {

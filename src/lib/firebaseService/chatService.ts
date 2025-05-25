@@ -2,6 +2,8 @@ import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, upd
 import { db } from '../firebase';
 import type { Chat, Message } from '@/types';
 import { ChatType } from '@/types';
+import { sendChatNotification, sendMassChatNotification } from './notificationService';
+import { getUserById } from './userService';
 
 // Chat functions
 export async function createChat(participants: string[], type: ChatType = ChatType.DIRECT, name?: string) {
@@ -90,6 +92,10 @@ export async function sendMessage(chatId: string, senderId: string, content: str
 
   // Update chat's last message
   const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+  if (!chatDoc.exists()) throw new Error('Chat not found');
+  
+  const chat = chatDoc.data() as Chat;
   await updateDoc(chatRef, {
     lastMessage: {
       content,
@@ -98,6 +104,36 @@ export async function sendMessage(chatId: string, senderId: string, content: str
     },
     updatedAt: Timestamp.now(),
   });
+
+  // Send notifications to other participants
+  const sender = await getUserById(senderId);
+  if (!sender) throw new Error('Sender not found');
+
+  const otherParticipants = chat.participants.filter(id => id !== senderId);
+  
+  if (chat.type === ChatType.BROADCAST) {
+    await sendMassChatNotification({
+      userIds: otherParticipants,
+      title: 'Новое сообщение в рассылке',
+      message: content,
+      chatId,
+      senderId,
+      senderName: `${sender.firstName} ${sender.lastName}`
+    });
+  } else {
+    for (const participantId of otherParticipants) {
+      await sendChatNotification({
+        userId: participantId,
+        title: chat.type === ChatType.GROUP 
+          ? `Новое сообщение в группе ${chat.name}`
+          : `Новое сообщение от ${sender.firstName} ${sender.lastName}`,
+        message: content,
+        chatId,
+        senderId,
+        senderName: `${sender.firstName} ${sender.lastName}`
+      });
+    }
+  }
 
   return messageRef;
 }

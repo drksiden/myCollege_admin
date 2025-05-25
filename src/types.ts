@@ -170,8 +170,14 @@ export interface News {
   title: string;
   content: string;
   authorId: string;
-  imageUrl?: string;
+  images: {
+    url: string;
+    alt: string;
+    order: number;
+  }[];
   isPublished: boolean;
+  publishedAt?: Timestamp;
+  tags: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

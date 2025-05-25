@@ -1,6 +1,108 @@
 import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, updateDoc, writeBatch, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '../firebase';
 import type { Notification } from '@/types';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { app } from '../firebase';
+
+// FCM setup
+const messaging = getMessaging(app);
+
+export async function requestNotificationPermission() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      const token = await getToken(messaging, {
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+      });
+      return token;
+    }
+    throw new Error('Notification permission denied');
+  } catch (error) {
+    console.error('Error requesting notification permission:', error);
+    throw error;
+  }
+}
+
+export function onMessageListener() {
+  return new Promise((resolve) => {
+    onMessage(messaging, (payload) => {
+      resolve(payload);
+    });
+  });
+}
+
+// Chat notification functions
+export async function sendChatNotification({
+  userId,
+  title,
+  message,
+  chatId,
+  senderId,
+  senderName
+}: {
+  userId: string;
+  title: string;
+  message: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+}) {
+  const notificationsRef = collection(db, 'notifications');
+  const notificationData = {
+    userId,
+    title,
+    message,
+    type: 'chat',
+    read: false,
+    data: {
+      chatId,
+      senderId,
+      senderName
+    },
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  return addDoc(notificationsRef, notificationData);
+}
+
+export async function sendMassChatNotification({
+  userIds,
+  title,
+  message,
+  chatId,
+  senderId,
+  senderName
+}: {
+  userIds: string[];
+  title: string;
+  message: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+}) {
+  const batch = writeBatch(db);
+  const notificationsRef = collection(db, 'notifications');
+
+  userIds.forEach(userId => {
+    const notificationRef = doc(notificationsRef);
+    batch.set(notificationRef, {
+      userId,
+      title,
+      message,
+      type: 'chat',
+      read: false,
+      data: {
+        chatId,
+        senderId,
+        senderName
+      },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  });
+
+  await batch.commit();
+}
 
 export async function createNotification(data: Omit<Notification, 'id' | 'createdAt' | 'updatedAt'>) {
   const notificationsRef = collection(db, 'notifications');
