@@ -1,18 +1,16 @@
-import { db } from '@/lib/firebase';
 import {
   collection,
   doc,
-  getDocs,
-  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
+  getDocs,
   query,
   where,
   Timestamp,
-  serverTimestamp,
 } from 'firebase/firestore';
-import type { Attendance, AttendanceRecord } from '@/types';
+import { db } from '@/lib/firebase';
+import type { Attendance } from '@/types';
 
 const ATTENDANCE_COLLECTION = 'attendance';
 
@@ -50,14 +48,14 @@ export async function createAttendanceRecord(data: Omit<Attendance, 'id' | 'crea
   const attendanceRef = collection(db, ATTENDANCE_COLLECTION);
   const docRef = await addDoc(attendanceRef, {
     ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdAt: Timestamp.fromDate(new Date()),
+    updatedAt: Timestamp.fromDate(new Date()),
   });
   return {
     id: docRef.id,
     ...data,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: Timestamp.fromDate(new Date()),
+    updatedAt: Timestamp.fromDate(new Date()),
   } as Attendance;
 }
 
@@ -65,7 +63,7 @@ export async function updateAttendanceRecord(id: string, data: Partial<Omit<Atte
   const attendanceRef = doc(db, ATTENDANCE_COLLECTION, id);
   await updateDoc(attendanceRef, {
     ...data,
-    updatedAt: serverTimestamp(),
+    updatedAt: Timestamp.fromDate(new Date()),
   });
 }
 

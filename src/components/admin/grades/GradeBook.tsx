@@ -97,9 +97,9 @@ export default function GradeBook({ teacherId }: GradeBookProps) {
       );
 
       if (existingGrade) {
-        await updateGrade(existingGrade.id, gradeData);
+        await updateGrade(existingGrade.id, gradeData as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>);
       } else {
-        await createGrade(gradeData);
+        await createGrade(gradeData as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>);
       }
 
       toast.success('Grade saved successfully');
@@ -304,7 +304,6 @@ export default function GradeBook({ teacherId }: GradeBookProps) {
             <CardContent>
               <GradeStatistics
                 grades={grades}
-                students={students}
                 subjects={subjects}
                 groups={groups}
                 selectedGroup={selectedGroup}

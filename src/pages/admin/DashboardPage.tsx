@@ -11,10 +11,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Users,
-  Library,
-  UserPlus,
-  BarChart3,
-  Activity, // Убрал DollarSign, так как не используется в данных
+  GraduationCap,
+  MessageSquare,
 } from 'lucide-react';
 
 interface StatCardData {
@@ -97,13 +95,13 @@ const DashboardPage: React.FC = () => {
         {
           title: 'Учебных групп',
           value: '45',
-          icon: <Library className="h-5 w-5 text-muted-foreground" />,
+          icon: <GraduationCap className="h-5 w-5 text-muted-foreground" />,
           description: 'На всех курсах',
         },
         {
           title: 'Посещаемость сегодня',
           value: '92.5%',
-          icon: <Activity className="h-5 w-5 text-muted-foreground" />,
+          icon: <MessageSquare className="h-5 w-5 text-muted-foreground" />,
           description: 'Средний показатель',
           diff: '-1.2% со вчера',
         },
@@ -215,7 +213,7 @@ const DashboardPage: React.FC = () => {
         <Card className="col-span-1 lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <BarChart3 className="h-5 w-5 text-muted-foreground" />
+              <GraduationCap className="h-5 w-5 text-muted-foreground" />
               Динамика набора студентов
             </CardTitle>
             <CardDescription className="text-sm">

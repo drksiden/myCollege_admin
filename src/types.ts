@@ -29,11 +29,15 @@ export interface User {
 export interface Student {
   id: string;
   userId: string;
-  studentCardId: string;
   groupId: string;
+  studentCardId: string;
   enrollmentDate: Timestamp;
   dateOfBirth: Timestamp;
   status: 'active' | 'inactive' | 'graduated';
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  address?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -182,11 +186,13 @@ export interface News {
   updatedAt: Timestamp;
 }
 
-export enum ChatType {
-  DIRECT = 'direct',
-  GROUP = 'group',
-  BROADCAST = 'broadcast'
-}
+export const ChatType = {
+  PRIVATE: 'private',
+  GROUP: 'group',
+  CHANNEL: 'channel',
+} as const;
+
+export type ChatType = typeof ChatType[keyof typeof ChatType];
 
 export interface Chat {
   id: string;
@@ -229,6 +235,18 @@ export interface Journal {
       status: 'present' | 'absent' | 'late' | 'excused';
     }[];
   }[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface JournalEntry {
+  id: string;
+  journalId: string;
+  date: Timestamp;
+  topic: string;
+  hours: number;
+  type: 'lecture' | 'seminar' | 'laboratory';
+  notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 } 

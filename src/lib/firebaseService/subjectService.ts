@@ -1,24 +1,20 @@
 import {
-  Firestore,
+  collection,
   doc,
   getDoc,
-  updateDoc,
-  deleteDoc,
-  collection,
-  addDoc,
   getDocs,
-  serverTimestamp,
-  Timestamp,
-  orderBy,
   query,
   where,
-  DocumentReference,
+  Timestamp,
+  orderBy,
+  Firestore,
+  serverTimestamp,
   writeBatch,
   arrayUnion,
   arrayRemove,
 } from 'firebase/firestore';
-import type { Subject } from '@/types';
 import { db } from '@/lib/firebase';
+import type { Subject } from '@/types';
 
 // Re-export Subject type for convenience
 export type { Subject };

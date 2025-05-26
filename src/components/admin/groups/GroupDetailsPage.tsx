@@ -283,12 +283,12 @@ export function GroupDetailsPage() {
 
       <ManageTeachersDialog
         open={isManageTeachersOpen}
-        onOpenChange={setIsManageTeachersOpen}
         group={group}
         onSuccess={() => {
           setIsManageTeachersOpen(false);
           loadGroupData();
         }}
+        onClose={() => setIsManageTeachersOpen(false)}
       />
     </div>
   );

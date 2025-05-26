@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { Trash2, Send, Users, MessageSquare, Megaphone } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { requestNotificationPermission, onMessageListener } from '@/lib/firebaseService/notificationService';
+import { notificationService } from '@/lib/firebaseService/notificationService';
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -58,8 +58,8 @@ export default function ChatPage() {
     // Initialize notifications
     const initializeNotifications = async () => {
       try {
-        await requestNotificationPermission();
-        onMessageListener().then(payload => {
+        await notificationService.requestPermission();
+        notificationService.onMessageListener().then((payload: unknown) => {
           console.log('Received foreground message:', payload);
           // Можно показать уведомление через toast или другое UI
           toast.info('Новое сообщение');
@@ -86,7 +86,7 @@ export default function ChatPage() {
     if (!user || !selectedUser) return;
 
     try {
-      await createChat([user.uid, selectedUser], ChatType.DIRECT);
+      await createChat([user.uid, selectedUser], ChatType.PRIVATE);
       setIsNewChatDialogOpen(false);
       setSelectedUser('');
       toast.success('Чат успешно создан');
@@ -313,7 +313,7 @@ export default function ChatPage() {
                             <Users className="w-4 h-4 mr-2" />
                             {chat.name}
                           </span>
-                        ) : chat.type === ChatType.BROADCAST ? (
+                        ) : chat.type === ChatType.CHANNEL ? (
                           <span className="flex items-center">
                             <Megaphone className="w-4 h-4 mr-2" />
                             Рассылка
@@ -355,7 +355,7 @@ export default function ChatPage() {
                       <Users className="w-4 h-4 mr-2" />
                       {selectedChat.name}
                     </span>
-                  ) : selectedChat.type === ChatType.BROADCAST ? (
+                  ) : selectedChat.type === ChatType.CHANNEL ? (
                     <span className="flex items-center">
                       <Megaphone className="w-4 h-4 mr-2" />
                       Рассылка

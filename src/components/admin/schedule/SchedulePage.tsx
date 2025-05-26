@@ -12,17 +12,16 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Download, Plus, Pencil, Trash2 } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
+import { Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
-import { getAllLessons, createLesson, updateLesson, deleteLesson } from '@/lib/firebaseService/lessonService';
+import { getAllLessons } from '@/lib/firebaseService/lessonService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
 import type { Group, Lesson, Subject, Teacher } from '@/types';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
-import { LessonFormDialog } from './LessonForm';
 
 const timeSlots = [
   { start: '08:00', end: '09:30' },
@@ -34,43 +33,53 @@ const timeSlots = [
   { start: '18:45', end: '20:15' },
 ];
 
-const typeLabels = {
-  lecture: 'Лекция',
-  practice: 'Практика',
-  lab: 'Лабораторная',
+const typeLabels: Record<Lesson['type'], string> = {
+  lecture: 'Lecture',
+  practice: 'Practice',
+  laboratory: 'Laboratory'
 };
 
-const typeColors = {
+const typeColors: Record<Lesson['type'], string> = {
   lecture: 'bg-blue-100 text-blue-800',
   practice: 'bg-green-100 text-green-800',
-  lab: 'bg-purple-100 text-purple-800',
+  laboratory: 'bg-purple-100 text-purple-800'
 };
 
-export function SchedulePage() {
+// Define the type for autoTable options
+interface AutoTableOptions {
+  head: string[][];
+  body: (string | string[])[][];
+  startY: number;
+  theme: string;
+  styles: {
+    cellWidth: string;
+    fontSize: number;
+  };
+  headStyles: {
+    fillColor: number[];
+  };
+}
+
+const SchedulePage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const { toast } = useToast();
 
   useEffect(() => {
     const fetchGroups = async () => {
       try {
         const groupsData = await getAllGroups();
         setGroups(groupsData);
-      } catch (err) {
-        console.error('Error fetching groups:', err);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить список групп',
-          variant: 'destructive',
-        });
+      } catch (error) {
+        console.error('Error loading schedule:', error);
+        toast.error('Failed to load schedule');
       }
     };
     fetchGroups();
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     const fetchMeta = async () => {
@@ -83,15 +92,11 @@ export function SchedulePage() {
         setTeachers(teachersData);
       } catch (err) {
         console.error('Error fetching meta:', err);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить справочники',
-          variant: 'destructive',
-        });
+        toast.error('Не удалось загрузить справочники');
       }
     };
     fetchMeta();
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     const fetchLessons = async () => {
@@ -99,39 +104,24 @@ export function SchedulePage() {
       try {
         const lessonsData = await getAllLessons(selectedGroup);
         setLessons(lessonsData);
-      } catch (err) {
-        console.error('Error fetching lessons:', err);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить расписание',
-          variant: 'destructive',
-        });
+      } catch (error) {
+        console.error('Error loading schedule:', error);
+        toast.error('Failed to load schedule');
       }
     };
     fetchLessons();
-  }, [selectedGroup, toast]);
+  }, [selectedGroup]);
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
 
-  const getLessonsForTimeSlot = (day: Date, timeSlot: typeof timeSlots[0]) => {
-    return lessons.filter(lesson => {
-      const lessonDate = lesson.date.toDate();
-      return (
-        isSameDay(lessonDate, day) &&
-        lesson.startTime === timeSlot.start &&
-        lesson.endTime === timeSlot.end
-      );
-    });
-  };
-
   const buildGridData = () => {
     return timeSlots.map((timeSlot) =>
       weekDays.map((day) =>
-        lessons.filter((lesson) => {
-          const lessonDate = lesson.date.toDate();
+        lessons.filter((lesson: Lesson) => {
+          const lessonDay = new Date(lesson.dayOfWeek * 24 * 60 * 60 * 1000);
           return (
-            isSameDay(lessonDate, day) &&
+            isSameDay(lessonDay, day) &&
             lesson.startTime === timeSlot.start &&
             lesson.endTime === timeSlot.end
           );
@@ -142,7 +132,7 @@ export function SchedulePage() {
 
   const exportToExcel = () => {
     if (!selectedGroup) return;
-    const group = groups.find(g => g.id === selectedGroup);
+    const group = groups.find((g: Group) => g.id === selectedGroup);
     if (!group) return;
     const grid = buildGridData();
     const header = ['Пара/День', ...weekDays.map(day => format(day, 'EEEE', { locale: ru }))];
@@ -165,7 +155,7 @@ export function SchedulePage() {
 
   const exportToPDF = () => {
     if (!selectedGroup) return;
-    const group = groups.find(g => g.id === selectedGroup);
+    const group = groups.find((g: Group) => g.id === selectedGroup);
     if (!group) return;
     const grid = buildGridData();
     const header = ['Пара/День', ...weekDays.map(day => format(day, 'EEEE', { locale: ru }))];
@@ -185,7 +175,7 @@ export function SchedulePage() {
     doc.text(`Расписание группы ${group.name}`, 14, 15);
     doc.setFontSize(10);
     doc.text(`Неделя с ${format(weekStart, 'dd.MM.yyyy', { locale: ru })}`, 14, 22);
-    (doc as any).autoTable({
+    (doc as unknown as { autoTable: (options: AutoTableOptions) => void }).autoTable({
       head: [header],
       body: data,
       startY: 30,
@@ -196,14 +186,13 @@ export function SchedulePage() {
     doc.save(`Расписание_${group.name}.pdf`);
   };
 
-  const getSubjectName = (subjectId: string) =>
-    subjects.find((s) => s.id === subjectId)?.name || '—';
+  const getSubjectName = (subjectId: string) => {
+    return subjects.find((s: Subject) => s.id === subjectId)?.name || '—';
+  };
+
   const getTeacherName = (teacherId: string) => {
-    const t = teachers.find((t) => t.id === teacherId);
-    if (!t) return '—';
-    return t.middleName
-      ? `${t.lastName} ${t.firstName} ${t.middleName}`
-      : `${t.lastName} ${t.firstName}`;
+    const t = teachers.find((t: Teacher) => t.id === teacherId);
+    return t ? `${t.firstName} ${t.lastName}` : '—';
   };
 
   return (
@@ -228,7 +217,7 @@ export function SchedulePage() {
             <SelectValue placeholder="Выберите группу" />
           </SelectTrigger>
           <SelectContent>
-            {groups.map(group => (
+            {groups.map((group: Group) => (
               <SelectItem key={group.id} value={group.id}>
                 {group.name}
               </SelectItem>
@@ -248,7 +237,7 @@ export function SchedulePage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Расписание группы {groups.find(g => g.id === selectedGroup)?.name}
+              Расписание группы {groups.find((g: Group) => g.id === selectedGroup)?.name}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -271,10 +260,10 @@ export function SchedulePage() {
                         {timeSlot.start}<br />{timeSlot.end}
                       </td>
                       {weekDays.map((day, j) => {
-                        const cellLessons = lessons.filter(lesson => {
-                          const lessonDate = lesson.date.toDate();
+                        const cellLessons = lessons.filter((lesson: Lesson) => {
+                          const lessonDay = new Date(lesson.dayOfWeek * 24 * 60 * 60 * 1000);
                           return (
-                            isSameDay(lessonDate, day) &&
+                            isSameDay(lessonDay, day) &&
                             lesson.startTime === timeSlot.start &&
                             lesson.endTime === timeSlot.end
                           );
@@ -306,4 +295,6 @@ export function SchedulePage() {
       )}
     </div>
   );
-} 
+};
+
+export default SchedulePage; 

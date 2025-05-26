@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from './firebase';
 import type { User } from '@/types';
-import { getUserById } from './firebaseService/userService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -55,4 +56,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 export function useAuth() {
   return useContext(AuthContext);
-} 
+}
+
+export const getUserById = async (uid: string): Promise<User | null> => {
+  const userRef = doc(db, 'users', uid);
+  const userSnap = await getDoc(userRef);
+  
+  if (!userSnap.exists()) {
+    return null;
+  }
+
+  return {
+    uid: userSnap.id,
+    ...userSnap.data(),
+  } as User;
+}; 

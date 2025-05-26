@@ -1,5 +1,6 @@
 // src/lib/firebase.ts (в вашем React-проекте)
 import { initializeApp } from "firebase/app";
+import type { FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
@@ -41,7 +42,7 @@ if (missingEnvVars.length > 0) {
 }
 
 // Инициализируем Firebase приложение
-let app;
+let app: FirebaseApp;
 try {
   app = initializeApp(firebaseConfig);
   console.log('Firebase app initialized successfully');

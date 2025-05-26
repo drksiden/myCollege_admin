@@ -25,7 +25,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
 // Services
 import { getAllJournals, deleteJournal as deleteJournalService, getJournal } from '@/lib/firebaseService/journalService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
@@ -72,11 +71,11 @@ const ManageJournalsPage: React.FC = () => {
     setIsLoading(true);
     try {
       const [fetchedJournals, fetchedGroups, fetchedSubjects, fetchedTeacherProfiles, fetchedUsers] = await Promise.all([
-        getAllJournals(db),
+        getAllJournals(),
         getAllGroups(),
         getAllSubjects(),
         getAllTeacherProfiles(),
-        getUsersFromFirestore(db),
+        getUsersFromFirestore(),
       ]);
       setJournals(fetchedJournals);
       setGroups(fetchedGroups);
@@ -120,7 +119,7 @@ const ManageJournalsPage: React.FC = () => {
     setShowMetadataDialog(false);
     await fetchData(); 
     if (metadataFormMode === 'create') {
-      const newJournal = await getJournal(db, journalId); // Fetch the newly created journal
+      const newJournal = await getJournal(journalId); // Fetch the newly created journal
       if (newJournal) {
         setCurrentManagingJournal(newJournal);
         setShowManageEntriesDialog(true); 
@@ -133,7 +132,7 @@ const ManageJournalsPage: React.FC = () => {
   const handleOpenManageEntriesDialog = async (journal: Journal) => {
     // Fetch latest journal data before opening, especially the 'entries'
     setIsLoading(true);
-    const freshJournal = await getJournal(db, journal.id);
+    const freshJournal = await getJournal(journal.id);
     if (freshJournal) {
         setCurrentManagingJournal(freshJournal);
         setShowManageEntriesDialog(true);
@@ -147,7 +146,7 @@ const ManageJournalsPage: React.FC = () => {
   
   const handleEntriesUpdated = async () => {
     if (currentManagingJournal) {
-      const updatedJournal = await getJournal(db, currentManagingJournal.id);
+      const updatedJournal = await getJournal(currentManagingJournal.id);
       if (updatedJournal) {
         setCurrentManagingJournal(updatedJournal); 
         setJournals(prev => prev.map(j => j.id === updatedJournal.id ? updatedJournal : j));
@@ -165,7 +164,7 @@ const ManageJournalsPage: React.FC = () => {
     if (!journalToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteJournalService(db, journalToDelete.id);
+      await deleteJournalService(journalToDelete.id);
       toast.success(`Journal deleted successfully.`);
       await fetchData();
     } catch (error) {
@@ -180,24 +179,6 @@ const ManageJournalsPage: React.FC = () => {
   if (isLoading && journals.length === 0) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading journals...</span></div>;
   }
-
-  const allEntries: AttendanceEntry[] = journals.flatMap((j: Journal) =>
-    (j.entries || [])
-      .filter(e =>
-        typeof e.studentId === 'string' &&
-        typeof e.attendance === 'string' &&
-        typeof e.date !== 'undefined' &&
-        !('topic' in e) && !('homework' in e) && !('notes' in e)
-      )
-      .map(e => ({
-        studentId: e.studentId,
-        date: e.date,
-        attendance: e.attendance,
-        groupId: j.groupId,
-        subjectId: j.subjectId,
-        semester: j.semester,
-      }))
-  );
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">

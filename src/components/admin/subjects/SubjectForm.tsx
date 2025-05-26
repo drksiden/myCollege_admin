@@ -79,8 +79,8 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
     const loadData = async () => {
       try {
         const [teacherProfiles, allUsers, allGroups] = await Promise.all([
-          getAllTeachers(db),
-          getUsersFromFirestore(db),
+          getAllTeachers(),
+          getUsersFromFirestore(),
           getAllGroups(),
         ]);
 

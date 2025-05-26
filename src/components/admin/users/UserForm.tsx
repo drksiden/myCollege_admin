@@ -1,5 +1,5 @@
 // src/components/admin/users/UserForm.tsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -65,11 +65,15 @@ const formSchema = z.object({
 
 type UserFormValues = z.infer<typeof formSchema>;
 
+interface ExtendedUser extends User {
+  patronymic?: string;
+}
+
 interface UserFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUserSubmitSuccess: () => void;
-  initialData?: User;
+  initialData?: ExtendedUser;
 }
 
 export function UserFormDialog({

@@ -6,16 +6,14 @@ import {
   updateDoc,
   deleteDoc,
   collection,
-  addDoc, // Using addDoc to let Firestore generate 'id' for teachers collection
+  addDoc,
   getDocs,
   query,
   where,
   serverTimestamp,
   Timestamp,
-  WriteBatch, // For batch operations if needed, though we'll coordinate in components
-  orderBy,
 } from 'firebase/firestore';
-import type { Teacher } from '@/types'; // User type not directly needed here but good for context
+import type { Teacher } from '@/types';
 import { db } from '@/lib/firebase';
 
 // Re-export Teacher type for convenience
@@ -125,26 +123,39 @@ export const deleteTeacherProfileInService = async ( // Renamed to avoid conflic
  * @param db Firestore instance.
  * @returns Promise<Teacher[]> An array of teacher profiles.
  */
-export const getAllTeachers = async (): Promise<Teacher[]> => {
+export async function getAllTeachers(): Promise<Teacher[]> {
   const teachersRef = collection(db, 'teachers');
-  const snapshot = await getDocs(teachersRef);
-  return snapshot.docs.map(doc => ({
+  const querySnapshot = await getDocs(teachersRef);
+  return querySnapshot.docs.map(doc => ({
     id: doc.id,
-    ...doc.data(),
-  })) as Teacher[];
-};
+    userId: doc.data().userId,
+    subjects: doc.data().subjects || [],
+    groups: doc.data().groups || [],
+    specialization: doc.data().specialization,
+    experience: doc.data().experience,
+    education: doc.data().education,
+    createdAt: doc.data().createdAt,
+    updatedAt: doc.data().updatedAt,
+  } as Teacher));
+}
 
 export const getTeachersByGroup = async (groupId: string): Promise<Teacher[]> => {
-  const q = query(
-    collection(db, 'users'),
-    where('role', '==', 'teacher'),
-    where('groups', 'array-contains', groupId)
-  );
-  
+  const teachersRef = collection(db, 'teachers');
+  const q = query(teachersRef, where('groups', 'array-contains', groupId));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({
-    uid: doc.id,
-    ...doc.data(),
+    id: doc.id,
+    userId: doc.data().userId,
+    firstName: doc.data().firstName,
+    lastName: doc.data().lastName,
+    middleName: doc.data().middleName,
+    subjects: doc.data().subjects || [],
+    groups: doc.data().groups || [],
+    specialization: doc.data().specialization,
+    experience: doc.data().experience,
+    education: doc.data().education,
+    createdAt: doc.data().createdAt,
+    updatedAt: doc.data().updatedAt,
   } as Teacher));
 };
 

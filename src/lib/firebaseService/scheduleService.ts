@@ -9,18 +9,29 @@ import {
   getDocs,
   serverTimestamp,
   Timestamp,
-  orderBy,
   query,
   where,
-  // arrayUnion, // Not used directly for lessons array in Phase 1 if replacing whole array
-  // arrayRemove, // Not used directly for lessons array in Phase 1 if replacing whole array
 } from 'firebase/firestore';
-import type { Schedule, Lesson, ScheduleEntry } from '@/types'; // Group, Subject, Teacher, User not directly used here
-import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs for lessons
-import { db } from '@/lib/firebase';
+import type { Schedule, Lesson } from '@/types';
 
 // Re-export types for convenience
-export type { Schedule, Lesson, ScheduleEntry };
+export type { Schedule, Lesson };
+
+// Define ScheduleEntry type locally since it's only used in this file
+interface ScheduleEntry {
+  id: string;
+  date: Timestamp;
+  type: 'class' | 'exam' | 'test';
+  description: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Extend Schedule type for this file
+interface ScheduleWithEntries extends Schedule {
+  entries?: ScheduleEntry[];
+}
 
 const SCHEDULES_COLLECTION = 'schedules';
 
@@ -31,7 +42,7 @@ const SCHEDULES_COLLECTION = 'schedules';
  * @returns Promise<Schedule>
  */
 export const createSchedule = async (
-  db: any,
+  db: Firestore,
   scheduleData: Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Schedule> => {
   const schedulesCollection = collection(db, SCHEDULES_COLLECTION);
@@ -55,7 +66,7 @@ export const createSchedule = async (
  * @returns Promise<void>
  */
 export const updateSchedule = async (
-  db: any,
+  db: Firestore,
   scheduleId: string,
   updates: Partial<Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
@@ -74,7 +85,7 @@ export const updateSchedule = async (
  * @returns Promise<void>
  */
 export const deleteSchedule = async (
-  db: any,
+  db: Firestore,
   scheduleId: string
 ): Promise<void> => {
   const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
@@ -88,7 +99,7 @@ export const deleteSchedule = async (
  * @returns Promise<Schedule | null>
  */
 export const getSchedule = async (
-  db: any,
+  db: Firestore,
   scheduleId: string
 ): Promise<Schedule | null> => {
   const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
@@ -111,7 +122,7 @@ export const getSchedule = async (
  * @returns Promise<Schedule | null>
  */
 export const getGroupSchedule = async (
-  db: any,
+  db: Firestore,
   groupId: string,
   semester: number,
   year: number
@@ -142,39 +153,28 @@ export const getGroupSchedule = async (
  * @returns Promise<void>
  */
 export const addLesson = async (
-  db: any,
+  db: Firestore,
   scheduleId: string,
   lesson: Omit<Lesson, 'id'>
 ): Promise<void> => {
-  console.log('addLesson called with:', { scheduleId, lesson });
-  
   const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  console.log('Getting schedule document...');
-  
   const scheduleDoc = await getDoc(scheduleRef);
   if (!scheduleDoc.exists()) {
-    console.error('Schedule document not found');
     throw new Error('Schedule not found');
   }
   
   const schedule = scheduleDoc.data() as Schedule;
-  console.log('Current schedule data:', schedule);
-  
   const newLesson = {
     ...lesson,
     id: doc(collection(db, 'lessons')).id,
   };
-  console.log('Created new lesson with ID:', newLesson);
   
   const updatedLessons = [...(schedule.lessons || []), newLesson];
-  console.log('Updated lessons array:', updatedLessons);
   
-  console.log('Updating schedule document...');
   await updateDoc(scheduleRef, {
     lessons: updatedLessons,
     updatedAt: serverTimestamp() as Timestamp,
   });
-  console.log('Schedule document updated successfully');
 };
 
 /**
@@ -186,7 +186,7 @@ export const addLesson = async (
  * @returns Promise<void>
  */
 export const updateLesson = async (
-  db: any,
+  db: Firestore,
   scheduleId: string,
   lessonId: string,
   updates: Partial<Omit<Lesson, 'id'>>
@@ -200,7 +200,8 @@ export const updateLesson = async (
   const updatedLessons = schedule.lessons.map(lesson =>
     lesson.id === lessonId ? { ...lesson, ...updates } : lesson
   );
-  return updateDoc(scheduleRef, {
+  
+  await updateDoc(scheduleRef, {
     lessons: updatedLessons,
     updatedAt: serverTimestamp() as Timestamp,
   });
@@ -214,7 +215,7 @@ export const updateLesson = async (
  * @returns Promise<void>
  */
 export const deleteLesson = async (
-  db: any,
+  db: Firestore,
   scheduleId: string,
   lessonId: string
 ): Promise<void> => {
@@ -225,7 +226,8 @@ export const deleteLesson = async (
   }
   const schedule = scheduleDoc.data() as Schedule;
   const updatedLessons = schedule.lessons.filter(lesson => lesson.id !== lessonId);
-  return updateDoc(scheduleRef, {
+  
+  await updateDoc(scheduleRef, {
     lessons: updatedLessons,
     updatedAt: serverTimestamp() as Timestamp,
   });
@@ -237,81 +239,122 @@ export const deleteLesson = async (
  * @returns Promise<Schedule[]> An array of schedules.
  */
 export const getAllSchedules = async (db: Firestore): Promise<Schedule[]> => {
-  const schedulesCollection = collection(db, 'schedules');
-  // Consider adding more specific ordering if needed, e.g., by group name (would require joins or denormalization)
-  const q = query(schedulesCollection, orderBy('year', 'desc'), orderBy('semester', 'asc'), orderBy('groupId', 'asc'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  } as Schedule));
+  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
+  const querySnapshot = await getDocs(schedulesRef);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Schedule[];
 };
 
 // Get schedule by group ID
-export const getScheduleByGroupId = async (groupId: string) => {
-  const q = query(collection(db, 'schedules'), where('groupId', '==', groupId));
+export const getScheduleByGroupId = async (
+  db: Firestore,
+  groupId: string
+): Promise<Schedule | null> => {
+  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
+  const q = query(schedulesRef, where('groupId', '==', groupId));
   const querySnapshot = await getDocs(q);
   if (querySnapshot.empty) {
     return null;
   }
   const doc = querySnapshot.docs[0];
-  return { id: doc.id, ...doc.data() } as Schedule;
+  return {
+    id: doc.id,
+    ...doc.data(),
+  } as Schedule;
 };
 
-// Add schedule entry
-export const addScheduleEntry = async (scheduleId: string, entry: ScheduleEntry) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  const schedule = await getSchedule(scheduleId);
+/**
+ * Добавляет запись в расписание
+ */
+export const addScheduleEntry = async (
+  db: Firestore,
+  scheduleId: string,
+  entry: Omit<ScheduleEntry, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<ScheduleWithEntries> => {
+  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
   if (!schedule) {
     throw new Error('Schedule not found');
   }
+
+  const newEntry: ScheduleEntry = {
+    id: doc(collection(db, 'entries')).id,
+    ...entry,
+    createdAt: serverTimestamp() as Timestamp,
+    updatedAt: serverTimestamp() as Timestamp,
+  };
+
+  const updatedEntries = [...(schedule.entries || []), newEntry];
   
-  const updatedEntries = [...schedule.entries, entry];
-  await updateDoc(docRef, {
+  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
     entries: updatedEntries,
-    updatedAt: new Date(),
+    updatedAt: serverTimestamp() as Timestamp,
   });
-  
-  return { id: scheduleId, ...schedule, entries: updatedEntries };
+
+  return {
+    ...schedule,
+    entries: updatedEntries,
+  };
 };
 
-// Update schedule entry
+/**
+ * Обновляет запись в расписании
+ */
 export const updateScheduleEntry = async (
+  db: Firestore,
   scheduleId: string,
   entryId: string,
-  entry: Partial<ScheduleEntry>
-) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  const schedule = await getSchedule(scheduleId);
+  updates: Partial<Omit<ScheduleEntry, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<ScheduleWithEntries> => {
+  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
   if (!schedule) {
     throw new Error('Schedule not found');
   }
-  
-  const updatedEntries = schedule.entries.map(e => 
-    e.id === entryId ? { ...e, ...entry } : e
+
+  const updatedEntries = (schedule.entries || []).map((entry: ScheduleEntry) =>
+    entry.id === entryId
+      ? {
+          ...entry,
+          ...updates,
+          updatedAt: serverTimestamp() as Timestamp,
+        }
+      : entry
   );
-  
-  await updateDoc(docRef, {
+
+  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
     entries: updatedEntries,
-    updatedAt: new Date(),
+    updatedAt: serverTimestamp() as Timestamp,
   });
-  
-  return { id: scheduleId, ...schedule, entries: updatedEntries };
+
+  return {
+    ...schedule,
+    entries: updatedEntries,
+  };
 };
 
-// Delete schedule entry
-export const deleteScheduleEntry = async (scheduleId: string, entryId: string) => {
-  const docRef = doc(db, 'schedules', scheduleId);
-  const schedule = await getSchedule(scheduleId);
+/**
+ * Удаляет запись из расписания
+ */
+export const deleteScheduleEntry = async (
+  db: Firestore,
+  scheduleId: string,
+  entryId: string
+): Promise<ScheduleWithEntries> => {
+  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
   if (!schedule) {
     throw new Error('Schedule not found');
   }
-  
-  const updatedEntries = schedule.entries.filter(e => e.id !== entryId);
-  await updateDoc(docRef, {
+
+  const updatedEntries = (schedule.entries || []).filter((entry: ScheduleEntry) => entry.id !== entryId);
+
+  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
     entries: updatedEntries,
-    updatedAt: new Date(),
+    updatedAt: serverTimestamp() as Timestamp,
   });
-  
-  return { id: scheduleId, ...schedule, entries: updatedEntries };
+
+  return {
+    ...schedule,
+    entries: updatedEntries,
+  };
 };

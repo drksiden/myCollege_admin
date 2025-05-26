@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import NotificationCenter from '@/components/notifications/NotificationCenter';
 
 export default function Navbar() {
-  const { user, signOut } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <nav className="border-b">
@@ -33,8 +33,8 @@ export default function Navbar() {
         <div className="flex items-center space-x-4">
           {user && <NotificationCenter />}
           {user ? (
-            <Button variant="outline" onClick={signOut}>
-              Sign Out
+            <Button variant="outline" onClick={logout}>
+              Выйти
             </Button>
           ) : (
             <Link to="/login">

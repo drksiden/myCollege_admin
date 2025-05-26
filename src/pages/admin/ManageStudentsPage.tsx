@@ -5,7 +5,6 @@ import { Trash2, PlusCircle, MoreHorizontal, Edit2, Loader2 } from 'lucide-react
 import { getAllStudents, deleteStudentProfile } from '@/lib/firebaseService/studentService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import { db } from '@/lib/firebase';
 import type { Student, Group, User } from '@/types';
 import {
   Table,
@@ -55,7 +54,7 @@ const ManageStudentsPage: React.FC = () => {
       const [profiles, fetchedGroups, fetchedUsers] = await Promise.all([
         getAllStudents(),
         getAllGroups(),
-        getUsersFromFirestore(db)
+        getUsersFromFirestore()
       ]);
       setStudents(profiles);
       setGroups(fetchedGroups);
@@ -263,9 +262,8 @@ const ManageStudentsPage: React.FC = () => {
           {showProfileDialog && (
             <StudentProfileForm
               mode={formMode}
-              studentProfileId={selectedStudent?.id}
-              userId={selectedUser?.uid}
-              userName={selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : undefined}
+              studentProfileId={selectedStudent?.id || ''}
+              userId={selectedUser?.uid || ''}
               onFormSubmitSuccess={() => {
                 setShowProfileDialog(false);
                 fetchData();

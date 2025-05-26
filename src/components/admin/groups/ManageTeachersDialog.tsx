@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -14,156 +13,172 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
-import { getTeachersByGroup, assignTeacherToGroup, removeTeacherFromGroup } from '@/lib/firebaseService/teacherService';
-import { db } from '@/lib/firebase';
-import type { Group, Teacher } from '@/types';
+import { Button } from '@/components/ui/button';
+import { PlusCircle, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getAllTeachers, assignTeacherToGroup, removeTeacherFromGroup } from '@/lib/firebaseService/teacherService';
+import type { Group, Teacher } from '@/types';
 
 interface ManageTeachersDialogProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
   group: Group;
+  onClose: () => void;
   onSuccess: () => void;
 }
 
-export function ManageTeachersDialog({
+export const ManageTeachersDialog: React.FC<ManageTeachersDialogProps> = ({
   open,
-  onOpenChange,
   group,
+  onClose,
   onSuccess,
-}: ManageTeachersDialogProps) {
-  const [loading, setLoading] = useState(true);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+}) => {
   const [assignedTeachers, setAssignedTeachers] = useState<Teacher[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const loadTeachers = async () => {
-      try {
-        setLoading(true);
-        const [allTeachers, groupTeachers] = await Promise.all([
-          getUsersByRole(db, 'teacher'),
-          getTeachersByGroup(group.id),
-        ]);
-        setTeachers(allTeachers);
-        setAssignedTeachers(groupTeachers);
-      } catch (error) {
-        console.error('Error loading teachers:', error);
-        toast.error('Failed to load teachers');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (open) {
       loadTeachers();
     }
-  }, [open, group.id]);
+  }, [open, group]);
 
-  const handleAssignTeacher = async (teacherId: string) => {
+  const loadTeachers = async () => {
+    setIsLoading(true);
     try {
-      await assignTeacherToGroup(teacherId, group.id);
-      const updatedTeachers = await getTeachersByGroup(group.id);
-      setAssignedTeachers(updatedTeachers);
-      toast.success('Teacher assigned successfully');
+      const allTeachers = await getAllTeachers();
+      
+      // Filter teachers that are already assigned to this group
+      const assigned = allTeachers.filter(teacher => 
+        teacher.groups && teacher.groups.includes(group.id)
+      );
+      setAssignedTeachers(assigned);
+
+      // Filter teachers that are not assigned to this group
+      const available = allTeachers.filter(teacher => 
+        !teacher.groups || !teacher.groups.includes(group.id)
+      );
+      setAvailableTeachers(available);
+    } catch (error) {
+      console.error('Error loading teachers:', error);
+      toast.error('Failed to load teachers');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAssignTeacher = async (teacher: Teacher) => {
+    setIsSubmitting(true);
+    try {
+      await assignTeacherToGroup(teacher.id, group.id);
+      toast.success('Teacher assigned to group');
+      await loadTeachers();
       onSuccess();
     } catch (error) {
       console.error('Error assigning teacher:', error);
-      toast.error('Failed to assign teacher');
+      toast.error('Failed to assign teacher to group');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleRemoveTeacher = async (teacherId: string) => {
+  const handleRemoveTeacher = async (teacher: Teacher) => {
+    setIsSubmitting(true);
     try {
-      await removeTeacherFromGroup(teacherId, group.id);
-      const updatedTeachers = await getTeachersByGroup(group.id);
-      setAssignedTeachers(updatedTeachers);
-      toast.success('Teacher removed successfully');
+      await removeTeacherFromGroup(teacher.id, group.id);
+      toast.success('Teacher removed from group');
+      await loadTeachers();
       onSuccess();
     } catch (error) {
       console.error('Error removing teacher:', error);
-      toast.error('Failed to remove teacher');
+      toast.error('Failed to remove teacher from group');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const filteredTeachers = teachers.filter((teacher) => {
-    const fullName = `${teacher.firstName} ${teacher.lastName}`.toLowerCase();
-    const search = searchTerm.toLowerCase();
-    return fullName.includes(search);
-  });
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Manage Teachers for {group.name}</DialogTitle>
+          <DialogTitle>Manage Teachers - {group.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <Input
-              placeholder="Search teachers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-sm"
-            />
+        {isLoading ? (
+          <div className="flex items-center justify-center p-4">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Loading teachers...
           </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Assigned Teachers</h3>
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Specialization</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignedTeachers.map((teacher) => (
+                      <TableRow key={teacher.id}>
+                        <TableCell>{`${teacher.firstName} ${teacher.lastName}`}</TableCell>
+                        <TableCell>{teacher.specialization}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveTeacher(teacher)}
+                            disabled={isSubmitting}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Specialization</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTeachers.map((teacher) => {
-                const isAssigned = assignedTeachers.some(t => t.uid === teacher.uid);
-                return (
-                  <TableRow key={teacher.uid}>
-                    <TableCell>
-                      {teacher.firstName} {teacher.lastName}
-                    </TableCell>
-                    <TableCell>{teacher.email}</TableCell>
-                    <TableCell>{teacher.specialization || 'N/A'}</TableCell>
-                    <TableCell>
-                      {isAssigned ? 'Assigned' : 'Not Assigned'}
-                    </TableCell>
-                    <TableCell>
-                      {isAssigned ? (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleRemoveTeacher(teacher.uid)}
-                        >
-                          Remove
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleAssignTeacher(teacher.uid)}
-                        >
-                          Assign
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Available Teachers</h3>
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Specialization</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {availableTeachers.map((teacher) => (
+                      <TableRow key={teacher.id}>
+                        <TableCell>{`${teacher.firstName} ${teacher.lastName}`}</TableCell>
+                        <TableCell>{teacher.specialization}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAssignTeacher(teacher)}
+                            disabled={isSubmitting}
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
-} 
+}; 

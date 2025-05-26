@@ -1,14 +1,10 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -16,119 +12,169 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import type { Group } from "@/pages/admin/GroupsPage";
-import type { User } from "@/pages/admin/UsersPage";
-import { getGroupStudents, removeStudentFromGroup } from "@/lib/firebase/functions";
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { PlusCircle, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
+import { addStudentToGroup, removeStudentFromGroup } from '@/lib/firebaseService/groupService';
+import type { Group, Student } from '@/types';
 
 interface GroupStudentsDialogProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
-  group?: Group;
+  group: Group;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
-export function GroupStudentsDialog({ open, onOpenChange, group }: GroupStudentsDialogProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
+  open,
+  group,
+  onClose,
+  onSuccess,
+}) => {
+  const [assignedStudents, setAssignedStudents] = useState<Student[]>([]);
+  const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: students = [], refetch } = useQuery({
-    queryKey: ["group-students", group?.id],
-    queryFn: () => group ? getGroupStudents(group.id) : Promise.resolve([]),
-    enabled: !!group,
-  });
+  useEffect(() => {
+    if (open) {
+      loadStudents();
+    }
+  }, [open, group]);
 
-  const filteredStudents = students.filter((student: User) => {
-    const fullName = `${student.lastName} ${student.firstName} ${student.patronymic || ""}`.toLowerCase();
-    return fullName.includes(searchQuery.toLowerCase());
-  });
-
-  const handleAddStudent = async () => {
-    // TODO: Implement add student functionality
-    toast.info("Функция добавления студента будет реализована в следующем этапе");
-  };
-
-  const handleRemoveStudent = async (studentId: string) => {
-    if (!group) return;
-    
+  const loadStudents = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      await removeStudentFromGroup(group.id, studentId);
-      toast.success("Студент успешно удален из группы");
-      refetch();
-    } catch (error) {
-      console.error("Error removing student:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Произошла ошибка при удалении студента"
+      const currentStudents = await getStudentsByGroup(group.id);
+      setAssignedStudents(currentStudents);
+
+      // Filter students that are not assigned to this group
+      const available = currentStudents.filter(student => 
+        !student.groupId || student.groupId !== group.id
       );
+      setAvailableStudents(available);
+    } catch (error) {
+      console.error('Error loading students:', error);
+      toast.error('Failed to load students');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!group) return null;
+  const handleAssignStudent = async (student: Student) => {
+    setIsSubmitting(true);
+    try {
+      await addStudentToGroup(group.id, student.id);
+      toast.success('Student assigned to group');
+      await loadStudents();
+      onSuccess();
+    } catch (error) {
+      console.error('Error assigning student:', error);
+      toast.error('Failed to assign student to group');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRemoveStudent = async (student: Student) => {
+    setIsSubmitting(true);
+    try {
+      await removeStudentFromGroup(group.id, student.id);
+      toast.success('Student removed from group');
+      await loadStudents();
+      onSuccess();
+    } catch (error) {
+      console.error('Error removing student:', error);
+      toast.error('Failed to remove student from group');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px]">
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Студенты группы {group.name}</DialogTitle>
-          <DialogDescription>
-            Управление списком студентов в группе. Вы можете добавлять новых студентов и удалять существующих.
-          </DialogDescription>
+          <DialogTitle>Manage Students - {group.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex justify-between items-center mb-4">
-          <Input
-            placeholder="Поиск студентов..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-sm"
-          />
-          <Button onClick={handleAddStudent}>Добавить студента</Button>
-        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center p-4">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Loading students...
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Assigned Students</h3>
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Student ID</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignedStudents.map((student) => (
+                      <TableRow key={student.id}>
+                        <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
+                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveStudent(student)}
+                            disabled={isSubmitting}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Фамилия</TableHead>
-                <TableHead>Имя</TableHead>
-                <TableHead>Отчество</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Действия</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStudents.map((student: User) => (
-                <TableRow key={student.id}>
-                  <TableCell>{student.lastName}</TableCell>
-                  <TableCell>{student.firstName}</TableCell>
-                  <TableCell>{student.patronymic || "-"}</TableCell>
-                  <TableCell>{student.email}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleRemoveStudent(student.id)}
-                      disabled={isLoading}
-                    >
-                      Удалить
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {filteredStudents.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-4">
-                    {searchQuery ? "Студенты не найдены" : "В группе пока нет студентов"}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Available Students</h3>
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Student ID</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {availableStudents.map((student) => (
+                      <TableRow key={student.id}>
+                        <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
+                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAssignStudent(student)}
+                            disabled={isSubmitting}
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
-} 
+}; 

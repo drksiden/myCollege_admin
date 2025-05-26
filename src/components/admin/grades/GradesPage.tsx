@@ -12,7 +12,6 @@ import { getStudents } from '@/lib/firebaseService/studentService';
 import { getSubjects } from '@/lib/firebaseService/subjectService';
 import { getGroups } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import { db } from '@/lib/firebase';
 import type { Student, Subject, Group, User, Journal } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -55,36 +54,37 @@ export default function GradesPage() {
     try {
       setLoading(true);
       const [journals, studentsData, subjectsData, groupsData, usersData] = await Promise.all([
-        getAllJournals(db),
+        getAllJournals(),
         getStudents(),
         getSubjects(),
         getGroups(),
-        getUsersFromFirestore(db),
+        getUsersFromFirestore(),
       ]);
       setStudents(studentsData);
       setSubjects(subjectsData);
       setGroups(groupsData);
       setUsers(usersData);
       // Собрать все entries с grade из массива journal.entries (только новая структура)
-      const allEntries: GradeEntry[] = journals.flatMap((j: Journal) =>
-        ((j.entries || [])
-          .filter(e =>
-            typeof e.studentId === 'string' &&
-            typeof e.grade === 'number' &&
-            typeof e.date !== 'undefined' &&
-            typeof e.attendance === 'string' &&
-            !('topic' in e) && !('homework' in e) && !('notes' in e)
-          ) as any[])
+      const allGrades: GradeEntry[] = journals.flatMap((j: Journal) =>
+        (j.entries || [])
+          .filter(e => 
+            e.attendance && 
+            Array.isArray(e.attendance) &&
+            e.attendance.some(a => 
+              typeof a.studentId === 'string' && 
+              typeof a.status === 'string'
+            )
+          )
           .map(e => ({
-            studentId: e.studentId,
+            studentId: e.attendance![0].studentId,
+            grade: 0, // Default grade since grades are not part of the new structure
             date: e.date,
-            grade: e.grade,
             groupId: j.groupId,
             subjectId: j.subjectId,
             semester: j.semester,
           }))
       );
-      setGradeEntries(allEntries);
+      setGradeEntries(allGrades);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
       toast.error('Не удалось загрузить данные');
@@ -165,7 +165,7 @@ export default function GradesPage() {
     const data = filteredStudents.map(student => {
       const row = [getStudentName(student.id)];
       filteredDates.forEach(date => {
-        row.push(gradesByStudent[student.id]?.[date] ?? '');
+        row.push(String(gradesByStudent[student.id]?.[date] ?? ''));
       });
       return row;
     });

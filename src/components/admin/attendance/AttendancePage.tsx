@@ -19,7 +19,6 @@ import { getSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllJournals } from '@/lib/firebaseService/journalService';
 import { getStudents } from '@/lib/firebaseService/studentService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import { db } from '@/lib/firebase';
 import type { Group, Subject, Student, User, Journal } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -62,11 +61,11 @@ export default function AttendancePage() {
     try {
       setLoading(true);
       const [journals, groupsData, subjectsData, studentsData, usersData] = await Promise.all([
-        getAllJournals(db),
+        getAllJournals(),
         getGroups(),
         getSubjects(),
         getStudents(),
-        getUsersFromFirestore(db),
+        getUsersFromFirestore(),
       ]);
       setGroups(groupsData);
       setSubjects(subjectsData);
@@ -74,21 +73,25 @@ export default function AttendancePage() {
       setUsers(usersData);
       // Собрать все entries с attendance из массива journal.entries (только новая структура)
       const allEntries: AttendanceEntry[] = journals.flatMap((j: Journal) =>
-        ((j.entries || [])
-          .filter(e =>
-            typeof e.studentId === 'string' &&
-            typeof e.attendance === 'string' &&
-            typeof e.date !== 'undefined' &&
-            !('topic' in e) && !('homework' in e) && !('notes' in e)
-          ) as any[])
-          .map(e => ({
-            studentId: e.studentId,
-            date: e.date,
-            attendance: e.attendance,
-            groupId: j.groupId,
-            subjectId: j.subjectId,
-            semester: j.semester,
-          }))
+        (j.entries || [])
+          .filter(e => 
+            e.attendance && 
+            Array.isArray(e.attendance) &&
+            e.attendance.some(a => 
+              typeof a.studentId === 'string' && 
+              typeof a.status === 'string'
+            )
+          )
+          .flatMap(e => 
+            e.attendance?.map(a => ({
+              studentId: a.studentId,
+              date: e.date,
+              attendance: a.status,
+              groupId: j.groupId,
+              subjectId: j.subjectId,
+              semester: j.semester,
+            })) || []
+          )
       );
       setAttendanceEntries(allEntries);
     } catch (error) {

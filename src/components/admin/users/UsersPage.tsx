@@ -24,7 +24,7 @@ export function UsersPage() {
 
   const loadUsers = async () => {
     try {
-      const fetchedUsers = await getUsersFromFirestore(db);
+      const fetchedUsers = await getUsersFromFirestore();
       setUsers(fetchedUsers);
     } catch (error) {
       console.error('Error loading users:', error);

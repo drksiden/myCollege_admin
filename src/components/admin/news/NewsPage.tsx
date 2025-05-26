@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,24 +18,123 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { createNews, getNews, updateNews, deleteNews } from '@/lib/firebaseService/newsService';
 import type { News } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { useAuth } from '@/lib/auth';
+
+interface NewsFormProps {
+  mode: 'create' | 'edit';
+  newsId?: string;
+  onFormSubmitSuccess: (newsId: string) => void;
+  onCancel: () => void;
+}
+
+const NewsForm: React.FC<NewsFormProps> = ({
+  mode,
+  newsId,
+  onFormSubmitSuccess,
+  onCancel,
+}) => {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | undefined>();
+  const [isPublished, setIsPublished] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const newsData = {
+        title,
+        content,
+        images: imageUrl ? [{ url: imageUrl, alt: title, order: 0 }] : [],
+        tags: [],
+        authorId: 'current-user-id', // TODO: Get from auth context
+        isPublished,
+      };
+
+      if (mode === 'create') {
+        const newNews = await createNews(newsData);
+        onFormSubmitSuccess(newNews.id);
+      } else if (mode === 'edit' && newsId) {
+        await updateNews(newsId, newsData);
+        onFormSubmitSuccess(newsId);
+      }
+
+      toast.success(`News ${mode === 'create' ? 'created' : 'updated'} successfully`);
+    } catch (error) {
+      console.error('Error saving news:', error);
+      toast.error(`Failed to ${mode === 'create' ? 'create' : 'update'} news`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="title">Title</Label>
+        <Input
+          id="title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={isLoading}
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="content">Content</Label>
+        <Textarea
+          id="content"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          disabled={isLoading}
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="imageUrl">Image URL</Label>
+        <Input
+          id="imageUrl"
+          value={imageUrl || ''}
+          onChange={(e) => setImageUrl(e.target.value)}
+          disabled={isLoading}
+        />
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <input
+          type="checkbox"
+          id="isPublished"
+          checked={isPublished}
+          onChange={(e) => setIsPublished(e.target.checked)}
+          disabled={isLoading}
+        />
+        <Label htmlFor="isPublished">Published</Label>
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? 'Saving...' : mode === 'create' ? 'Create' : 'Update'}
+        </Button>
+      </div>
+    </form>
+  );
+};
 
 export default function NewsPage() {
   const [news, setNews] = useState<News[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingNews, setEditingNews] = useState<News | null>(null);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [isPublished, setIsPublished] = useState(false);
-  const { user } = useAuth();
 
   useEffect(() => {
     loadNews();
@@ -55,41 +154,13 @@ export default function NewsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!user) return;
-
-    try {
-      const newsData = {
-        title,
-        content,
-        imageUrl: imageUrl || undefined,
-        authorId: user.uid,
-        isPublished,
-      };
-
-      if (editingNews) {
-        await updateNews(editingNews.id, newsData);
-        toast.success('News updated successfully');
-      } else {
-        await createNews(newsData);
-        toast.success('News created successfully');
-      }
-
-      setIsDialogOpen(false);
-      setEditingNews(null);
-      resetForm();
-      loadNews();
-    } catch (error) {
-      console.error('Error saving news:', error);
-      toast.error('Failed to save news');
-    }
+    setIsDialogOpen(false);
+    setEditingNews(null);
+    loadNews();
   };
 
   const handleEdit = (news: News) => {
     setEditingNews(news);
-    setTitle(news.title);
-    setContent(news.content);
-    setImageUrl(news.imageUrl || '');
-    setIsPublished(news.isPublished);
     setIsDialogOpen(true);
   };
 
@@ -104,13 +175,6 @@ export default function NewsPage() {
         toast.error('Failed to delete news');
       }
     }
-  };
-
-  const resetForm = () => {
-    setTitle('');
-    setContent('');
-    setImageUrl('');
-    setIsPublished(false);
   };
 
   if (loading) {
@@ -135,48 +199,12 @@ export default function NewsPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="content">Content</Label>
-                <Textarea
-                  id="content"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="min-h-[200px]"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="imageUrl">Image URL (optional)</Label>
-                <Input
-                  id="imageUrl"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="published"
-                  checked={isPublished}
-                  onCheckedChange={setIsPublished}
-                />
-                <Label htmlFor="published">Published</Label>
-              </div>
-
-              <Button onClick={handleSubmit}>
-                {editingNews ? 'Update' : 'Create'}
-              </Button>
-            </div>
+            <NewsForm
+              mode={editingNews ? 'edit' : 'create'}
+              newsId={editingNews?.id}
+              onFormSubmitSuccess={handleSubmit}
+              onCancel={() => setIsDialogOpen(false)}
+            />
           </DialogContent>
         </Dialog>
       </div>

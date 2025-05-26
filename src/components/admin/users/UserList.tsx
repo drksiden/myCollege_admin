@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, Loader2, Trash2, Edit } from 'lucide-react';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import type { User } from '@/types';
 import EditUserDialog from './EditUserDialog';
@@ -46,18 +45,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import type { Group } from '@/types';
 
+interface ExtendedUser extends User {
+  groupId?: string;
+}
+
 interface UserListProps {
   key?: number;
 }
 
 const UserList: React.FC<UserListProps> = () => {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<ExtendedUser[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<ExtendedUser | null>(null);
+  const [deletingUser, setDeletingUser] = useState<ExtendedUser | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [lastDeletedUser, setLastDeletedUser] = useState<User | null>(null);
+  const [lastDeletedUser, setLastDeletedUser] = useState<ExtendedUser | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'teacher' | 'admin'>('all');
@@ -69,7 +72,7 @@ const UserList: React.FC<UserListProps> = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const fetchedUsers = await getUsersFromFirestore(db);
+      const fetchedUsers = await getUsersFromFirestore();
       setUsers(fetchedUsers);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -81,7 +84,7 @@ const UserList: React.FC<UserListProps> = () => {
 
   useEffect(() => {
     fetchUsers();
-    getAllGroups(db).then(setGroups);
+    getAllGroups().then(setGroups);
   }, [fetchUsers]);
 
   const handleSelectUser = (checked: CheckedState, userId: string) => {
@@ -131,7 +134,7 @@ const UserList: React.FC<UserListProps> = () => {
     }, duration);
   };
 
-  const handleDelete = async (user: User) => {
+  const handleDelete = async (user: ExtendedUser) => {
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
       const deleteUserFn = httpsCallable(functions, 'deleteUserFunction');
@@ -178,7 +181,7 @@ const UserList: React.FC<UserListProps> = () => {
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
       const deleteUserFn = httpsCallable(functions, 'deleteUserFunction');
-      const deletedUsers: User[] = [];
+      const deletedUsers: ExtendedUser[] = [];
 
       for (const userId of selectedUsers) {
         const user = users.find(u => u.uid === userId);
@@ -230,7 +233,7 @@ const UserList: React.FC<UserListProps> = () => {
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     const matchesGroup =
-      roleFilter !== 'student' || groupFilter === 'all' || (user.role === 'student' && user.groupId === groupFilter);
+      roleFilter !== 'student' || groupFilter === 'all' || (user.role === 'student' && (user as ExtendedUser).groupId === groupFilter);
     return matchesSearch && matchesRole && matchesGroup;
   });
 
@@ -323,7 +326,7 @@ const UserList: React.FC<UserListProps> = () => {
               </TableRow>
             ) : (
               filteredUsers.map((user) => {
-                const group = groups.find(g => g.id === user.groupId);
+                const group = groups.find(g => g.id === (user as ExtendedUser).groupId);
                 return (
                   <TableRow key={user.uid} className="hover:bg-primary/5 transition">
                     <TableCell>

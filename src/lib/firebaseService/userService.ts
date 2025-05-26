@@ -124,10 +124,9 @@ export const createUserDocument = async (
 
 /**
  * Fetches all users from Firestore, ordered by creation date.
- * @param db Firestore instance.
  * @returns Promise<User[]>
  */
-export const getUsersFromFirestore = async (db: Firestore): Promise<User[]> => {
+export const getUsersFromFirestore = async (): Promise<User[]> => {
   const usersCollection = collection(db, 'users');
   const q = query(usersCollection, orderBy('createdAt', 'desc'));
   const usersSnapshot = await getDocs(q);
@@ -324,15 +323,19 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 /**
- * Получить пользователей по массиву userIds. Если массив пустой — вернуть [].
+ * Fetches users by their IDs from Firestore.
+ * @param userIds Array of user IDs to fetch.
+ * @returns Promise<User[]>
  */
-export const getUsersFromFirestoreByIds = async (db: Firestore, userIds: string[]): Promise<User[]> => {
-  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+export const getUsersFromFirestoreByIds = async (userIds: string[]): Promise<User[]> => {
+  if (!userIds.length) return [];
+  
   const usersCollection = collection(db, 'users');
   const q = query(usersCollection, where(documentId(), 'in', userIds));
   const usersSnapshot = await getDocs(q);
+  
   return usersSnapshot.docs.map(docSnapshot => ({
-    id: docSnapshot.id,
+    uid: docSnapshot.id,
     ...docSnapshot.data(),
   } as User));
 };

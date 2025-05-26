@@ -1,29 +1,35 @@
 import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Chat, Message } from '@/types';
-import { ChatType } from '@/types';
 import { sendChatNotification, sendMassChatNotification } from './notificationService';
 import { getUserById } from './userService';
 
+// Define ChatType enum
+export type ChatType = 'private' | 'group' | 'channel' | 'broadcast';
+
 // Chat functions
-export async function createChat(participants: string[], type: ChatType = ChatType.DIRECT, name?: string) {
-  const chatsRef = collection(db, 'chats');
+export async function createChat(participants: string[], type: ChatType = 'private', name?: string) {
+  const chatRef = collection(db, 'chats');
   const chatData = {
     type,
-    name,
+    name: type === 'group' ? name : undefined,
     participants,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
-  return addDoc(chatsRef, chatData);
+  const docRef = await addDoc(chatRef, chatData);
+  return {
+    id: docRef.id,
+    ...chatData,
+  } as Chat;
 }
 
 export async function createGroupChat(name: string, participants: string[]) {
-  return createChat(participants, ChatType.GROUP, name);
+  return createChat(participants, 'group', name);
 }
 
 export async function createBroadcastChat(participants: string[]) {
-  return createChat(participants, ChatType.BROADCAST, 'Broadcast Message');
+  return createChat(participants, 'channel', 'Broadcast Message');
 }
 
 export async function addParticipantsToChat(chatId: string, newParticipants: string[]) {
@@ -77,8 +83,32 @@ export async function deleteChat(chatId: string) {
   await deleteDoc(chatRef);
 }
 
+export async function getChat(chatId: string): Promise<Chat | null> {
+  const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+  if (!chatDoc.exists()) return null;
+  return { id: chatDoc.id, ...chatDoc.data() } as Chat;
+}
+
 // Message functions
 export async function sendMessage(chatId: string, senderId: string, content: string) {
+  const chat = await getChat(chatId);
+  if (!chat) throw new Error('Chat not found');
+
+  const sender = await getUserById(db, senderId);
+  if (!sender) throw new Error('Sender not found');
+
+  // For broadcast messages, we don't need to check if the sender is a participant
+  if (chat.type === 'channel') {
+    // Handle broadcast message
+    return;
+  }
+
+  // For private and group chats, verify the sender is a participant
+  if (!chat.participants.includes(senderId)) {
+    throw new Error('Sender is not a participant in this chat');
+  }
+
   const messagesRef = collection(db, 'messages');
   const messageData = {
     chatId,
@@ -95,7 +125,7 @@ export async function sendMessage(chatId: string, senderId: string, content: str
   const chatDoc = await getDoc(chatRef);
   if (!chatDoc.exists()) throw new Error('Chat not found');
   
-  const chat = chatDoc.data() as Chat;
+  const chatData = chatDoc.data() as Chat;
   await updateDoc(chatRef, {
     lastMessage: {
       content,
@@ -106,15 +136,21 @@ export async function sendMessage(chatId: string, senderId: string, content: str
   });
 
   // Send notifications to other participants
-  const sender = await getUserById(senderId);
-  if (!sender) throw new Error('Sender not found');
-
-  const otherParticipants = chat.participants.filter(id => id !== senderId);
+  const otherParticipants = chatData.participants.filter(id => id !== senderId);
   
-  if (chat.type === ChatType.BROADCAST) {
+  if (chatData.type === 'channel') {
     await sendMassChatNotification({
       userIds: otherParticipants,
-      title: 'Новое сообщение в рассылке',
+      title: 'Broadcast Message',
+      message: content,
+      chatId,
+      senderId,
+      senderName: `${sender.firstName} ${sender.lastName}`
+    });
+  } else if (chatData.type === 'group') {
+    await sendMassChatNotification({
+      userIds: otherParticipants,
+      title: `Новое сообщение в группе ${chatData.name}`,
       message: content,
       chatId,
       senderId,
@@ -124,9 +160,7 @@ export async function sendMessage(chatId: string, senderId: string, content: str
     for (const participantId of otherParticipants) {
       await sendChatNotification({
         userId: participantId,
-        title: chat.type === ChatType.GROUP 
-          ? `Новое сообщение в группе ${chat.name}`
-          : `Новое сообщение от ${sender.firstName} ${sender.lastName}`,
+        title: `Новое сообщение от ${sender.firstName} ${sender.lastName}`,
         message: content,
         chatId,
         senderId,

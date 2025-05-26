@@ -1,95 +1,73 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import type { ReactNode } from 'react';
-import type { User } from '../types';
-import { doc, getDoc } from 'firebase/firestore';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import type { User } from '@/types';
+import type { AuthContextType } from '@/types/auth';
+import { Timestamp } from 'firebase/firestore';
 
-interface AuthContextType {
-  currentUser: User | null;
-  isAdmin: boolean;
-  loading: boolean;
-  logout: () => Promise<void>;
-}
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  currentUser: null,
+  isAdmin: false,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
+  logout: async () => {},
+});
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
-      try {
-        if (firebaseUser) {
-          // Получаем данные пользователя из Firestore
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          const userData = userDoc.data();
-
-          if (!userData || userData.role !== 'admin') {
-            // Если пользователь не админ, выходим из системы
-            await signOut(auth);
-            setCurrentUser(null);
-            setIsAdmin(false);
-            return;
-          }
-
-          setCurrentUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            firstName: userData.firstName,
-            lastName: userData.lastName,
-            role: userData.role,
-            createdAt: userData.createdAt,
-            updatedAt: userData.updatedAt,
-          } as User);
-          setIsAdmin(true);
-        } else {
-          setCurrentUser(null);
-          setIsAdmin(false);
-        }
-      } catch (error) {
-        console.error('Error checking user role:', error);
-        // В случае ошибки также выходим из системы
-        await signOut(auth);
-        setCurrentUser(null);
-        setIsAdmin(false);
-      } finally {
-        setLoading(false);
+      if (firebaseUser) {
+        // User is signed in
+        const userData: User = {
+          id: firebaseUser.uid, // Using uid as id for now
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          firstName: firebaseUser.displayName?.split(' ')[0] || '',
+          lastName: firebaseUser.displayName?.split(' ')[1] || '',
+          iin: '', // Required field, but we don't have it from Firebase Auth
+          birthDate: Timestamp.now(), // Required field, but we don't have it from Firebase Auth
+          role: 'admin', // Default role for now
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+        setUser(userData);
+      } else {
+        // User is signed out
+        setUser(null);
       }
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const logout = async () => {
-    setLoading(true);
-    await signOut(auth);
-    setCurrentUser(null);
-    setIsAdmin(false);
-    setLoading(false);
-  };
-
-  const value = {
-    currentUser,
-    isAdmin,
-    loading,
-    logout,
+  const signOut = async () => {
+    try {
+      await auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{
+      user,
+      currentUser: user,
+      isAdmin: user?.role === 'admin',
+      loading,
+      signIn: async () => {},
+      signOut,
+      logout: signOut
+    }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+export const useAuth = () => useContext(AuthContext);

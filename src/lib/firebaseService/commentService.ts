@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Comment } from '@/types';
 
@@ -26,13 +26,9 @@ export async function getComments(gradeId: string) {
   })) as Comment[];
 }
 
-export async function deleteComment(commentId: string) {
-  const commentsRef = collection(db, 'comments');
-  const commentDoc = await getDocs(query(commentsRef, where('id', '==', commentId)));
-  if (!commentDoc.empty) {
-    const docRef = commentDoc.docs[0].ref;
-    await docRef.delete();
-  }
+export async function deleteComment(id: string) {
+  const docRef = doc(db, 'comments', id);
+  await deleteDoc(docRef);
 }
 
 export async function updateComment(commentId: string, data: Partial<Omit<Comment, 'id' | 'createdAt' | 'updatedAt'>>) {

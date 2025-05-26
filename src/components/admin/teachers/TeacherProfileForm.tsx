@@ -27,7 +27,6 @@ import {
   getTeacherProfile,
 } from '@/lib/firebaseService/teacherService';
 import { updateUserInFirestore } from '@/lib/firebaseService/userService';
-import type { Teacher } from '@/types';
 
 const teacherProfileSchema = z.object({
   specialization: z.string().min(1, 'Специализация обязательна'),
@@ -41,7 +40,6 @@ interface TeacherProfileFormProps {
   mode: 'create' | 'edit';
   userId?: string; // Required for 'create' mode
   teacherProfileId?: string; // Required for 'edit' mode
-  userName?: string; // For display
   onFormSubmitSuccess: () => void;
   onCancel?: () => void;
 }
@@ -50,7 +48,6 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
   mode,
   userId,
   teacherProfileId,
-  userName,
   onFormSubmitSuccess,
   onCancel,
 }) => {
@@ -105,7 +102,9 @@ const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({
         }
         // Create teacher profile
         const profileDataForService = {
-          userId: userId,
+          userId,
+          firstName: '',
+          lastName: '',
           specialization: values.specialization,
           experience: values.experience,
           education: values.education,

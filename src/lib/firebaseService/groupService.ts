@@ -65,16 +65,14 @@ export const getGroup = async (
  * Fetches all groups from Firestore, ordered by name.
  * @returns Promise<Group[]> An array of groups.
  */
-export const getAllGroups = async (): Promise<Group[]> => {
+export async function getAllGroups(): Promise<Group[]> {
   const groupsRef = collection(db, 'groups');
   const snapshot = await getDocs(groupsRef);
   return snapshot.docs.map(doc => ({
     id: doc.id,
-    ...doc.data(),
-    createdAt: doc.data().createdAt,
-    updatedAt: doc.data().updatedAt,
+    ...doc.data()
   })) as Group[];
-};
+}
 
 /**
  * Updates an existing group in Firestore (name, year, specialization).

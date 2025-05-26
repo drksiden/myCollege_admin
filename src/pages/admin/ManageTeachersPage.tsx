@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle, Edit2, Trash2, UserCheck2, UserX2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Edit2, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +29,9 @@ import { db } from '@/lib/firebase';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import {
   getAllTeachers,
-  getTeacherProfileByUserId,
-  deleteTeacherProfileInService, // Renamed to avoid confusion
 } from '@/lib/firebaseService/teacherService';
 import TeacherProfileForm from '@/components/admin/teachers/TeacherProfileForm';
 import type { User, Teacher } from '@/types';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,10 +42,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { writeBatch } from 'firebase/firestore';
+import { writeBatch, doc } from 'firebase/firestore';
 import { Toaster } from '@/components/ui/sonner';
 import { Dialog as SimpleDialog } from '@/components/ui/dialog';
-
 
 const ManageTeachersPage: React.FC = () => {
   const [teacherUsers, setTeacherUsers] = useState<User[]>([]);
@@ -64,11 +60,11 @@ const ManageTeachersPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const allUsers = await getUsersFromFirestore(db);
+      const allUsers = await getUsersFromFirestore();
       const teachers = allUsers.filter(user => user.role === 'teacher');
       setTeacherUsers(teachers);
 
-      const profiles = await getAllTeachers(db);
+      const profiles = await getAllTeachers();
       setAllTeacherProfiles(profiles);
 
     } catch (error) {
@@ -90,31 +86,6 @@ const ManageTeachersPage: React.FC = () => {
     setShowProfileDialog(true);
   };
 
-  const handleOpenEditProfileDialog = async (user: User) => {
-    setSelectedUserForProfile(user);
-    try {
-      // Attempt to find an existing profile from the already fetched list first
-      let profile = allTeacherProfiles.find(p => p.userId === user.uid);
-      
-      if (!profile && user.teacherId) { // If not in list, but teacherId exists, fetch directly
-        toast.info("Fetching profile details...");
-        profile = await getTeacherProfileByUserId(db, user.uid);
-      }
-
-      if (profile) {
-        setSelectedTeacherProfileForEdit(profile);
-        setFormMode('edit');
-        setShowProfileDialog(true);
-      } else {
-        toast.info('No profile found for this teacher. You can create one.', { duration: 4000 });
-        handleOpenCreateProfileDialog(user); // Switch to create mode if no profile exists
-      }
-    } catch (error) {
-      toast.error('Failed to load teacher profile for editing.');
-      console.error("Error fetching profile for edit: ", error);
-    }
-  };
-  
   const handleOpenEditProfileDialogFromProfilesList = (profile: Teacher) => {
     const user = teacherUsers.find(u => u.uid === profile.userId);
     setSelectedUserForProfile(user || null); 
@@ -200,49 +171,35 @@ const ManageTeachersPage: React.FC = () => {
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => {
+                    handleOpenCreateProfileDialog(user);
                     setShowUserSelectDialog(false);
-                    setSelectedUserForProfile(user);
-                    setSelectedTeacherProfileForEdit(null);
-                    setFormMode('create');
-                    setShowProfileDialog(true);
                   }}
                 >
-                  {user.firstName} {user.lastName} ({user.email})
+                  {user.firstName} {user.lastName}
                 </Button>
               ))
             )}
           </div>
-          <div className="flex justify-end pt-2">
-            <Button variant="outline" onClick={() => setShowUserSelectDialog(false)}>Отмена</Button>
-          </div>
         </DialogContent>
       </SimpleDialog>
-      <Dialog open={showProfileDialog} onOpenChange={(open) => {
-        if (!open) {
-          setSelectedUserForProfile(null);
-          setSelectedTeacherProfileForEdit(null);
-        }
-        setShowProfileDialog(open);
-      }}>
+
+      <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {formMode === 'create' ? 'Создать профиль преподавателя' : 'Редактировать профиль преподавателя'}
-              {selectedUserForProfile && ` для ${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}`}
-              {!selectedUserForProfile && selectedTeacherProfileForEdit && ` для ${getUserName(selectedTeacherProfileForEdit.userId)}`}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
-                ? 'Заполните данные для создания нового профиля преподавателя.'
+                ? 'Заполните информацию о преподавателе.'
                 : 'Обновите информацию о преподавателе.'}
             </DialogDescription>
           </DialogHeader>
-          {(selectedUserForProfile || selectedTeacherProfileForEdit) && (
+          {selectedUserForProfile && (
             <TeacherProfileForm
               mode={formMode}
-              userId={selectedUserForProfile?.uid}
+              userId={selectedUserForProfile.uid}
               teacherProfileId={selectedTeacherProfileForEdit?.id}
-              userName={selectedUserForProfile ? `${selectedUserForProfile.firstName} ${selectedUserForProfile.lastName}` : getUserName(selectedTeacherProfileForEdit?.userId)}
               onFormSubmitSuccess={handleFormSuccess}
               onCancel={() => setShowProfileDialog(false)}
             />
@@ -250,41 +207,26 @@ const ManageTeachersPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {teacherToDelete && (
-        <AlertDialog open={!!teacherToDelete} onOpenChange={() => setTeacherToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Это действие удалит профиль преподавателя <span className="font-semibold">{teacherToDelete.userName}</span>.
-                Связанный пользователь будет отвязан от профиля. Это действие нельзя отменить.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteProfile} className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 dark:text-slate-50">Удалить профиль</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Преподаватели</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Управление профилями преподавателей, их специализацией, опытом и образованием.
-        </p>
-      </header>
-      <section>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserCheck2 className="mr-3 h-6 w-6 text-primary" /> Все преподаватели
-        </h2>
-        <div className="bg-card shadow sm:rounded-lg">
-        {allTeacherProfiles.length === 0 && !isLoading ? (
-          <p className="p-6 text-muted-foreground">Профили преподавателей ещё не созданы.</p>
-        ) : (
+      <AlertDialog open={!!teacherToDelete} onOpenChange={(open) => !open && setTeacherToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить профиль преподавателя?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Это навсегда удалит профиль преподавателя и отвяжет его от пользователя.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteProfile}>Удалить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ФИО</TableHead>
+              <TableHead>Имя</TableHead>
               <TableHead>Специализация</TableHead>
               <TableHead>Опыт</TableHead>
               <TableHead>Образование</TableHead>
@@ -292,14 +234,14 @@ const ManageTeachersPage: React.FC = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {allTeacherProfiles.map(profile => (
+            {allTeacherProfiles.map((profile) => (
               <TableRow key={profile.id}>
-                <TableCell className="font-medium">{getUserName(profile.userId)}</TableCell>
+                <TableCell>{getUserName(profile.userId)}</TableCell>
                 <TableCell>{profile.specialization}</TableCell>
                 <TableCell>{profile.experience} лет</TableCell>
-                <TableCell className="truncate max-w-xs" title={profile.education}>{profile.education}</TableCell>
+                <TableCell>{profile.education}</TableCell>
                 <TableCell className="text-right">
-                   <DropdownMenu>
+                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-8 w-8 p-0">
                         <span className="sr-only">Открыть меню</span>
@@ -309,14 +251,16 @@ const ManageTeachersPage: React.FC = () => {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => handleOpenEditProfileDialogFromProfilesList(profile)}>
-                        <Edit2 className="mr-2 h-4 w-4" /> Редактировать
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        onClick={() => handleDeleteInitiate(profile)} 
-                        className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-800"
+                      <DropdownMenuItem
+                        className="text-red-600"
+                        onClick={() => handleDeleteInitiate(profile)}
                       >
-                        <Trash2 className="mr-2 h-4 w-4" /> Удалить
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Удалить
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -325,9 +269,7 @@ const ManageTeachersPage: React.FC = () => {
             ))}
           </TableBody>
         </Table>
-        )}
-        </div>
-      </section>
+      </div>
     </div>
   );
 };

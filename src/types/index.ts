@@ -93,6 +93,17 @@ export interface Schedule {
   semester: number;           // e.g., 1 or 2 for a typical semester system
   year: number;               // e.g., 2023 (academic year start)
   lessons: Lesson[];          // Array of Lesson objects
+  entries?: ScheduleEntry[];  // Optional array of schedule entries
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  date: Timestamp;
+  type: 'class' | 'exam' | 'test';
+  description: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

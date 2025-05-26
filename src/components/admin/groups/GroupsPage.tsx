@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -9,91 +8,93 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
+import { PlusCircle, Users, BookOpen, Trash2, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { getAllGroups, deleteGroupInService } from '@/lib/firebaseService/groupService';
+import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
+import type { Group, Student } from '@/types';
 import { GroupFormDialog } from './GroupFormDialog';
 import { ManageStudentsDialog } from './ManageStudentsDialog';
-import { db } from '@/lib/firebase';
-import { getAllGroups, deleteGroupInService, getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
-import type { Group, Student } from '@/types';
-import { toast } from 'sonner';
+import { ManageTeachersDialog } from './ManageTeachersDialog';
 
-export function GroupsPage() {
-  const navigate = useNavigate();
+const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [students, setStudents] = useState<Record<string, Student[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | undefined>();
-  const [managingStudentsGroup, setManagingStudentsGroup] = useState<Group | undefined>();
-  const [studentsMap, setStudentsMap] = useState<Record<string, Student[]>>({});
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [showStudentsDialog, setShowStudentsDialog] = useState(false);
+  const [showTeachersDialog, setShowTeachersDialog] = useState(false);
 
-  const loadGroups = async () => {
+  useEffect(() => {
+    fetchGroups();
+  }, []);
+
+  const fetchGroups = async () => {
     try {
-      const fetchedGroups = await getAllGroups(db);
+      const fetchedGroups = await getAllGroups();
       setGroups(fetchedGroups);
 
-      // Load students for each group
-      const studentsPromises = fetchedGroups.map(async (group) => {
-        const students = await getStudentsInGroupDetails(db, group.students);
-        return [group.id, students] as [string, Student[]];
-      });
-
-      const studentsResults = await Promise.all(studentsPromises);
-      const newStudentsMap = Object.fromEntries(studentsResults);
-      setStudentsMap(newStudentsMap);
+      // Fetch students for each group
+      const studentsData: Record<string, Student[]> = {};
+      for (const group of fetchedGroups) {
+        if (group.students && group.students.length > 0) {
+          const groupStudents = await getStudentsByGroup(group.id);
+          studentsData[group.id] = groupStudents;
+        }
+      }
+      setStudents(studentsData);
     } catch (error) {
-      console.error('Error loading groups:', error);
+      console.error('Error fetching groups:', error);
       toast.error('Failed to load groups');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadGroups();
-  }, []);
-
-  const handleDelete = async (group: Group) => {
-    if (!confirm(`Are you sure you want to delete group ${group.name}?`)) {
-      return;
-    }
-
+  const handleDeleteGroup = async (group: Group) => {
+    if (!confirm('Are you sure you want to delete this group?')) return;
     try {
-      await deleteGroupInService(db, group.id);
-      await loadGroups();
+      await deleteGroupInService(group.id);
       toast.success('Group deleted successfully');
+      fetchGroups();
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error('Failed to delete group');
     }
   };
 
-  const filteredGroups = groups.filter(group => 
-    group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    group.specialization.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleCreateSuccess = async () => {
+    setIsCreateDialogOpen(false);
+    await fetchGroups();
+  };
+
+  const handleEditSuccess = async () => {
+    setEditingGroup(undefined);
+    await fetchGroups();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading groups...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
-      <div className="flex justify-between items-center">
+    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Groups</h1>
         <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <PlusCircle className="mr-2 h-4 w-4" />
           Create Group
         </Button>
       </div>
 
-      <div className="flex items-center space-x-2">
-        <Input
-          placeholder="Search groups..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-      </div>
-
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
+      <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,27 +102,18 @@ export function GroupsPage() {
               <TableHead>Year</TableHead>
               <TableHead>Specialization</TableHead>
               <TableHead>Students</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredGroups.map((group) => (
+            {groups.map((group) => (
               <TableRow key={group.id}>
-                <TableCell>
-                  <Button
-                    variant="link"
-                    onClick={() => navigate(`/admin/groups/${group.id}`)}
-                  >
-                    {group.name}
-                  </Button>
-                </TableCell>
+                <TableCell>{group.name}</TableCell>
                 <TableCell>{group.year}</TableCell>
                 <TableCell>{group.specialization}</TableCell>
-                <TableCell>
-                  {studentsMap[group.id]?.length || 0} students
-                </TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
+                <TableCell>{students[group.id]?.length || 0} students</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -132,16 +124,31 @@ export function GroupsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setManagingStudentsGroup(group)}
+                      onClick={() => {
+                        setSelectedGroup(group);
+                        setShowStudentsDialog(true);
+                      }}
                     >
-                      Manage Students
+                      <Users className="h-4 w-4 mr-2" />
+                      Students
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedGroup(group);
+                        setShowTeachersDialog(true);
+                      }}
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Teachers
                     </Button>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleDelete(group)}
+                      onClick={() => handleDeleteGroup(group)}
                     >
-                      Delete
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </TableCell>
@@ -149,31 +156,42 @@ export function GroupsPage() {
             ))}
           </TableBody>
         </Table>
-      )}
+      </div>
 
       <GroupFormDialog
         open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        onSuccess={loadGroups}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onSubmit={handleCreateSuccess}
       />
 
       {editingGroup && (
         <GroupFormDialog
-          open={!!editingGroup}
-          onOpenChange={(open) => !open && setEditingGroup(undefined)}
+          open={true}
+          onClose={() => setEditingGroup(undefined)}
           group={editingGroup}
-          onSuccess={loadGroups}
+          onSubmit={handleEditSuccess}
         />
       )}
 
-      {managingStudentsGroup && (
-        <ManageStudentsDialog
-          open={!!managingStudentsGroup}
-          onOpenChange={(open) => !open && setManagingStudentsGroup(undefined)}
-          group={managingStudentsGroup}
-          onSuccess={loadGroups}
-        />
+      {selectedGroup && (
+        <>
+          <ManageStudentsDialog
+            open={showStudentsDialog}
+            onClose={() => setShowStudentsDialog(false)}
+            group={selectedGroup}
+            onSuccess={fetchGroups}
+          />
+
+          <ManageTeachersDialog
+            open={showTeachersDialog}
+            onClose={() => setShowTeachersDialog(false)}
+            group={selectedGroup}
+            onSuccess={fetchGroups}
+          />
+        </>
       )}
     </div>
   );
-} 
+};
+
+export default GroupsPage; 

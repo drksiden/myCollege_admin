@@ -18,11 +18,27 @@ export const getAllLessons = async (groupId: string): Promise<Lesson[]> => {
   const q = query(lessonsRef, where('groupId', '==', groupId));
   const snapshot = await getDocs(q);
   
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    date: doc.data().date as Timestamp,
-  })) as Lesson[];
+  return snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      groupId: data.groupId,
+      subjectId: data.subjectId,
+      teacherId: data.teacherId,
+      dayOfWeek: data.dayOfWeek,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      room: data.room,
+      type: data.type,
+      weekType: data.weekType,
+      duration: data.duration,
+      isFloating: data.isFloating,
+      semester: data.semester,
+      year: data.year,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+    } as Lesson;
+  });
 };
 
 export const getLesson = async (lessonId: string): Promise<Lesson | null> => {
@@ -31,30 +47,45 @@ export const getLesson = async (lessonId: string): Promise<Lesson | null> => {
   
   if (!lessonDoc.exists()) return null;
   
+  const data = lessonDoc.data();
   return {
     id: lessonDoc.id,
-    ...lessonDoc.data(),
-    date: lessonDoc.data().date as Timestamp,
+    groupId: data.groupId,
+    subjectId: data.subjectId,
+    teacherId: data.teacherId,
+    dayOfWeek: data.dayOfWeek,
+    startTime: data.startTime,
+    endTime: data.endTime,
+    room: data.room,
+    type: data.type,
+    weekType: data.weekType,
+    duration: data.duration,
+    isFloating: data.isFloating,
+    semester: data.semester,
+    year: data.year,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
   } as Lesson;
 };
 
-export const createLesson = async (lessonData: Omit<Lesson, 'id'>): Promise<string> => {
+export const createLesson = async (lessonData: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
   const lessonsRef = collection(db, 'lessons');
   const docRef = await addDoc(lessonsRef, {
     ...lessonData,
-    date: Timestamp.fromDate(lessonData.date),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
   });
   return docRef.id;
 };
 
 export const updateLesson = async (
   lessonId: string,
-  updates: Partial<Omit<Lesson, 'id'>>
+  updates: Partial<Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
   const lessonRef = doc(db, 'lessons', lessonId);
   const updateData = {
     ...updates,
-    date: updates.date ? Timestamp.fromDate(updates.date) : undefined,
+    updatedAt: Timestamp.now(),
   };
   await updateDoc(lessonRef, updateData);
 };

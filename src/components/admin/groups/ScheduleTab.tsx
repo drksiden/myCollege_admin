@@ -35,11 +35,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { db } from '@/lib/firebase';
-import { getScheduleByGroupId, createSchedule, addScheduleEntry, updateScheduleEntry, deleteScheduleEntry } from '@/lib/firebaseService/scheduleService';
+import { getScheduleByGroupId, createSchedule, addLesson, updateLesson, deleteLesson } from '@/lib/firebaseService/scheduleService';
 import { getUsersByRole } from '@/lib/firebaseService/userService';
-import type { Group, User, Schedule, ScheduleEntry } from '@/types';
+import type { Group, User, Schedule, Lesson } from '@/types';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
+import { PlusCircle, Trash2, Loader2, Edit2 } from 'lucide-react';
 
 const formSchema = z.object({
   dayOfWeek: z.string(),
@@ -48,6 +48,7 @@ const formSchema = z.object({
   subject: z.string(),
   teacherId: z.string(),
   room: z.string(),
+  type: z.enum(['lecture', 'practice', 'laboratory']),
 });
 
 type ScheduleFormValues = z.infer<typeof formSchema>;
@@ -56,12 +57,13 @@ interface ScheduleTabProps {
   group: Group;
 }
 
-export function ScheduleTab({ group }: ScheduleTabProps) {
+export const ScheduleTab: React.FC<ScheduleTabProps> = ({ group }) => {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<ScheduleEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState<Lesson | null>(null);
 
   const form = useForm<ScheduleFormValues>({
     resolver: zodResolver(formSchema),
@@ -72,73 +74,126 @@ export function ScheduleTab({ group }: ScheduleTabProps) {
       subject: '',
       teacherId: '',
       room: '',
+      type: 'lecture',
     },
   });
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        // Load schedule
-        const scheduleData = await getScheduleByGroupId(group.id);
-        setSchedule(scheduleData);
-
-        // Load teachers
-        const teachersData = await getUsersByRole(db, 'teacher');
-        setTeachers(teachersData);
-      } catch (error) {
-        console.error('Error loading schedule data:', error);
-        toast.error('Failed to load schedule data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
+    loadSchedule();
   }, [group.id]);
 
-  const handleCreateSchedule = async () => {
+  const loadSchedule = async () => {
+    setIsLoading(true);
     try {
-      const newSchedule = await createSchedule(group.id, {
+      const scheduleData = await getScheduleByGroupId(db, group.id);
+      setSchedule(scheduleData);
+
+      // Load teachers
+      const teachersData = await getUsersByRole(db, 'teacher');
+      setTeachers(teachersData);
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+      toast.error('Failed to load schedule');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateSchedule = async () => {
+    setIsSubmitting(true);
+    try {
+      const newSchedule = await createSchedule(db, {
         groupId: group.id,
-        entries: [],
         semester: 1,
         year: new Date().getFullYear(),
+        lessons: [],
       });
       setSchedule(newSchedule);
       toast.success('Schedule created successfully');
     } catch (error) {
       console.error('Error creating schedule:', error);
       toast.error('Failed to create schedule');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleAddEntry = async (entry: Omit<Lesson, 'id'>) => {
+    setIsSubmitting(true);
+    try {
+      await addLesson(db, schedule!.id, {
+        subjectId: entry.subjectId,
+        teacherId: entry.teacherId,
+        dayOfWeek: entry.dayOfWeek,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+        room: entry.room,
+        type: entry.type,
+      });
+      const updatedSchedule = await getScheduleByGroupId(db, group.id);
+      setSchedule(updatedSchedule);
+      toast.success('Schedule entry added successfully');
+    } catch (error) {
+      console.error('Error adding schedule entry:', error);
+      toast.error('Failed to add schedule entry');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    setIsSubmitting(true);
+    try {
+      await deleteLesson(db, schedule!.id, entryId);
+      const updatedSchedule = await getScheduleByGroupId(db, group.id);
+      setSchedule(updatedSchedule);
+      toast.success('Schedule entry deleted successfully');
+    } catch (error) {
+      console.error('Error deleting schedule entry:', error);
+      toast.error('Failed to delete schedule entry');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditEntry = (entry: Lesson) => {
+    setEditingEntry(entry);
+    form.reset({
+      dayOfWeek: entry.dayOfWeek.toString(),
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      subject: entry.subjectId,
+      teacherId: entry.teacherId,
+      room: entry.room,
+      type: entry.type,
+    });
+    setIsCreateDialogOpen(true);
   };
 
   const onSubmit = async (values: ScheduleFormValues) => {
     if (!schedule) {
       await handleCreateSchedule();
+      return;
     }
 
-    try {
-      const entry: ScheduleEntry = {
-        id: editingEntry?.id || uuidv4(),
-        dayOfWeek: values.dayOfWeek,
-        startTime: values.startTime,
-        endTime: values.endTime,
-        subject: values.subject,
-        teacherId: values.teacherId,
-        room: values.room,
-      };
+    const entry: Omit<Lesson, 'id'> = {
+      dayOfWeek: parseInt(values.dayOfWeek),
+      startTime: values.startTime,
+      endTime: values.endTime,
+      subjectId: values.subject,
+      teacherId: values.teacherId,
+      room: values.room,
+      type: values.type,
+    };
 
+    try {
       if (editingEntry) {
-        await updateScheduleEntry(schedule!.id, entry.id, entry);
-        toast.success('Schedule entry updated successfully');
+        await updateLesson(db, schedule.id, editingEntry.id, entry);
       } else {
-        await addScheduleEntry(schedule!.id, entry);
-        toast.success('Schedule entry added successfully');
+        await addLesson(db, schedule.id, entry);
       }
 
-      // Reload schedule
-      const updatedSchedule = await getScheduleByGroupId(group.id);
+      const updatedSchedule = await getScheduleByGroupId(db, group.id);
       setSchedule(updatedSchedule);
       setIsCreateDialogOpen(false);
       setEditingEntry(null);
@@ -149,49 +204,55 @@ export function ScheduleTab({ group }: ScheduleTabProps) {
     }
   };
 
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!confirm('Are you sure you want to delete this schedule entry?')) {
-      return;
-    }
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading schedule...
+      </div>
+    );
+  }
 
-    try {
-      await deleteScheduleEntry(schedule!.id, entryId);
-      const updatedSchedule = await getScheduleByGroupId(group.id);
-      setSchedule(updatedSchedule);
-      toast.success('Schedule entry deleted successfully');
-    } catch (error) {
-      console.error('Error deleting schedule entry:', error);
-      toast.error('Failed to delete schedule entry');
-    }
-  };
-
-  const handleEditEntry = (entry: ScheduleEntry) => {
-    setEditingEntry(entry);
-    form.reset({
-      dayOfWeek: entry.dayOfWeek,
-      startTime: entry.startTime,
-      endTime: entry.endTime,
-      subject: entry.subject,
-      teacherId: entry.teacherId,
-      room: entry.room,
-    });
-    setIsCreateDialogOpen(true);
-  };
-
-  if (loading) {
-    return <div>Loading...</div>;
+  if (!schedule) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4 space-y-4">
+        <p className="text-muted-foreground">No schedule found for this group.</p>
+        <Button onClick={handleCreateSchedule} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Create Schedule
+            </>
+          )}
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Schedule</h2>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          Add Schedule Entry
+        <h3 className="text-lg font-semibold">Schedule</h3>
+        <Button onClick={() => handleAddEntry({
+          dayOfWeek: 1,
+          startTime: '09:00',
+          endTime: '10:30',
+          subjectId: '',
+          teacherId: '',
+          room: '',
+          type: 'lecture',
+        })} disabled={isSubmitting}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add Entry
         </Button>
       </div>
 
-      {schedule ? (
+      <div className="border rounded-md">
         <Table>
           <TableHeader>
             <TableRow>
@@ -200,50 +261,43 @@ export function ScheduleTab({ group }: ScheduleTabProps) {
               <TableHead>Subject</TableHead>
               <TableHead>Teacher</TableHead>
               <TableHead>Room</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {schedule.entries.map((entry) => {
-              const teacher = teachers.find(t => t.uid === entry.teacherId);
-              return (
-                <TableRow key={entry.id}>
-                  <TableCell>{entry.dayOfWeek}</TableCell>
-                  <TableCell>{entry.startTime} - {entry.endTime}</TableCell>
-                  <TableCell>{entry.subject}</TableCell>
-                  <TableCell>{teacher ? `${teacher.firstName} ${teacher.lastName}` : 'Unknown'}</TableCell>
-                  <TableCell>{entry.room}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditEntry(entry)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteEntry(entry.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {schedule.lessons.map((entry) => (
+              <TableRow key={entry.id}>
+                <TableCell>{getDayName(entry.dayOfWeek)}</TableCell>
+                <TableCell>{`${entry.startTime} - ${entry.endTime}`}</TableCell>
+                <TableCell>{entry.subjectId}</TableCell>
+                <TableCell>{entry.teacherId}</TableCell>
+                <TableCell>{entry.room}</TableCell>
+                <TableCell className="capitalize">{entry.type}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditEntry(entry)}
+                    disabled={isSubmitting}
+                    className="mr-2"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteEntry(entry.id)}
+                    disabled={isSubmitting}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
-      ) : (
-        <div className="text-center py-4">
-          <p className="text-muted-foreground">No schedule created yet</p>
-          <Button onClick={handleCreateSchedule} className="mt-2">
-            Create Schedule
-          </Button>
-        </div>
-      )}
+      </div>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
@@ -370,6 +424,32 @@ export function ScheduleTab({ group }: ScheduleTabProps) {
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="lecture">Lecture</SelectItem>
+                        <SelectItem value="practice">Practice</SelectItem>
+                        <SelectItem value="laboratory">Laboratory</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <DialogFooter>
                 <Button
                   type="button"
@@ -392,4 +472,9 @@ export function ScheduleTab({ group }: ScheduleTabProps) {
       </Dialog>
     </div>
   );
-} 
+};
+
+const getDayName = (dayOfWeek: number): string => {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  return days[dayOfWeek - 1] || 'Unknown';
+}; 

@@ -20,25 +20,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
-import {
-  createGroup,
-  updateGroup,
-  getGroup,
-} from '@/lib/firebaseService/groupService';
-import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
-import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Teacher } from '@/types';
+import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
+import { getAllTeachers } from '@/lib/firebaseService/teacherService';
+import type { Group, Teacher } from '@/types';
 
 // Zod schema for the form
 const groupSchema = z.object({
-  name: z.string().min(1, 'Название группы обязательно').max(100, 'Слишком длинное название'),
-  year: z.number()
-    .min(new Date().getFullYear() - 10, `Слишком старый год`) 
-    .max(new Date().getFullYear() + 5, `Слишком далёкий год`),
-  specialization: z.string().min(1, 'Специализация обязательна').max(100, 'Слишком длинная специализация'),
-  curatorId: z.string().min(1, 'Куратор обязателен'),
-  course: z.number().min(1, 'Курс обязателен').max(5, 'Слишком большой номер курса'),
+  name: z.string().min(1, 'Name is required'),
+  year: z.number().min(1, 'Year is required'),
+  specialization: z.string().min(1, 'Specialization is required'),
+  curatorId: z.string().min(1, 'Curator is required'),
+  course: z.number().min(1, 'Course is required'),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
@@ -48,6 +40,7 @@ interface GroupFormProps {
   groupId?: string;
   onFormSubmitSuccess: () => void;
   onCancel?: () => void;
+  group?: Group;
 }
 
 const GroupForm: React.FC<GroupFormProps> = ({
@@ -55,72 +48,34 @@ const GroupForm: React.FC<GroupFormProps> = ({
   groupId,
   onFormSubmitSuccess,
   onCancel,
+  group,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [initialDataLoading, setInitialDataLoading] = useState(false);
-  const [teachers, setTeachers] = useState<Array<{ id: string; firstName: string; lastName: string; patronymic?: string }>>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   const form = useForm<GroupFormValues>({
     resolver: zodResolver(groupSchema),
     defaultValues: {
-      name: '',
-      year: new Date().getFullYear(),
-      specialization: '',
-      curatorId: '',
-      course: 1,
+      name: group?.name || '',
+      year: typeof group?.year === 'number' ? group.year : new Date().getFullYear(),
+      specialization: group?.specialization || '',
+      curatorId: group?.curatorId || '',
+      course: group?.course || 1,
     },
   });
 
   useEffect(() => {
-    const fetchTeachers = async () => {
+    const loadData = async () => {
       try {
-        const [teacherProfiles, allUsers] = await Promise.all([
-          getAllTeacherProfiles(db),
-          getUsersFromFirestore(db),
-        ]);
-
-        const userMap = new Map(allUsers.map(u => [u.uid, u]));
-        const teachersWithNames = teacherProfiles.map(t => ({
-          id: t.id,
-          firstName: userMap.get(t.userId)?.firstName || '',
-          lastName: userMap.get(t.userId)?.lastName || '',
-          patronymic: userMap.get(t.userId)?.middleName,
-        }));
-        setTeachers(teachersWithNames);
+        const fetchedTeachers = await getAllTeachers();
+        setTeachers(fetchedTeachers);
       } catch (error) {
-        console.error('Error fetching teachers:', error);
-        toast.error('Не удалось загрузить преподавателей');
+        console.error('Error loading data:', error);
+        toast.error('Failed to load teachers');
       }
     };
-
-    fetchTeachers();
+    loadData();
   }, []);
-
-  useEffect(() => {
-    if (mode === 'edit' && groupId) {
-      const fetchGroup = async () => {
-        setInitialDataLoading(true);
-        try {
-          const group = await getGroup(groupId);
-          if (group) {
-            form.reset({
-              name: group.name,
-              year: group.year,
-              specialization: group.specialization,
-              curatorId: group.curatorId || '',
-              course: group.course,
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching group:', error);
-          toast.error('Не удалось загрузить данные группы');
-        } finally {
-          setInitialDataLoading(false);
-        }
-      };
-      fetchGroup();
-    }
-  }, [mode, groupId, form]);
 
   const onSubmit = async (values: GroupFormValues) => {
     setIsLoading(true);
@@ -140,10 +95,6 @@ const GroupForm: React.FC<GroupFormProps> = ({
       setIsLoading(false);
     }
   };
-
-  if (initialDataLoading && mode === 'edit') {
-    return <p className="text-center p-4">Загрузка данных группы...</p>;
-  }
 
   return (
     <Form {...form}>
@@ -207,7 +158,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
                 <SelectContent>
                   {teachers.map(teacher => (
                     <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.firstName} ${teacher.lastName}${teacher.patronymic ? ` ${teacher.patronymic}` : ''}`}
+                      {`${teacher.firstName} ${teacher.lastName}${teacher.middleName ? ` ${teacher.middleName}` : ''}`}
                     </SelectItem>
                   ))}
                 </SelectContent>

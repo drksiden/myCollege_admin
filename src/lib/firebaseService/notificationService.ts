@@ -2,34 +2,58 @@ import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, updateDo
 import { db } from '../firebase';
 import type { Notification } from '@/types';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import type { Messaging } from 'firebase/messaging';
+import type { FirebaseApp } from 'firebase/app';
 import { app } from '../firebase';
 
-// FCM setup
-const messaging = getMessaging(app);
+class NotificationService {
+  private messaging: Messaging;
 
-export async function requestNotificationPermission() {
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, {
+  constructor(app: FirebaseApp) {
+    this.messaging = getMessaging(app);
+  }
+
+  async requestPermission() {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      return false;
+    }
+  }
+
+  async getFCMToken() {
+    try {
+      const currentToken = await getToken(this.messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
       });
-      return token;
+      
+      if (currentToken) {
+        return currentToken;
+      } else {
+        console.log('No registration token available.');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting FCM token:', error);
+      return null;
     }
-    throw new Error('Notification permission denied');
-  } catch (error) {
-    console.error('Error requesting notification permission:', error);
-    throw error;
+  }
+
+  onMessageListener() {
+    return new Promise((resolve) => {
+      onMessage(this.messaging, (payload) => {
+        resolve(payload);
+      });
+    });
   }
 }
 
-export function onMessageListener() {
-  return new Promise((resolve) => {
-    onMessage(messaging, (payload) => {
-      resolve(payload);
-    });
-  });
-}
+export const notificationService = new NotificationService(app);
 
 // Chat notification functions
 export async function sendChatNotification({
