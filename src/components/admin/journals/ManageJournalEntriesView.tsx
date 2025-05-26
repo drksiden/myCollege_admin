@@ -3,13 +3,6 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, Save, Loader2, Trash2 } from "lucide-react";
 import { format, startOfDay, isEqual } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -34,7 +27,7 @@ import { db } from '@/lib/firebase';
 import { addOrUpdateJournalEntriesForDate, removeJournalEntriesForDate } from '@/lib/firebaseService/journalService';
 import { getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestoreByIds } from '@/lib/firebaseService/userService';
-import type { Journal, JournalEntry, Student, Group } from '@/types';
+import type { Journal, Student, Group } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import {
   AlertDialog,
@@ -55,6 +48,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Save, Loader2, Trash2 } from "lucide-react";
 
 // Form schema for a single journal entry row
 const journalEntryRowSchema = z.object({
@@ -64,7 +58,7 @@ const journalEntryRowSchema = z.object({
   grade: z.coerce.number().optional().refine((val) => val === undefined || (val >= 0 && val <= 100), {
     message: "Grade must be between 0 and 100"
   }),
-  comment: z.string().optional().transform(val => val === "" ? undefined : val),
+  comment: z.string().default("").transform(val => val || ""),
 });
 
 // Form schema for the entire form
@@ -97,7 +91,6 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   const [isStudentDataLoading, setIsStudentDataLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dateToDelete, setDateToDelete] = useState<Timestamp | null>(null);
-  const [popoverOpen, setPopoverOpen] = useState(false);
 
   const form = useForm<ManageEntriesFormValues>({
     resolver: zodResolver(manageEntriesSchema),
@@ -183,9 +176,9 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       const emptyEntries = studentsInGroup.map(student => ({
         studentId: student.id,
         studentName: student.fullName || 'Unknown Student',
-        attendance: 'present' as 'present',
+        attendance: 'present',
         grade: undefined,
-        comment: '',
+        comment: "",
       }));
       replace(emptyEntries);
       return;
@@ -207,7 +200,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
         studentName: student.fullName || 'Unknown Student',
         attendance,
         grade: entry && typeof entry.grade === 'number' ? entry.grade : undefined,
-        comment: entry && typeof entry.comment === 'string' ? entry.comment : '',
+        comment: entry && typeof entry.comment === 'string' ? entry.comment : "",
       };
     });
     replace(filledEntries);
@@ -217,7 +210,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
     setIsSubmitting(true);
     try {
       const dateForFirestore = Timestamp.fromDate(startOfDay(values.selectedDate));
-      const entriesToSave: JournalEntry[] = values.entries.map(e => ({
+      const entriesToSave = values.entries.map(e => ({
         date: dateForFirestore,
         studentId: e.studentId,
         attendance: e.attendance,
@@ -286,26 +279,17 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
             <FormField control={form.control} name="selectedDate" render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormLabel className="mb-1">Дата</FormLabel>
-                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
-                      onClick={() => setPopoverOpen(true)}>
-                      {field.value ? format(field.value, "PPP") : <span>Выберите дату</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={date => {
-                        field.onChange(date);
-                        setPopoverOpen(false);
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <FormControl>
+                  <input
+                    type="date"
+                    className="flex h-10 w-[240px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={field.value ? format(field.value, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => {
+                      const date = e.target.value ? new Date(e.target.value) : null;
+                      field.onChange(date);
+                    }}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )} />

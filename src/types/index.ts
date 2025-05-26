@@ -116,7 +116,7 @@ export interface JournalEntry {
   studentId: string;      // Student Profile Document ID
   attendance: 'present' | 'absent' | 'late';
   grade?: number;         // Optional grade for this entry
-  comment?: string;       // Optional comment
+  comment: string;        // Comment is always a string (may be empty)
 }
 
 export interface Grade {

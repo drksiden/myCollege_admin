@@ -181,6 +181,24 @@ const ManageJournalsPage: React.FC = () => {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading journals...</span></div>;
   }
 
+  const allEntries: AttendanceEntry[] = journals.flatMap((j: Journal) =>
+    (j.entries || [])
+      .filter(e =>
+        typeof e.studentId === 'string' &&
+        typeof e.attendance === 'string' &&
+        typeof e.date !== 'undefined' &&
+        !('topic' in e) && !('homework' in e) && !('notes' in e)
+      )
+      .map(e => ({
+        studentId: e.studentId,
+        date: e.date,
+        attendance: e.attendance,
+        groupId: j.groupId,
+        subjectId: j.subjectId,
+        semester: j.semester,
+      }))
+  );
+
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Toaster richColors position="top-right" />

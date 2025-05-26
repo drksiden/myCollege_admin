@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -25,9 +24,19 @@ import type { Group, Subject, Student, User, Journal } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Timestamp } from 'firebase/firestore';
+
+type AttendanceEntry = {
+  studentId: string;
+  date: Timestamp;
+  attendance: string;
+  groupId: string;
+  subjectId: string;
+  semester: number;
+};
 
 export default function AttendancePage() {
-  const [attendanceEntries, setAttendanceEntries] = useState<Record<string, any>[]>([]);
+  const [attendanceEntries, setAttendanceEntries] = useState<AttendanceEntry[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -61,11 +70,25 @@ export default function AttendancePage() {
       setSubjects(subjectsData);
       setStudents(studentsData);
       setUsers(usersData);
-      // Собрать все entries с attendance
-      const allEntries = journals.flatMap((j: Journal) =>
-        (j.entries || []).map(e => ({ ...e, groupId: j.groupId, subjectId: j.subjectId, semester: j.semester }))
+      // Собрать все entries с attendance из массива journal.entries (только новая структура)
+      const allEntries: AttendanceEntry[] = journals.flatMap((j: Journal) =>
+        ((j.entries || [])
+          .filter(e =>
+            typeof e.studentId === 'string' &&
+            typeof e.attendance === 'string' &&
+            typeof e.date !== 'undefined' &&
+            !('topic' in e) && !('homework' in e) && !('notes' in e)
+          ) as any[])
+          .map(e => ({
+            studentId: e.studentId,
+            date: e.date,
+            attendance: e.attendance,
+            groupId: j.groupId,
+            subjectId: j.subjectId,
+            semester: j.semester,
+          }))
       );
-      setAttendanceEntries(allEntries.filter(e => typeof e.attendance === 'string'));
+      setAttendanceEntries(allEntries);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
       toast.error('Не удалось загрузить данные');
@@ -209,13 +232,15 @@ export default function AttendancePage() {
             </Select>
 
             <div className="flex gap-2">
-              <Input
+              <input
                 type="date"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={dateRange.start}
                 onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
               />
-              <Input
+              <input
                 type="date"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={dateRange.end}
                 onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
               />
