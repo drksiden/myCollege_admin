@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Timestamp } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
+import { Button } from '@/components/ui/button';
 
 type GradeEntry = {
   studentId: string;
@@ -109,6 +111,8 @@ export default function GradesPage() {
   const filteredDates = useMemo(() => {
     if ([selectedGroup, selectedSubject, selectedSemester].includes('all')) return [];
     const datesSet = new Set<string>();
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
     gradeEntries.forEach(entry => {
       if (
         entry.groupId === selectedGroup &&
@@ -118,11 +122,14 @@ export default function GradesPage() {
         typeof entry.grade === 'number'
       ) {
         const d = format(entry.date.toDate(), 'yyyy-MM-dd');
-        datesSet.add(d);
+        const dateObj = entry.date.toDate();
+        if (dateObj >= start && dateObj <= end) {
+          datesSet.add(d);
+        }
       }
     });
     return Array.from(datesSet).sort();
-  }, [gradeEntries, selectedGroup, selectedSubject, selectedSemester]);
+  }, [gradeEntries, selectedGroup, selectedSubject, selectedSemester, dateRange]);
 
   // Получить оценки для таблицы: { [studentId]: { [date]: grade } }
   const gradesByStudent: Record<string, Record<string, number | undefined>> = useMemo(() => {
@@ -151,6 +158,21 @@ export default function GradesPage() {
     const user = users.find(u => u.id === student.userId || u.uid === student.userId);
     if (!user) return studentId;
     return `${user.lastName || ''} ${user.firstName || ''}`.trim();
+  };
+
+  const handleExportExcel = () => {
+    const header = ['Студент', ...filteredDates];
+    const data = filteredStudents.map(student => {
+      const row = [getStudentName(student.id)];
+      filteredDates.forEach(date => {
+        row.push(gradesByStudent[student.id]?.[date] ?? '');
+      });
+      return row;
+    });
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...data]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Оценки');
+    XLSX.writeFile(workbook, 'grades.xlsx');
   };
 
   if (loading) {
@@ -231,6 +253,7 @@ export default function GradesPage() {
               />
             </div>
           </div>
+          <Button onClick={handleExportExcel} className="mt-4">Экспорт в Excel</Button>
         </CardContent>
       </Card>
 

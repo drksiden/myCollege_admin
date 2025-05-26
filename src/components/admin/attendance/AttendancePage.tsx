@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Timestamp } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
+import { Button } from '@/components/ui/button';
 
 type AttendanceEntry = {
   studentId: string;
@@ -114,6 +116,8 @@ export default function AttendancePage() {
   const filteredDates = useMemo(() => {
     if ([selectedGroup, selectedSubject, selectedSemester].includes('all')) return [];
     const datesSet = new Set<string>();
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
     attendanceEntries.forEach(entry => {
       if (
         entry.groupId === selectedGroup &&
@@ -123,11 +127,14 @@ export default function AttendancePage() {
         typeof entry.attendance === 'string'
       ) {
         const d = format(entry.date.toDate(), 'yyyy-MM-dd');
-        datesSet.add(d);
+        const dateObj = entry.date.toDate();
+        if (dateObj >= start && dateObj <= end) {
+          datesSet.add(d);
+        }
       }
     });
     return Array.from(datesSet).sort();
-  }, [attendanceEntries, selectedGroup, selectedSubject, selectedSemester]);
+  }, [attendanceEntries, selectedGroup, selectedSubject, selectedSemester, dateRange]);
 
   // Получить посещаемость для таблицы: { [studentId]: { [date]: attendance } }
   const attendanceByStudent: Record<string, Record<string, string | undefined>> = useMemo(() => {
@@ -166,6 +173,21 @@ export default function AttendancePage() {
     if (status === 'late') return 'О';
     if (status === 'excused') return 'У';
     return status;
+  };
+
+  const handleExportExcel = () => {
+    const header = ['Студент', ...filteredDates];
+    const data = filteredStudents.map(student => {
+      const row = [getStudentName(student.id)];
+      filteredDates.forEach(date => {
+        row.push(attendanceByStudent[student.id]?.[date] ?? '');
+      });
+      return row;
+    });
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...data]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Посещаемость');
+    XLSX.writeFile(workbook, 'attendance.xlsx');
   };
 
   if (loading) {
@@ -246,6 +268,7 @@ export default function AttendancePage() {
               />
             </div>
           </div>
+          <Button onClick={handleExportExcel} className="mt-4">Экспорт в Excel</Button>
         </CardContent>
       </Card>
 
