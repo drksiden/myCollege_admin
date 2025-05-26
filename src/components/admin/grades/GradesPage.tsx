@@ -12,7 +12,7 @@ import { getStudents } from '@/lib/firebaseService/studentService';
 import { getSubjects } from '@/lib/firebaseService/subjectService';
 import { getGroups } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Student, Subject, Group, User, Journal, Attendance } from '@/types';
+import type { Student, Subject, Group, User, Journal } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,19 @@ type GradeEntry = {
   groupId: string;
   subjectId: string;
   semester: number;
+};
+
+type JournalEntry = {
+  date: Timestamp;
+  topic: string;
+  homework?: string;
+  notes?: string;
+  attendance?: Array<{
+    studentId: string;
+    status: 'present' | 'absent' | 'late' | 'excused';
+  }>;
+  studentId?: string;
+  grade?: number;
 };
 
 export default function GradesPage() {
@@ -67,14 +80,14 @@ export default function GradesPage() {
       // Собрать все entries с grade из массива journal.entries (только новая структура)
       const allGrades: GradeEntry[] = journals.flatMap((j: Journal) =>
         (j.entries || [])
-          .filter(e => 
+          .filter((e: JournalEntry) => 
             e.studentId && 
             e.date && 
             typeof e.grade === 'number'
           )
-          .map(e => ({
-            studentId: e.studentId,
-            grade: e.grade || 0,
+          .map((e: JournalEntry) => ({
+            studentId: e.studentId!,
+            grade: e.grade!,
             date: e.date,
             groupId: j.groupId,
             subjectId: j.subjectId,
