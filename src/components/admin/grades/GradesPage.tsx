@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Timestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
+import { Helmet } from 'react-helmet';
 
 type GradeEntry = {
   studentId: string;
@@ -190,120 +191,125 @@ export default function GradesPage() {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Фильтры</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Select
-              value={selectedGroup}
-              onValueChange={setSelectedGroup}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите группу" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все группы</SelectItem>
-                {groups.map((group) => (
-                  <SelectItem key={group.id} value={group.id}>
-                    {group.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={selectedSubject}
-              onValueChange={setSelectedSubject}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите предмет" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все предметы</SelectItem>
-                {subjects.map((subject) => (
-                  <SelectItem key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={selectedSemester}
-              onValueChange={setSelectedSemester}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите семестр" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все семестры</SelectItem>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                  <SelectItem key={sem} value={sem.toString()}>
-                    {sem} семестр
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="flex gap-2">
-              <input
-                type="date"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={dateRange.start}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              />
-              <input
-                type="date"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={dateRange.end}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              />
-            </div>
-          </div>
-          <Button onClick={handleExportExcel} className="mt-4">Экспорт в Excel</Button>
-        </CardContent>
-      </Card>
-
-      {(selectedGroup !== 'all' && selectedSubject !== 'all' && selectedSemester !== 'all') ? (
-        <>
-          <div className="mb-4">
-            <span className="font-semibold">Группа:</span> {groups.find(g => g.id === selectedGroup)?.name || '-'} &nbsp;
-            <span className="font-semibold">Предмет:</span> {subjects.find(s => s.id === selectedSubject)?.name || '-'} &nbsp;
-            <span className="font-semibold">Семестр:</span> {selectedSemester}
-          </div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-fit border border-border ml-2">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-center border border-border w-10">№</TableHead>
-                  <TableHead className="text-center border border-border w-40">Студент</TableHead>
-                  {filteredDates.map(date => (
-                    <TableHead key={date} className="text-center border border-border min-w-[90px]">{format(new Date(date), 'dd.MM.yyyy')}</TableHead>
+    <>
+      <Helmet>
+        <title>MyCollegeAdmin</title>
+      </Helmet>
+      <div className="container mx-auto py-6">
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Фильтры</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Select
+                value={selectedGroup}
+                onValueChange={setSelectedGroup}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите группу" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все группы</SelectItem>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
                   ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.map((student, idx) => (
-                  <TableRow key={student.id}>
-                    <TableCell className="text-center border border-border w-10">{idx + 1}</TableCell>
-                    <TableCell className="text-center border border-border w-40">{getStudentName(student.id)}</TableCell>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedSubject}
+                onValueChange={setSelectedSubject}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите предмет" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все предметы</SelectItem>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedSemester}
+                onValueChange={setSelectedSemester}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите семестр" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все семестры</SelectItem>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                    <SelectItem key={sem} value={sem.toString()}>
+                      {sem} семестр
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                />
+                <input
+                  type="date"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                />
+              </div>
+            </div>
+            <Button onClick={handleExportExcel} className="mt-4">Экспорт в Excel</Button>
+          </CardContent>
+        </Card>
+
+        {(selectedGroup !== 'all' && selectedSubject !== 'all' && selectedSemester !== 'all') ? (
+          <>
+            <div className="mb-4">
+              <span className="font-semibold">Группа:</span> {groups.find(g => g.id === selectedGroup)?.name || '-'} &nbsp;
+              <span className="font-semibold">Предмет:</span> {subjects.find(s => s.id === selectedSubject)?.name || '-'} &nbsp;
+              <span className="font-semibold">Семестр:</span> {selectedSemester}
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-fit border border-border ml-2">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-center border border-border w-10">№</TableHead>
+                    <TableHead className="text-center border border-border w-40">Студент</TableHead>
                     {filteredDates.map(date => (
-                      <TableCell key={date} className="text-center border border-border min-w-[90px]">
-                        {gradesByStudent[student.id]?.[date] ?? ''}
-                      </TableCell>
+                      <TableHead key={date} className="text-center border border-border min-w-[90px]">{format(new Date(date), 'dd.MM.yyyy')}</TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </>
-      ) : (
-        <div className="text-muted-foreground text-center py-8">Выберите группу, предмет и семестр для просмотра журнала</div>
-      )}
-    </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredStudents.map((student, idx) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="text-center border border-border w-10">{idx + 1}</TableCell>
+                      <TableCell className="text-center border border-border w-40">{getStudentName(student.id)}</TableCell>
+                      {filteredDates.map(date => (
+                        <TableCell key={date} className="text-center border border-border min-w-[90px]">
+                          {gradesByStudent[student.id]?.[date] ?? ''}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        ) : (
+          <div className="text-muted-foreground text-center py-8">Выберите группу, предмет и семестр для просмотра журнала</div>
+        )}
+      </div>
+    </>
   );
 } 
