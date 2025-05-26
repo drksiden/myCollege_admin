@@ -12,7 +12,7 @@ import { getStudents } from '@/lib/firebaseService/studentService';
 import { getSubjects } from '@/lib/firebaseService/subjectService';
 import { getGroups } from '@/lib/firebaseService/groupService';
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-import type { Student, Subject, Group, User, Journal } from '@/types';
+import type { Student, Subject, Group, User, Journal, Attendance } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,16 +68,13 @@ export default function GradesPage() {
       const allGrades: GradeEntry[] = journals.flatMap((j: Journal) =>
         (j.entries || [])
           .filter(e => 
-            e.attendance && 
-            Array.isArray(e.attendance) &&
-            e.attendance.some(a => 
-              typeof a.studentId === 'string' && 
-              typeof a.status === 'string'
-            )
+            e.studentId && 
+            e.date && 
+            typeof e.grade === 'number'
           )
           .map(e => ({
-            studentId: e.attendance![0].studentId,
-            grade: 0, // Default grade since grades are not part of the new structure
+            studentId: e.studentId,
+            grade: e.grade || 0,
             date: e.date,
             groupId: j.groupId,
             subjectId: j.subjectId,

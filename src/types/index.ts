@@ -122,11 +122,10 @@ export interface Journal {
 
 // New interface for Journal Entries
 export interface JournalEntry {
-  // id: string; // Not using a separate ID for sub-collection items for now
   date: Timestamp;        // Date of the class/entry
   studentId: string;      // Student Profile Document ID
-  attendance: 'present' | 'absent' | 'late';
-  grade?: number;         // Optional grade for this entry
+  attendance: 'present' | 'absent' | 'late' | 'excused';
+  grade: number;         // Grade for this entry
   comment: string;        // Comment is always a string (may be empty)
 }
 
@@ -159,4 +158,10 @@ export interface News {
   tags: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
-} 
+}
+
+export type Attendance = {
+  studentId: string;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  grade?: number;  // Добавляем опциональное поле для оценки
+}; 

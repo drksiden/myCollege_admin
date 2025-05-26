@@ -29,7 +29,8 @@ import * as z from 'zod';
 import type { Group, Teacher, User } from '@/types';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import { getUsersFromFirestoreByIds } from '@/lib/firebaseService/userService';
+import { getUsersByRole } from '@/lib/firebaseService/userService';
+import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
@@ -54,46 +55,81 @@ export default function GroupFormDialog({
   onSuccess,
   group,
 }: GroupFormDialogProps) {
+  console.log('=== Рендер GroupFormDialog ===');
+  console.log('open:', open);
+  console.log('group:', group);
+  
   const [loading, setLoading] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
+    console.log('=== Эффект открытия диалога ===');
+    console.log('open:', open);
+    console.log('Текущие преподаватели:', teachers);
+    console.log('Текущие пользователи:', users);
+    
     const fetchTeachers = async () => {
       try {
+        console.log('=== Начало загрузки данных ===');
         const fetchedTeachers = await getAllTeachers();
-        console.log('Fetched teachers:', fetchedTeachers);
+        console.log('Полученные преподаватели:', fetchedTeachers);
+        console.log('Количество преподавателей:', fetchedTeachers.length);
         setTeachers(fetchedTeachers);
         
-        const userIds = fetchedTeachers.map(t => t.userId).filter(Boolean);
-        console.log('Teacher user IDs:', userIds);
-        if (userIds.length > 0) {
-          const fetchedUsers = await getUsersFromFirestoreByIds(userIds);
-          console.log('Fetched users:', fetchedUsers);
-          setUsers(fetchedUsers);
-        }
+        const fetchedUsers = await getUsersByRole(db, 'teacher');
+        console.log('Полученные пользователи:', fetchedUsers);
+        console.log('Количество пользователей:', fetchedUsers.length);
+        console.log('Пример пользователя:', fetchedUsers[0]);
+        setUsers(fetchedUsers);
+        
+        console.log('=== Загрузка данных завершена ===');
       } catch (error) {
-        console.error('Error fetching teachers:', error);
-        toast.error('Failed to load teachers');
+        console.error('Ошибка при загрузке данных:', error);
+        toast.error('Не удалось загрузить список преподавателей');
       }
     };
 
     if (open) {
+      console.log('Диалог открыт, начинаем загрузку...');
       fetchTeachers();
     }
   }, [open]);
 
   const getTeacherName = (teacherId: string) => {
+    console.log('=== Получение имени преподавателя ===');
+    console.log('ID преподавателя:', teacherId);
+    
     const teacher = teachers.find(t => t.id === teacherId);
-    if (!teacher) return 'Unknown Teacher';
+    console.log('Найденный преподаватель:', teacher);
+    console.log('userId преподавателя:', teacher?.userId);
+    
+    if (!teacher) {
+      console.log('Преподаватель не найден');
+      return 'Неизвестный преподаватель';
+    }
+    
     const user = users.find(u => u.uid === teacher.userId);
-    if (!user) return 'Unknown Teacher';
+    console.log('Найденный пользователь:', user);
+    console.log('Данные пользователя:', {
+      uid: user?.uid,
+      firstName: user?.firstName,
+      lastName: user?.lastName
+    });
+    
+    if (!user) {
+      console.log('Пользователь не найден');
+      return 'Неизвестный преподаватель';
+    }
+    
     const fullName = [
       user.lastName,
-      user.firstName,
-      user.middleName
+      user.firstName
     ].filter(Boolean).join(' ');
-    return fullName || 'Unknown Teacher';
+    
+    console.log('Сформированное полное имя:', fullName);
+    console.log('=== Завершение получения имени ===');
+    return fullName || 'Неизвестный преподаватель';
   };
 
   const form = useForm<GroupFormValues>({
@@ -195,7 +231,13 @@ export default function GroupFormDialog({
                 <FormItem>
                   <FormLabel>Куратор</FormLabel>
                   <Select
-                    onValueChange={field.onChange}
+                    onValueChange={(value) => {
+                      console.log('=== Изменение значения куратора ===');
+                      console.log('Новое значение:', value);
+                      console.log('Текущие преподаватели:', teachers);
+                      console.log('Текущие пользователи:', users);
+                      field.onChange(value);
+                    }}
                     defaultValue={field.value}
                   >
                     <FormControl>
@@ -206,11 +248,16 @@ export default function GroupFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {teachers.map((teacher) => (
-                        <SelectItem key={teacher.id} value={teacher.id}>
-                          {getTeacherName(teacher.id)}
-                        </SelectItem>
-                      ))}
+                      {teachers.map((teacher) => {
+                        console.log('Рендер преподавателя:', teacher);
+                        const name = getTeacherName(teacher.id);
+                        console.log('Имя преподавателя:', name);
+                        return (
+                          <SelectItem key={teacher.id} value={teacher.id}>
+                            {name}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   <FormMessage />

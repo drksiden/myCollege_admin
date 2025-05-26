@@ -22,7 +22,9 @@ import {
 import { toast } from 'sonner';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import type { Group, Teacher } from '@/types';
+import { getUsersByRole } from '@/lib/firebaseService/userService';
+import { db } from '@/lib/firebase';
+import type { Group, Teacher, User } from '@/types';
 
 // Zod schema for the form
 const groupSchema = z.object({
@@ -52,6 +54,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   const form = useForm<GroupFormValues>({
     resolver: zodResolver(groupSchema),
@@ -67,8 +70,14 @@ const GroupForm: React.FC<GroupFormProps> = ({
   useEffect(() => {
     const loadData = async () => {
       try {
+        console.log('=== Загрузка данных ===');
         const fetchedTeachers = await getAllTeachers();
+        console.log('Полученные преподаватели:', fetchedTeachers);
         setTeachers(fetchedTeachers);
+
+        const fetchedUsers = await getUsersByRole(db, 'teacher');
+        console.log('Полученные пользователи:', fetchedUsers);
+        setUsers(fetchedUsers);
       } catch (error) {
         console.error('Error loading data:', error);
         toast.error('Failed to load teachers');
@@ -76,6 +85,16 @@ const GroupForm: React.FC<GroupFormProps> = ({
     };
     loadData();
   }, []);
+
+  const getTeacherName = (teacherId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher) return 'Неизвестный преподаватель';
+    
+    const user = users.find(u => u.uid === teacher.userId);
+    if (!user) return 'Неизвестный преподаватель';
+    
+    return `${user.lastName} ${user.firstName}`;
+  };
 
   const onSubmit = async (values: GroupFormValues) => {
     setIsLoading(true);
@@ -153,12 +172,14 @@ const GroupForm: React.FC<GroupFormProps> = ({
               <FormLabel>Куратор</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Выберите куратора" />
+                  <SelectValue placeholder="Выберите куратора">
+                    {field.value ? getTeacherName(field.value) : "Выберите куратора"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {teachers.map(teacher => (
                     <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.firstName} ${teacher.lastName}${teacher.middleName ? ` ${teacher.middleName}` : ''}`}
+                      {getTeacherName(teacher.id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
