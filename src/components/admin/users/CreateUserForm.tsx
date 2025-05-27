@@ -20,7 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
 const createUserSchema = z.object({
   email: z.string().email('Некорректный email'),
@@ -60,9 +61,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
   const onSubmit = async (values: CreateUserFormValues) => {
     setIsLoading(true);
     try {
-      const functions = getFunctions(undefined, 'asia-southeast1');
-      connectFunctionsEmulator(functions, 'localhost', 5001);
-      
       const createUserFn = httpsCallable(functions, 'createUserFunction');
       const result = await createUserFn({
         email: values.email,
@@ -74,7 +72,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         role: values.role,
       });
       
-      const data = result.data as { success: boolean; message: string; data: any };
+      const data = result.data as { success: boolean; message: string; data: unknown };
       if (data.success) {
         toast.success(data.message);
         if (typeof onSuccess === 'function') {
