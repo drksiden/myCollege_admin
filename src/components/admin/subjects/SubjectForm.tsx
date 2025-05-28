@@ -27,6 +27,7 @@ import { getAllTeachers, assignTeacherToGroup, removeTeacherFromGroup } from '@/
 import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import type { Subject, Teacher, Group } from '@/types';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const subjectFormSchema = z.object({
   name: z.string().min(1, 'Название обязательно'),
@@ -283,12 +284,14 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="none">Не выбрано</SelectItem>
-                  {teachers.map((teacher) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.lastName} ${teacher.firstName}${teacher.middleName ? ` ${teacher.middleName}` : ''}`}
-                    </SelectItem>
-                  ))}
+                  <ScrollArea className="h-[200px]">
+                    <SelectItem value="none">Не выбрано</SelectItem>
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.id} value={teacher.id}>
+                        {`${teacher.lastName} ${teacher.firstName}${teacher.middleName ? ` ${teacher.middleName}` : ''}`}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -302,26 +305,28 @@ const SubjectForm: React.FC<SubjectFormProps> = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Группы</FormLabel>
-              <Select 
+              <Select
                 onValueChange={(value) => {
                   const currentGroups = field.value || [];
                   if (!currentGroups.includes(value)) {
                     field.onChange([...currentGroups, value]);
                   }
                 }}
-                value=""
+                disabled={isLoading}
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Выберите группы" />
+                    <SelectValue placeholder="Выберите группу" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {`${group.name} (${group.specialization} - ${group.year})`}
-                    </SelectItem>
-                  ))}
+                  <ScrollArea className="h-[200px]">
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {`${group.name} (${group.specialization} - ${group.year})`}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
               <div className="mt-2 space-y-2">

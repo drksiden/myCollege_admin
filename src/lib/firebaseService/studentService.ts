@@ -15,6 +15,7 @@ import {
   arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { updateUserInFirestore } from '@/lib/firebaseService/userService';
 
 // Removed re-export of Student type
 
@@ -35,18 +36,38 @@ export const createStudentProfile = async (
       throw new Error('ID группы обязателен для создания профиля студента');
     }
     
+    // Получаем информацию о группе
+    const groupRef = doc(db, GROUPS_COLLECTION, studentData.groupId);
+    const groupDoc = await getDoc(groupRef);
+    
+    if (!groupDoc.exists()) {
+      throw new Error('Группа не найдена');
+    }
+
+    const groupData = groupDoc.data();
+    
     // Создаем профиль студента
     const docRef = await addDoc(collection(db, STUDENTS_COLLECTION), {
       ...studentData,
+      groupName: groupData.name,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
 
     // Обновляем массив студентов в группе
-    const groupRef = doc(db, GROUPS_COLLECTION, studentData.groupId);
     await updateDoc(groupRef, {
       students: arrayUnion(docRef.id),
       updatedAt: Timestamp.now(),
+    });
+
+    // Обновляем данные в документе пользователя
+    await updateUserInFirestore(db, studentData.userId, {
+      role: 'student',
+      groupId: studentData.groupId,
+      studentDetails: {
+        groupId: studentData.groupId,
+        studentId: docRef.id
+      }
     });
 
     return docRef.id;
@@ -125,6 +146,16 @@ export const updateStudentProfile = async (
 
     // Если изменилась группа
     if (newGroupId && newGroupId !== oldData.groupId) {
+      // Получаем информацию о новой группе
+      const newGroupRef = doc(db, GROUPS_COLLECTION, newGroupId);
+      const newGroupDoc = await getDoc(newGroupRef);
+      
+      if (!newGroupDoc.exists()) {
+        throw new Error('Новая группа не найдена');
+      }
+
+      const newGroupData = newGroupDoc.data();
+      
       // Удаляем студента из старой группы
       if (oldData.groupId) {
         const oldGroupRef = doc(db, GROUPS_COLLECTION, oldData.groupId);
@@ -135,10 +166,21 @@ export const updateStudentProfile = async (
       }
 
       // Добавляем студента в новую группу
-      const newGroupRef = doc(db, GROUPS_COLLECTION, newGroupId);
       await updateDoc(newGroupRef, {
         students: arrayUnion(id),
         updatedAt: Timestamp.now(),
+      });
+
+      // Обновляем groupName в данных студента
+      studentData.groupName = newGroupData.name;
+
+      // Обновляем данные в документе пользователя
+      await updateUserInFirestore(db, oldData.userId, {
+        groupId: newGroupId,
+        studentDetails: {
+          groupId: newGroupId,
+          studentId: id
+        }
       });
     }
 

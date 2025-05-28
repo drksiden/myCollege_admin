@@ -23,30 +23,65 @@ export interface CreateUserData {
 
 export const createUser = async (request: CallableRequest<CreateUserData>) => {
   try {
+    console.log('Creating user with data:', request.data);
+    
+    // Проверяем аутентификацию
+    if (!request.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Требуется аутентификация для создания пользователей');
+    }
+
+    // Проверяем, что текущий пользователь - администратор
+    const adminUser = await admin.firestore()
+      .collection('users')
+      .doc(request.auth.uid)
+      .get();
+
+    if (!adminUser.exists || adminUser.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Только администраторы могут создавать пользователей');
+    }
+
     const { data } = request;
-    const { email, password, firstName, lastName, middleName, role, groupId } = data;
+    const { 
+      email, 
+      password, 
+      firstName, 
+      lastName, 
+      middleName, 
+      role, 
+      groupId,
+      iin,
+      phone,
+      address,
+      birthDate,
+      enrollmentDate
+    } = data;
+
+    console.log('Validating user data:', { email, role, iin });
 
     // Validate required fields
-    if (!email || !password || !firstName || !lastName || !role) {
-      throw new Error('Missing required fields');
+    if (!email || !password || !firstName || !lastName || !role || !iin) {
+      throw new functions.https.HttpsError('invalid-argument', 'Отсутствуют обязательные поля');
     }
 
     // Validate role
     if (!['student', 'teacher', 'admin'].includes(role)) {
-      throw new Error('Invalid role');
+      throw new functions.https.HttpsError('invalid-argument', 'Некорректная роль');
     }
 
     // Validate groupId for students
     if (role === 'student' && !groupId) {
-      throw new Error('Group ID is required for students');
+      throw new functions.https.HttpsError('invalid-argument', 'Для студента необходимо указать группу');
     }
 
+    console.log('Creating user in Firebase Auth...');
     // Create user in Firebase Auth
     const userRecord = await admin.auth().createUser({
       email,
       password,
       displayName: `${lastName} ${firstName} ${middleName || ''}`.trim(),
     });
+
+    console.log('User created in Auth:', userRecord.uid);
 
     // Create user document in Firestore
     const userData = {
@@ -56,21 +91,59 @@ export const createUser = async (request: CallableRequest<CreateUserData>) => {
       lastName,
       middleName: middleName || null,
       role,
-      groupId: role === 'student' ? groupId : null,
+      iin,
+      phone: phone || null,
+      address: address || null,
+      birthDate: birthDate || null,
+      enrollmentDate: enrollmentDate || null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
+    console.log('Creating user document in Firestore:', userData);
+
+    // Add role-specific data
+    if (role === 'student' && groupId) {
+      Object.assign(userData, {
+        studentDetails: {
+          groupId,
+          studentId: userRecord.uid,
+        }
+      });
+
+      // Update group's student count
+      const groupRef = admin.firestore().collection('groups').doc(groupId);
+      await groupRef.update({
+        studentCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
     await admin.firestore().collection('users').doc(userRecord.uid).set(userData);
+    console.log('User document created in Firestore');
 
     return {
       success: true,
-      message: 'User created successfully',
+      message: 'Пользователь успешно создан',
       data: userData
     };
   } catch (error) {
     console.error('Error creating user:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to create user');
+    
+    // Handle specific Firebase Auth errors
+    if (error instanceof Error) {
+      if (error.message.includes('email-already-exists')) {
+        throw new functions.https.HttpsError('already-exists', 'Пользователь с таким email уже существует.');
+      }
+      if (error.message.includes('invalid-password')) {
+        throw new functions.https.HttpsError('invalid-argument', 'Некорректный пароль. Пароль должен содержать минимум 6 символов.');
+      }
+      if (error.message.includes('invalid-email')) {
+        throw new functions.https.HttpsError('invalid-argument', 'Некорректный email.');
+      }
+    }
+    
+    throw new functions.https.HttpsError('internal', 'Ошибка при создании пользователя');
   }
 };
 

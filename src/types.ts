@@ -16,6 +16,7 @@ export interface User {
   updatedAt: Timestamp;
   teacherId?: string;
   studentId?: string;
+  groupId?: string;
   teacherDetails?: {
     department: string;
     qualification: string;
@@ -30,6 +31,7 @@ export interface Student {
   id: string;
   userId: string;
   groupId: string;
+  groupName?: string;
   studentCardId: string;
   enrollmentDate: Timestamp;
   dateOfBirth: Timestamp;

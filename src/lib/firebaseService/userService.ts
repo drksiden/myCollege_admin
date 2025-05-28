@@ -146,7 +146,7 @@ export const getUsersFromFirestore = async (): Promise<User[]> => {
 export const updateUserInFirestore = async (
   db: Firestore,
   uid: string,
-  dataToUpdate: Partial<Pick<User, 'firstName' | 'lastName' | 'role'>>
+  dataToUpdate: Partial<Pick<User, 'firstName' | 'lastName' | 'role' | 'groupId' | 'studentDetails' | 'teacherDetails'>>
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
   const updatePayload = {

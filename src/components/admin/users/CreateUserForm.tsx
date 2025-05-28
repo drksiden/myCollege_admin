@@ -38,6 +38,14 @@ const createUserSchema = z.object({
   studentDetails: z.object({
     groupId: z.string().min(1, 'Группа обязательна для студента'),
   }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'student' && !data.studentDetails?.groupId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Группа обязательна для студента',
+      path: ['studentDetails', 'groupId'],
+    });
+  }
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
@@ -81,10 +89,22 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
     },
   });
 
+  // Очищаем studentDetails при смене роли
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'role' && value.role !== 'student') {
+        form.setValue('studentDetails', undefined);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   const onSubmit = async (values: CreateUserFormValues) => {
+    if (isLoading) return; // Prevent double submission
     setIsLoading(true);
     try {
-      const createUserFn = httpsCallable(functions, 'createUserFunction');
+      console.log('Creating user with values:', values);
+      const createUserFn = httpsCallable(functions, 'createUser');
       const result = await createUserFn({
         email: values.email,
         password: values.password,
@@ -96,6 +116,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         groupId: values.role === 'student' ? values.studentDetails?.groupId : undefined,
       });
       
+      console.log('Create user result:', result);
       const data = result.data as { success: boolean; message: string; data: unknown };
       if (data.success) {
         toast.success(data.message);

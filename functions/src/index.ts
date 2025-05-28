@@ -1,21 +1,21 @@
 import * as admin from 'firebase-admin';
 import { onCall } from 'firebase-functions/v2/https';
-import { createUser, deleteUser } from './users';
+import { createUser as createUserHandler, deleteUser as deleteUserHandler } from './users';
 
 // Инициализируем Firebase Admin
 admin.initializeApp();
 
 // Экспортируем функции
-export const createUserFunction = onCall({
+export const createUser = onCall({
   region: 'asia-southeast1',
   cors: true,
   maxInstances: 10,
-}, createUser);
+}, createUserHandler);
 
-export const deleteUserFunction = onCall({
+export const deleteUser = onCall({
   region: 'asia-southeast1',
   cors: true,
   maxInstances: 10,
-}, deleteUser);
+}, deleteUserHandler);
 
 // No cloud functions needed for client-only development

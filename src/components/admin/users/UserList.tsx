@@ -143,7 +143,7 @@ const UserList: React.FC<UserListProps> = () => {
   const handleDelete = async (user: ExtendedUser) => {
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
-      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUserFunction');
+      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUser');
       setLastDeletedUser(user);
       const result = await deleteUserFn({ uid: user.uid });
       
@@ -154,7 +154,7 @@ const UserList: React.FC<UserListProps> = () => {
             label: 'Отменить',
             onClick: async () => {
               if (!lastDeletedUser) return;
-              const restoreUser = httpsCallable(functions, 'createUserFunction');
+              const restoreUser = httpsCallable(functions, 'createUser');
               try {
                 await restoreUser({ data: lastDeletedUser });
                 setUsers(prev => [...prev, lastDeletedUser]);
@@ -202,7 +202,7 @@ const UserList: React.FC<UserListProps> = () => {
 
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
-      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUserFunction');
+      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUser');
       const deletedUsers: ExtendedUser[] = [];
 
       for (const userId of selectedUsers) {
@@ -220,7 +220,7 @@ const UserList: React.FC<UserListProps> = () => {
         action: {
           label: 'Отменить',
           onClick: async () => {
-            const restoreUser = httpsCallable(functions, 'createUserFunction');
+            const restoreUser = httpsCallable(functions, 'createUser');
             try {
               for (const user of deletedUsers) {
                 await restoreUser({ data: user });
