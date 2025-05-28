@@ -120,10 +120,7 @@ export function UserFormDialog({
     try {
       if (initialData) {
         const updateUserFunction = httpsCallable(functions, 'updateUser');
-        const result = await updateUserFunction({
-          userId: initialData.id,
-          data: values,
-        });
+        const result = await updateUserFunction({ data: values });
         const resultData = result.data as { success: boolean; message: string };
 
         if (resultData.success) {
@@ -135,11 +132,7 @@ export function UserFormDialog({
         }
       } else {
         const createUserFunction = httpsCallable(functions, 'createUserOnServer');
-        const result = await createUserFunction({
-          ...values,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+        const result = await createUserFunction({ data: values });
         const resultData = result.data as {
           success: boolean;
           uid?: string;

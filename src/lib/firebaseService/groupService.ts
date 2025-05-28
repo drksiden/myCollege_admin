@@ -14,6 +14,7 @@ import {
   where,
   writeBatch,
   documentId,
+  orderBy,
 } from 'firebase/firestore';
 import type { Group, Student } from '@/types';
 import { db } from '@/lib/firebase';
@@ -234,10 +235,12 @@ export const getGroupsByTeacher = async (teacherId: string): Promise<Group[]> =>
 
 export const getGroups = async (): Promise<Group[]> => {
   const groupsRef = collection(db, 'groups');
-  const snapshot = await getDocs(groupsRef);
+  const q = query(groupsRef, orderBy('name'));
+  const snapshot = await getDocs(q);
+  
   return snapshot.docs.map(doc => ({
     id: doc.id,
-    ...doc.data(),
+    ...doc.data()
   })) as Group[];
 };
 

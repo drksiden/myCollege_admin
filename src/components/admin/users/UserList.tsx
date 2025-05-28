@@ -44,6 +44,7 @@ import type { CheckedState } from '@radix-ui/react-checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import type { Group } from '@/types';
+import { FirebaseError } from 'firebase/app';
 
 interface ExtendedUser extends User {
   groupId?: string;
@@ -51,6 +52,11 @@ interface ExtendedUser extends User {
 
 interface UserListProps {
   key?: number;
+}
+
+interface DeleteUserResult {
+  success: boolean;
+  message: string;
 }
 
 const UserList: React.FC<UserListProps> = () => {
@@ -137,38 +143,54 @@ const UserList: React.FC<UserListProps> = () => {
   const handleDelete = async (user: ExtendedUser) => {
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
-      const deleteUserFn = httpsCallable(functions, 'deleteUserFunction');
+      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUserFunction');
       setLastDeletedUser(user);
-      await deleteUserFn({ userId: user.uid });
-      setUsers(prevUsers => prevUsers.filter(u => u.uid !== user.uid));
+      const result = await deleteUserFn({ uid: user.uid });
       
-      toast.success(`User ${user.firstName} ${user.lastName} deleted successfully`, {
-        action: {
-          label: 'Undo',
-          onClick: async () => {
-            if (!lastDeletedUser) return;
-            const restoreUser = httpsCallable(functions, 'createUserFunction');
-            try {
-              await restoreUser({ ...lastDeletedUser, password: 'TempPassword123!' });
-              setUsers(prev => [...prev, lastDeletedUser]);
-              toast.success('User restored');
-              setLastDeletedUser(null);
-              if (undoTimeoutRef.current !== null) clearTimeout(undoTimeoutRef.current);
-              if (progressIntervalRef.current !== null) clearInterval(progressIntervalRef.current);
-              setUndoProgress(0);
-            } catch (e) {
-              console.error('Error restoring user:', e);
-              toast.error('Failed to restore user');
-            }
+      if (result.data.success) {
+        setUsers(prevUsers => prevUsers.filter(u => u.uid !== user.uid));
+        toast.success(result.data.message || 'Пользователь успешно удален', {
+          action: {
+            label: 'Отменить',
+            onClick: async () => {
+              if (!lastDeletedUser) return;
+              const restoreUser = httpsCallable(functions, 'createUserFunction');
+              try {
+                await restoreUser({ data: lastDeletedUser });
+                setUsers(prev => [...prev, lastDeletedUser]);
+                toast.success('Пользователь восстановлен');
+                setLastDeletedUser(null);
+                if (undoTimeoutRef.current !== null) clearTimeout(undoTimeoutRef.current);
+                if (progressIntervalRef.current !== null) clearInterval(progressIntervalRef.current);
+                setUndoProgress(0);
+              } catch (e) {
+                console.error('Error restoring user:', e);
+                toast.error('Не удалось восстановить пользователя');
+              }
+            },
           },
-        },
-        duration: 5000,
-      });
+          duration: 5000,
+        });
 
-      startUndoTimer();
+        startUndoTimer();
+      }
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
+      
+      // Обработка различных типов ошибок
+      if (error instanceof FirebaseError) {
+        if (error.code === 'functions/unauthenticated') {
+          toast.error('Требуется аутентификация');
+        } else if (error.code === 'functions/permission-denied') {
+          toast.error('У вас нет прав для удаления пользователей');
+        } else if (error.code === 'functions/not-found') {
+          toast.error('Пользователь не найден');
+        } else {
+          toast.error(error.message || 'Не удалось удалить пользователя');
+        }
+      } else {
+        toast.error('Не удалось удалить пользователя');
+      }
     } finally {
       setDeletingUser(null);
       setShowDeleteConfirm(false);
@@ -180,13 +202,13 @@ const UserList: React.FC<UserListProps> = () => {
 
     try {
       const functions = getFunctions(undefined, 'asia-southeast1');
-      const deleteUserFn = httpsCallable(functions, 'deleteUserFunction');
+      const deleteUserFn = httpsCallable<{ uid: string }, DeleteUserResult>(functions, 'deleteUserFunction');
       const deletedUsers: ExtendedUser[] = [];
 
       for (const userId of selectedUsers) {
         const user = users.find(u => u.uid === userId);
         if (user) {
-          await deleteUserFn({ userId });
+          await deleteUserFn({ uid: userId });
           deletedUsers.push(user);
         }
       }
@@ -194,20 +216,20 @@ const UserList: React.FC<UserListProps> = () => {
       setUsers(prevUsers => prevUsers.filter(u => !selectedUsers.has(u.uid)));
       setSelectedUsers(new Set());
 
-      toast.success(`Deleted ${deletedUsers.length} users successfully`, {
+      toast.success(`Удалено ${deletedUsers.length} пользователей`, {
         action: {
-          label: 'Undo',
+          label: 'Отменить',
           onClick: async () => {
             const restoreUser = httpsCallable(functions, 'createUserFunction');
             try {
               for (const user of deletedUsers) {
-                await restoreUser({ ...user, password: 'TempPassword123!' });
+                await restoreUser({ data: user });
               }
               setUsers(prev => [...prev, ...deletedUsers]);
-              toast.success('Users restored');
+              toast.success('Пользователи восстановлены');
             } catch (e) {
               console.error('Error restoring users:', e);
-              toast.error('Failed to restore users');
+              toast.error('Не удалось восстановить пользователей');
             }
           },
         },
@@ -217,7 +239,19 @@ const UserList: React.FC<UserListProps> = () => {
       startUndoTimer();
     } catch (error) {
       console.error('Error deleting users:', error);
-      toast.error('Failed to delete users');
+      if (error instanceof FirebaseError) {
+        if (error.code === 'functions/unauthenticated') {
+          toast.error('Требуется аутентификация');
+        } else if (error.code === 'functions/permission-denied') {
+          toast.error('У вас нет прав для удаления пользователей');
+        } else if (error.code === 'functions/not-found') {
+          toast.error('Пользователь не найден');
+        } else {
+          toast.error(error.message || 'Не удалось удалить пользователей');
+        }
+      } else {
+        toast.error('Не удалось удалить пользователей');
+      }
     }
   };
 

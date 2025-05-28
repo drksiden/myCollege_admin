@@ -75,7 +75,9 @@ export default function ChatPage() {
   const loadUsers = async () => {
     try {
       const data = await getUsers();
-      setUsers(data);
+      // Фильтруем пользователей: исключаем только текущего пользователя
+      const filteredUsers = data.filter(u => u.uid !== user?.uid);
+      setUsers(filteredUsers);
     } catch (error) {
       console.error('Error loading users:', error);
       toast.error('Failed to load users');

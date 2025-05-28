@@ -127,9 +127,9 @@ export default function ScheduleFormDialog({
     try {
       const functions = getFunctions();
       const [groupsResult, subjectsResult, teachersResult] = await Promise.all([
-        httpsCallable<Record<string, never>, CloudFunctionResponse<GroupsResponse>>(functions, 'getGroups')({}),
-        httpsCallable<Record<string, never>, CloudFunctionResponse<SubjectsResponse>>(functions, 'getSubjects')({}),
-        httpsCallable<Record<string, never>, CloudFunctionResponse<TeachersResponse>>(functions, 'getTeachers')({}),
+        httpsCallable<{ data: Record<string, never> }, CloudFunctionResponse<GroupsResponse>>(functions, 'getGroups')({ data: {} }),
+        httpsCallable<{ data: Record<string, never> }, CloudFunctionResponse<SubjectsResponse>>(functions, 'getSubjects')({ data: {} }),
+        httpsCallable<{ data: Record<string, never> }, CloudFunctionResponse<TeachersResponse>>(functions, 'getTeachers')({ data: {} }),
       ]);
 
       setGroups(groupsResult.data.data.groups);
@@ -155,7 +155,7 @@ export default function ScheduleFormDialog({
         });
         toast.success('Schedule updated successfully');
       } else {
-        await createScheduleFn(values);
+        await createScheduleFn({ data: values });
         toast.success('Schedule created successfully');
       }
       onSuccess();

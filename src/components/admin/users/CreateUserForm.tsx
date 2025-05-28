@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -22,6 +22,8 @@ import {
 import { toast } from 'sonner';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { getGroups } from '@/lib/firebaseService/groupService';
+import type { Group } from '@/lib/firebaseService/groupService';
 
 const createUserSchema = z.object({
   email: z.string().email('Некорректный email'),
@@ -33,6 +35,9 @@ const createUserSchema = z.object({
   role: z.enum(['student', 'teacher', 'admin'], {
     required_error: 'Выберите роль',
   }),
+  studentDetails: z.object({
+    groupId: z.string().min(1, 'Группа обязательна для студента'),
+  }).optional(),
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
@@ -44,6 +49,21 @@ interface CreateUserFormProps {
 
 const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const groupsList = await getGroups();
+        setGroups(groupsList);
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+        toast.error('Не удалось загрузить список групп');
+      }
+    };
+
+    fetchGroups();
+  }, []);
 
   const form = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
@@ -55,6 +75,9 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
       middleName: '',
       iin: '',
       role: 'student',
+      studentDetails: {
+        groupId: '',
+      },
     },
   });
 
@@ -70,6 +93,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         middleName: values.middleName,
         iin: values.iin,
         role: values.role,
+        groupId: values.role === 'student' ? values.studentDetails?.groupId : undefined,
       });
       
       const data = result.data as { success: boolean; message: string; data: unknown };
@@ -81,7 +105,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
       } else {
         throw new Error(data.message || 'Ошибка при создании пользователя');
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Ошибка при создании пользователя:', error);
       
       // Обработка различных типов ошибок
@@ -239,6 +263,33 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
             </FormItem>
           )}
         />
+
+        {form.watch('role') === 'student' && (
+          <FormField
+            control={form.control}
+            name="studentDetails.groupId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Группа</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите группу" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="flex justify-end space-x-2">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
