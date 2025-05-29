@@ -32,6 +32,7 @@ import { exportGradesToPDF } from '@/lib/pdfService';
 import GradeStatistics from './GradeStatistics';
 import GradeImport from './GradeImport';
 import GradeComments from './GradeComments';
+import { getAllJournals } from '@/lib/firebaseService/journalService';
 
 interface GradeBookProps {
   teacherId: string;
@@ -56,16 +57,46 @@ export default function GradeBook({ teacherId }: GradeBookProps) {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [gradesData, studentsData, subjectsData, groupsData] = await Promise.all([
+      const [gradesData, studentsData, subjectsData, groupsData, journalsData] = await Promise.all([
         getGrades(),
         getStudents(),
         getSubjects(),
         getGroups(),
+        getAllJournals(),
       ]);
+
       setGrades(gradesData);
       setStudents(studentsData);
       setSubjects(subjectsData);
       setGroups(groupsData);
+
+      // Обрабатываем данные из журналов для получения оценок
+      const journalGrades: Grade[] = [];
+      journalsData.forEach(journal => {
+        if (journal.entries && Array.isArray(journal.entries)) {
+          journal.entries.forEach(entry => {
+            if (entry.grade && entry.studentId) {
+              journalGrades.push({
+                id: `${journal.id}-${entry.date.toMillis()}-${entry.studentId}`,
+                studentId: entry.studentId,
+                subjectId: journal.subjectId,
+                groupId: journal.groupId,
+                teacherId: journal.teacherId,
+                value: entry.grade,
+                type: 'homework',
+                semester: journal.semester,
+                date: entry.date,
+                notes: entry.notes,
+                createdAt: entry.date,
+                updatedAt: entry.date,
+              });
+            }
+          });
+        }
+      });
+
+      // Объединяем оценки из журналов с существующими оценками
+      setGrades([...gradesData, ...journalGrades]);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error('Failed to load data');

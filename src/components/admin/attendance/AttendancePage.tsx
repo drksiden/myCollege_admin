@@ -60,43 +60,44 @@ export default function AttendancePage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [journals, groupsData, subjectsData, studentsData, usersData] = await Promise.all([
-        getAllJournals(),
+      const [groupsData, subjectsData, journalsData, studentsData, usersData] = await Promise.all([
         getGroups(),
         getSubjects(),
+        getAllJournals(),
         getStudents(),
         getUsersFromFirestore(),
       ]);
+
       setGroups(groupsData);
       setSubjects(subjectsData);
       setStudents(studentsData);
       setUsers(usersData);
-      // Собрать все entries с attendance из массива journal.entries (только новая структура)
-      const allEntries: AttendanceEntry[] = journals.flatMap((j: Journal) =>
-        (j.entries || [])
-          .filter(e => 
-            e.attendance && 
-            Array.isArray(e.attendance) &&
-            e.attendance.some(a => 
-              typeof a.studentId === 'string' && 
-              typeof a.status === 'string'
-            )
-          )
-          .flatMap(e => 
-            e.attendance?.map(a => ({
-              studentId: a.studentId,
-              date: e.date,
-              attendance: a.status,
-              groupId: j.groupId,
-              subjectId: j.subjectId,
-              semester: j.semester,
-            })) || []
-          )
-      );
-      setAttendanceEntries(allEntries);
+
+      // Обрабатываем данные из журналов для получения посещаемости
+      const entries: AttendanceEntry[] = [];
+      journalsData.forEach(journal => {
+        if (journal.entries && Array.isArray(journal.entries)) {
+          journal.entries.forEach(entry => {
+            if (entry.attendance && Array.isArray(entry.attendance)) {
+              entry.attendance.forEach(attendance => {
+                entries.push({
+                  studentId: attendance.studentId,
+                  date: entry.date,
+                  attendance: attendance.status,
+                  groupId: journal.groupId,
+                  subjectId: journal.subjectId,
+                  semester: journal.semester,
+                });
+              });
+            }
+          });
+        }
+      });
+
+      setAttendanceEntries(entries);
     } catch (error) {
-      console.error('Ошибка загрузки данных:', error);
-      toast.error('Не удалось загрузить данные');
+      console.error('Error loading data:', error);
+      toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }

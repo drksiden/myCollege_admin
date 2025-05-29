@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,6 +23,9 @@ import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getAllTeachers } from '@/lib/firebaseService/teacherService';
 import { getJournal, createJournal, updateJournal } from '@/lib/firebaseService/journalService';
+import { getUsersFromFirestoreByIds } from '@/lib/firebaseService/userService';
+import type { Group, Subject, Teacher, User } from '@/types';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const formSchema = z.object({
   groupId: z.string().min(1, 'Please select a group'),
@@ -47,6 +50,11 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
   onFormSubmitSuccess,
   onCancel,
 }) => {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -61,11 +69,20 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
   useEffect(() => {
     const loadData = async () => {
       try {
-        await Promise.all([
+        const [fetchedGroups, fetchedSubjects, fetchedTeachers] = await Promise.all([
           getAllGroups(),
           getAllSubjects(),
           getAllTeachers(),
         ]);
+
+        setGroups(fetchedGroups);
+        setSubjects(fetchedSubjects);
+        setTeachers(fetchedTeachers);
+
+        // Получаем информацию о пользователях для преподавателей
+        const teacherUserIds = fetchedTeachers.map(teacher => teacher.userId);
+        const fetchedUsers = await getUsersFromFirestoreByIds(teacherUserIds);
+        setUsers(fetchedUsers);
 
         if (mode === 'edit' && journalId) {
           const journal = await getJournal(journalId);
@@ -123,15 +140,21 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
           name="groupId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Group</FormLabel>
+              <FormLabel>Группа</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a group" />
+                    <SelectValue placeholder="Выберите группу" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {/* Add group options here */}
+                  <ScrollArea className="h-[200px]">
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {`${group.name} (${group.specialization}, ${group.year} год)`}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -144,15 +167,21 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
           name="subjectId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Subject</FormLabel>
+              <FormLabel>Предмет</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a subject" />
+                    <SelectValue placeholder="Выберите предмет" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {/* Add subject options here */}
+                  <ScrollArea className="h-[200px]">
+                    {subjects.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -165,15 +194,24 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
           name="teacherId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Teacher</FormLabel>
+              <FormLabel>Преподаватель</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a teacher" />
+                    <SelectValue placeholder="Выберите преподавателя" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {/* Add teacher options here */}
+                  <ScrollArea className="h-[200px]">
+                    {teachers.map((teacher) => {
+                      const user = users.find(u => u.uid === teacher.userId);
+                      return (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {user ? `${user.lastName} ${user.firstName}${user.middleName ? ` ${user.middleName}` : ''}` : 'N/A'}
+                        </SelectItem>
+                      );
+                    })}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -233,10 +271,10 @@ export const JournalMetadataForm: React.FC<JournalMetadataFormProps> = ({
 
         <div className="flex justify-end space-x-2">
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            Отмена
           </Button>
           <Button type="submit">
-            {mode === 'create' ? 'Create' : 'Save Changes'}
+            {mode === 'create' ? 'Создать' : 'Сохранить изменения'}
           </Button>
         </div>
       </form>

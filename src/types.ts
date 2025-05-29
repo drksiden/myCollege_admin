@@ -249,6 +249,8 @@ export interface JournalEntry {
   hours: number;
   type: 'lecture' | 'seminar' | 'laboratory';
   notes?: string;
+  studentId?: string;
+  grade?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 } 
