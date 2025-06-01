@@ -16,8 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { PlusCircle, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getUsers } from '@/lib/firebaseService/userService';
-import { addStudentToGroup, removeStudentFromGroup } from '@/lib/firebaseService/groupService';
+import { getUsers, updateUser } from '@/lib/firebaseService/userService';
 import type { Group, StudentUser } from '@/types';
 
 interface GroupStudentsDialogProps {
@@ -47,23 +46,22 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const loadStudents = async () => {
     setIsLoading(true);
     try {
-      const { users } = await getUsers({ role: 'student' });
-      const students = users as StudentUser[];
-      
-      // Получаем текущих студентов группы
-      const currentStudents = students.filter(student => 
-        student.groupId === group.id
-      );
-      setAssignedStudents(currentStudents);
+      // Загружаем студентов группы
+      const { users: groupStudents } = await getUsers({ 
+        role: 'student',
+        groupId: group.id 
+      });
+      setAssignedStudents(groupStudents as StudentUser[]);
 
-      // Получаем доступных студентов (не в группе)
-      const available = students.filter(student => 
-        !student.groupId
-      );
-      setAvailableStudents(available);
+      // Загружаем студентов без группы
+      const { users: unassignedStudents } = await getUsers({ 
+        role: 'student',
+        groupId: null 
+      });
+      setAvailableStudents(unassignedStudents as StudentUser[]);
     } catch (error) {
       console.error('Error loading students:', error);
-      toast.error('Failed to load students');
+      toast.error('Не удалось загрузить список студентов');
     } finally {
       setIsLoading(false);
     }
@@ -72,13 +70,13 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const handleAssignStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await addStudentToGroup(group.id, student.uid);
-      toast.success('Student assigned to group');
+      await updateUser(student.uid, { groupId: group.id });
+      toast.success('Студент добавлен в группу');
       await loadStudents();
       onSuccess();
     } catch (error) {
       console.error('Error assigning student:', error);
-      toast.error('Failed to assign student to group');
+      toast.error('Не удалось добавить студента в группу');
     } finally {
       setIsSubmitting(false);
     }
@@ -87,13 +85,13 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const handleRemoveStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await removeStudentFromGroup(group.id, student.uid);
-      toast.success('Student removed from group');
+      await updateUser(student.uid, { groupId: null });
+      toast.success('Студент удален из группы');
       await loadStudents();
       onSuccess();
     } catch (error) {
       console.error('Error removing student:', error);
-      toast.error('Failed to remove student from group');
+      toast.error('Не удалось удалить студента из группы');
     } finally {
       setIsSubmitting(false);
     }
@@ -103,32 +101,32 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Manage Students - {group.name}</DialogTitle>
+          <DialogTitle>Управление студентами - {group.name}</DialogTitle>
         </DialogHeader>
 
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <Loader2 className="h-6 w-6 animate-spin mr-2" />
-            Loading students...
+            Загрузка студентов...
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <h3 className="text-lg font-semibold mb-2">Assigned Students</h3>
+              <h3 className="text-lg font-semibold mb-2">Студенты в группе</h3>
               <div className="border rounded-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Student ID</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>ФИО</TableHead>
+                      <TableHead>Номер студ. билета</TableHead>
+                      <TableHead className="text-right">Действия</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {assignedStudents.map((student) => (
                       <TableRow key={student.uid}>
-                        <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
-                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell>{`${student.lastName} ${student.firstName} ${student.middleName || ''}`}</TableCell>
+                        <TableCell>{student.studentIdNumber || '-'}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"
@@ -147,21 +145,21 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold mb-2">Available Students</h3>
+              <h3 className="text-lg font-semibold mb-2">Доступные студенты</h3>
               <div className="border rounded-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Student ID</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>ФИО</TableHead>
+                      <TableHead>Номер студ. билета</TableHead>
+                      <TableHead className="text-right">Действия</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {availableStudents.map((student) => (
                       <TableRow key={student.uid}>
-                        <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
-                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell>{`${student.lastName} ${student.firstName} ${student.middleName || ''}`}</TableCell>
+                        <TableCell>{student.studentIdNumber || '-'}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"

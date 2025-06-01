@@ -23,9 +23,11 @@ export interface BaseUser {
   lastName: string | null;
   firstName: string | null;
   middleName?: string | null; // Отчество (опционально)
+  iin?: string | null; // ИИН (опционально)
   role: UserRole; // Дискриминирующее поле
   status: UserStatus;
   photoURL?: string; // Аватарка (опционально)
+  phone?: string | null; // Телефон (опционально)
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

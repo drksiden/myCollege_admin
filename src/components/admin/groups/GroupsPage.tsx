@@ -10,11 +10,11 @@ import {
 } from '@/components/ui/table';
 import { PlusCircle, Users, BookOpen, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getAllGroups, deleteGroupInService } from '@/lib/firebaseService/groupService';
+import { getAllGroups, deleteGroup } from '@/lib/firebaseService/groupService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import type { Group, StudentUser } from '@/types';
 import { GroupFormDialog } from './GroupFormDialog';
-import { ManageStudentsDialog } from './ManageStudentsDialog';
+import { GroupStudentsDialog } from './GroupStudentsDialog';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
 
 const GroupsPage: React.FC = () => {
@@ -36,33 +36,33 @@ const GroupsPage: React.FC = () => {
       const fetchedGroups = await getAllGroups();
       setGroups(fetchedGroups);
 
-      // Fetch students for each group
-      const { users } = await getUsers({ role: 'student' });
-      const studentUsers = users as StudentUser[];
-      
+      // Загружаем студентов для каждой группы
       const studentsData: Record<string, StudentUser[]> = {};
       for (const group of fetchedGroups) {
-        const groupStudents = studentUsers.filter(student => student.groupId === group.id);
-        studentsData[group.id] = groupStudents;
+        const { users } = await getUsers({ 
+          role: 'student',
+          groupId: group.id 
+        });
+        studentsData[group.id] = users as StudentUser[];
       }
       setStudents(studentsData);
     } catch (error) {
       console.error('Error fetching groups:', error);
-      toast.error('Failed to load groups');
+      toast.error('Не удалось загрузить группы');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteGroup = async (group: Group) => {
-    if (!confirm('Are you sure you want to delete this group?')) return;
+    if (!confirm('Вы уверены, что хотите удалить эту группу?')) return;
     try {
-      await deleteGroupInService(group.id);
-      toast.success('Group deleted successfully');
+      await deleteGroup(group.id);
+      toast.success('Группа успешно удалена');
       fetchGroups();
     } catch (error) {
       console.error('Error deleting group:', error);
-      toast.error('Failed to delete group');
+      toast.error('Не удалось удалить группу');
     }
   };
 
@@ -80,7 +80,7 @@ const GroupsPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">Loading groups...</span>
+        <span className="ml-2">Загрузка групп...</span>
       </div>
     );
   }
@@ -88,10 +88,10 @@ const GroupsPage: React.FC = () => {
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Groups</h1>
+        <h1 className="text-2xl font-bold">Группы</h1>
         <Button onClick={() => setIsCreateDialogOpen(true)}>
           <PlusCircle className="mr-2 h-4 w-4" />
-          Create Group
+          Создать группу
         </Button>
       </div>
 
@@ -99,11 +99,11 @@ const GroupsPage: React.FC = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Year</TableHead>
-              <TableHead>Specialization</TableHead>
-              <TableHead>Students</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>Название</TableHead>
+              <TableHead>Год</TableHead>
+              <TableHead>Специализация</TableHead>
+              <TableHead>Студенты</TableHead>
+              <TableHead className="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -112,7 +112,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{group.name}</TableCell>
                 <TableCell>{group.year}</TableCell>
                 <TableCell>{group.specialization}</TableCell>
-                <TableCell>{students[group.id]?.length || 0} students</TableCell>
+                <TableCell>{students[group.id]?.length || 0} студентов</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end space-x-2">
                     <Button
@@ -120,7 +120,7 @@ const GroupsPage: React.FC = () => {
                       size="sm"
                       onClick={() => setEditingGroup(group)}
                     >
-                      Edit
+                      Редактировать
                     </Button>
                     <Button
                       variant="outline"
@@ -131,7 +131,7 @@ const GroupsPage: React.FC = () => {
                       }}
                     >
                       <Users className="h-4 w-4 mr-2" />
-                      Students
+                      Студенты
                     </Button>
                     <Button
                       variant="outline"
@@ -142,7 +142,7 @@ const GroupsPage: React.FC = () => {
                       }}
                     >
                       <BookOpen className="h-4 w-4 mr-2" />
-                      Teachers
+                      Преподаватели
                     </Button>
                     <Button
                       variant="destructive"
@@ -161,22 +161,22 @@ const GroupsPage: React.FC = () => {
 
       <GroupFormDialog
         open={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
-        onSubmit={handleCreateSuccess}
+        onOpenChange={setIsCreateDialogOpen}
+        onSuccess={handleCreateSuccess}
       />
 
       {editingGroup && (
         <GroupFormDialog
           open={true}
-          onClose={() => setEditingGroup(undefined)}
+          onOpenChange={() => setEditingGroup(undefined)}
           group={editingGroup}
-          onSubmit={handleEditSuccess}
+          onSuccess={handleEditSuccess}
         />
       )}
 
       {selectedGroup && (
         <>
-          <ManageStudentsDialog
+          <GroupStudentsDialog
             open={showStudentsDialog}
             onClose={() => setShowStudentsDialog(false)}
             group={selectedGroup}

@@ -1,81 +1,130 @@
-import React, { useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Plus } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import CreateUserForm from '@/components/admin/users/CreateUserForm';
+import EditUserDialog from '@/components/admin/users/EditUserDialog';
+import ApproveUserDialog from '@/components/admin/users/ApproveUserDialog';
 import UserList from '@/components/admin/users/UserList';
-import { Toaster } from '@/components/ui/sonner';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from 'sonner';
+import { getUsers, deleteUser } from '@/lib/firebaseService/userService';
+import type { AppUser } from '@/types/index';
 
-const ManageUsersPage: React.FC = () => {
-  // State to trigger UserList refresh after a new user is created or an existing one is updated/deleted.
-  // Changing the key of a component forces it to re-mount.
-  const [userListKey, setUserListKey] = useState(0);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+export default function ManageUsersPage() {
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
 
-  const handleUserChange = useCallback(() => {
-    setUserListKey(prevKey => prevKey + 1);
-    setShowCreateDialog(false);
+  const loadUsers = async () => {
+    try {
+      const { users: loadedUsers } = await getUsers();
+      setUsers(loadedUsers);
+    } catch {
+      toast.error('Не удалось загрузить список пользователей');
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
   }, []);
 
+  const handleCreateSuccess = () => {
+    setIsCreateDialogOpen(false);
+    loadUsers();
+    toast.success('Пользователь успешно создан');
+  };
+
+  const handleEdit = (user: AppUser) => {
+    setSelectedUser(user);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditSuccess = () => {
+    setIsEditDialogOpen(false);
+    setSelectedUser(null);
+    loadUsers();
+    toast.success('Пользователь успешно обновлен');
+  };
+
+  const handleApprove = (user: AppUser) => {
+    setSelectedUser(user);
+    setIsApproveDialogOpen(true);
+  };
+
+  const handleApproveSuccess = () => {
+    setIsApproveDialogOpen(false);
+    setSelectedUser(null);
+    loadUsers();
+    toast.success('Пользователь успешно одобрен');
+  };
+
+  const handleDelete = async (user: AppUser) => {
+    if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
+      return;
+    }
+
+    try {
+      await deleteUser(user.uid);
+      loadUsers();
+      toast.success('Пользователь успешно удален');
+    } catch {
+      toast.error('Не удалось удалить пользователя');
+    }
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="container mx-auto p-4 sm:p-6 lg:p-8"
-    >
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Управление пользователями</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Создание, просмотр, редактирование и управление учетными записями пользователей
-          </p>
-        </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => setShowCreateDialog(true)}
-                className="w-12 h-12 md:w-auto md:h-auto flex items-center justify-center gap-2"
-                size="lg"
-              >
-                <PlusCircle className="h-5 w-5" />
-                <span className="hidden sm:inline">Создать пользователя</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Новый пользователь</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Управление пользователями</h1>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Создать пользователя
+        </Button>
       </div>
 
-      <div className="w-full bg-card shadow sm:rounded-lg overflow-x-auto">
-        <UserList key={userListKey} />
-      </div>
+      <UserList
+        users={users}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onApprove={handleApprove}
+      />
 
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="w-full max-w-xs sm:max-w-lg">
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Создание пользователя</DialogTitle>
           </DialogHeader>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <CreateUserForm 
-              onSuccess={handleUserChange} 
-              onCancel={() => setShowCreateDialog(false)} 
-            />
-          </motion.div>
+          <CreateUserForm
+            onSuccess={handleCreateSuccess}
+            onCancel={() => setIsCreateDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
-      <Toaster richColors />
-    </motion.div>
-  );
-};
+      {selectedUser && (
+        <>
+          <EditUserDialog
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            user={selectedUser}
+            onUserUpdated={handleEditSuccess}
+          />
 
-export default ManageUsersPage;
+          <ApproveUserDialog
+            open={isApproveDialogOpen}
+            onOpenChange={setIsApproveDialogOpen}
+            user={selectedUser}
+            onApproved={handleApproveSuccess}
+          />
+        </>
+      )}
+    </div>
+  );
+}

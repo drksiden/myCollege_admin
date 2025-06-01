@@ -15,6 +15,8 @@ import { ru } from 'date-fns/locale';
 import type { ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
 
 interface ScheduleTemplatesListProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   templates: ScheduleTemplate[];
   onApplyTemplate: (template: ScheduleTemplate) => void;
   onEditTemplate: (template: ScheduleTemplate) => void;
@@ -22,6 +24,8 @@ interface ScheduleTemplatesListProps {
 }
 
 export function ScheduleTemplatesList({
+  open,
+  onOpenChange,
   templates,
   onApplyTemplate,
   onEditTemplate,
@@ -59,7 +63,7 @@ export function ScheduleTemplatesList({
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Шаблоны расписаний</DialogTitle>

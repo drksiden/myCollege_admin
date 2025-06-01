@@ -1,26 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FileText, Trash2, Edit2 } from 'lucide-react';
+import { Plus, FileText, Trash2 } from 'lucide-react';
 import LessonForm from '@/components/admin/schedules/LessonForm';
 import BulkLessonForm from '@/components/admin/schedules/BulkLessonForm';
 import ScheduleTemplateForm from '@/components/admin/schedules/ScheduleTemplateForm';
 import { ScheduleTemplatesList } from '@/components/admin/schedules/ScheduleTemplatesList';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 import { getGroupSchedule, createLesson, updateLesson, deleteLesson } from '@/lib/firebaseService/scheduleService';
 import { saveScheduleTemplate, getAllScheduleTemplates, deleteScheduleTemplate, updateScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
+import { getUsers } from '@/lib/firebaseService/userService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getSemesters } from '@/lib/firebaseService/semesterService';
 import type { Lesson, Group, TeacherUser, Subject, Semester, ScheduleTemplate } from '@/types';
 
 export default function ManageSchedulesPage() {
-  const { toast } = useToast();
-
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
@@ -40,16 +38,18 @@ export default function ManageSchedulesPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [groupsData, teachersData, subjectsData, semestersData, templatesData] = await Promise.all([
+        const [groupsData, subjectsData, semestersData, templatesData] = await Promise.all([
           getAllGroups(),
-          getAllTeachers(),
           getAllSubjects(),
           getSemesters(),
           getAllScheduleTemplates(),
         ]);
 
+        // Получаем только преподавателей
+        const { users: teachersData } = await getUsers({ role: 'teacher', limit: 100 });
+
         setGroups(groupsData);
-        setTeachers(teachersData);
+        setTeachers(teachersData as TeacherUser[]);
         setSubjects(subjectsData);
         setSemesters(semestersData);
         setTemplates(templatesData);
@@ -60,18 +60,13 @@ export default function ManageSchedulesPage() {
         if (semestersData.length > 0) {
           setSelectedSemester(semestersData[0].id);
         }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить данные',
-          variant: 'destructive',
-        });
+      } catch {
+        toast.error('Не удалось загрузить данные');
       }
     };
 
     fetchData();
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     const fetchLessons = async () => {
@@ -79,19 +74,14 @@ export default function ManageSchedulesPage() {
         try {
           const lessonsData = await getGroupSchedule(selectedGroup, selectedSemester);
           setLessons(lessonsData);
-        } catch (error) {
-          console.error('Error fetching lessons:', error);
-          toast({
-            title: 'Ошибка',
-            description: 'Не удалось загрузить расписание',
-            variant: 'destructive',
-          });
+        } catch {
+          toast.error('Не удалось загрузить расписание');
         }
       }
     };
 
     fetchLessons();
-  }, [selectedGroup, selectedSemester, toast]);
+  }, [selectedGroup, selectedSemester]);
 
   const handleCreateLesson = async (lesson: Omit<Lesson, 'id'>) => {
     try {
@@ -99,38 +89,22 @@ export default function ManageSchedulesPage() {
       const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
       setLessons(updatedLessons);
       setIsLessonFormOpen(false);
-      toast({
-        title: 'Успех',
-        description: 'Занятие успешно создано',
-      });
-    } catch (error) {
-      console.error('Error creating lesson:', error);
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось создать занятие',
-        variant: 'destructive',
-      });
+      toast.success('Занятие успешно создано');
+    } catch {
+      toast.error('Не удалось создать занятие');
     }
   };
 
   const handleUpdateLesson = async (lesson: Omit<Lesson, 'id'>) => {
     if (!editingLesson) return;
     try {
-      await updateLesson({ ...lesson, id: editingLesson.id });
+      await updateLesson(editingLesson.id, lesson);
       const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
       setLessons(updatedLessons);
       setEditingLesson(null);
-      toast({
-        title: 'Успех',
-        description: 'Занятие успешно обновлено',
-      });
-    } catch (error) {
-      console.error('Error updating lesson:', error);
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось обновить занятие',
-        variant: 'destructive',
-      });
+      toast.success('Занятие успешно обновлено');
+    } catch {
+      toast.error('Не удалось обновить занятие');
     }
   };
 
@@ -139,17 +113,9 @@ export default function ManageSchedulesPage() {
       await deleteLesson(lessonId);
       const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
       setLessons(updatedLessons);
-      toast({
-        title: 'Успех',
-        description: 'Занятие успешно удалено',
-      });
-    } catch (error) {
-      console.error('Error deleting lesson:', error);
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось удалить занятие',
-        variant: 'destructive',
-      });
+      toast.success('Занятие успешно удалено');
+    } catch {
+      toast.error('Не удалось удалить занятие');
     }
   };
 
@@ -164,17 +130,9 @@ export default function ManageSchedulesPage() {
       setTemplates(updatedTemplates);
       setIsTemplateFormOpen(false);
       setEditingTemplate(null);
-      toast({
-        title: 'Успех',
-        description: `Шаблон успешно ${editingTemplate ? 'обновлен' : 'создан'}`,
-      });
-    } catch (error) {
-      console.error('Error saving template:', error);
-      toast({
-        title: 'Ошибка',
-        description: `Не удалось ${editingTemplate ? 'обновить' : 'создать'} шаблон`,
-        variant: 'destructive',
-      });
+      toast.success(`Шаблон успешно ${editingTemplate ? 'обновлен' : 'создан'}`);
+    } catch {
+      toast.error(`Не удалось ${editingTemplate ? 'обновить' : 'создать'} шаблон`);
     }
   };
 
@@ -183,56 +141,67 @@ export default function ManageSchedulesPage() {
       await deleteScheduleTemplate(templateId);
       const updatedTemplates = await getAllScheduleTemplates();
       setTemplates(updatedTemplates);
-      toast({
-        title: 'Успех',
-        description: 'Шаблон успешно удален',
-      });
-    } catch (error) {
-      console.error('Error deleting template:', error);
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось удалить шаблон',
-        variant: 'destructive',
-      });
+      toast.success('Шаблон успешно удален');
+    } catch {
+      toast.error('Не удалось удалить шаблон');
     }
   };
 
-  const handleApplyTemplate = (template: ScheduleTemplate) => {
-    // TODO: Implement template application logic
-    console.log('Applying template:', template);
+  const handleApplyTemplate = async (template: ScheduleTemplate) => {
+    if (!selectedGroup || !selectedSemester) {
+      toast.error('Выберите группу и семестр');
+      return;
+    }
+
+    try {
+      // Создаем новые занятия из шаблона
+      const newLessons = template.lessons.map(lesson => ({
+        ...lesson,
+        id: '', // ID будет создан при сохранении
+        groupId: selectedGroup,
+        semesterId: selectedSemester,
+      }));
+
+      // Сохраняем все занятия
+      await Promise.all(newLessons.map(lesson => createLesson(lesson)));
+
+      // Обновляем список занятий
+      const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
+      setLessons(updatedLessons);
+      setIsTemplatesListOpen(false);
+      toast.success('Шаблон успешно применен');
+    } catch {
+      toast.error('Не удалось применить шаблон');
+    }
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-4">
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Управление расписанием</h1>
         <div className="flex gap-2">
-          <Button onClick={() => setIsLessonFormOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Добавить занятие
+          <Button onClick={() => setIsTemplatesListOpen(true)}>
+            <FileText className="h-4 w-4 mr-2" />
+            Шаблоны
           </Button>
-          <Button onClick={() => setIsBulkLessonFormOpen(true)} variant="outline">
-            <Plus className="w-4 h-4 mr-2" />
+          <Button onClick={() => setIsBulkLessonFormOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
             Массовое добавление
           </Button>
-          <Button onClick={() => setIsTemplateFormOpen(true)} variant="outline">
-            <FileText className="w-4 h-4 mr-2" />
-            Сохранить как шаблон
-          </Button>
-          <Button onClick={() => setIsTemplatesListOpen(true)} variant="outline">
-            <FileText className="w-4 h-4 mr-2" />
-            Шаблоны
+          <Button onClick={() => setIsLessonFormOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Добавить занятие
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="flex gap-4 mb-6">
         <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-          <SelectTrigger>
+          <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Выберите группу" />
           </SelectTrigger>
           <SelectContent>
-            {groups.map((group) => (
+            {groups.map(group => (
               <SelectItem key={group.id} value={group.id}>
                 {group.name}
               </SelectItem>
@@ -241,117 +210,101 @@ export default function ManageSchedulesPage() {
         </Select>
 
         <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-          <SelectTrigger>
+          <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Выберите семестр" />
           </SelectTrigger>
           <SelectContent>
-            {semesters.map((semester) => (
+            {semesters.map(semester => (
               <SelectItem key={semester.id} value={semester.id}>
                 {semester.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
 
-      <div className="mb-4">
         <Input
-          placeholder="Поиск занятий..."
+          placeholder="Поиск..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="max-w-sm"
+          className="w-[200px]"
         />
       </div>
 
-      <ScrollArea className="h-[calc(100vh-300px)]">
-        <div className="grid grid-cols-1 gap-4">
-          {lessons
-            .filter((lesson) => {
-              const subject = subjects.find((s) => s.id === lesson.subjectId);
-              const teacher = teachers.find((t) => t.uid === lesson.teacherId);
-              const searchLower = searchQuery.toLowerCase();
-              return (
-                subject?.name.toLowerCase().includes(searchLower) ||
-                teacher?.lastName?.toLowerCase().includes(searchLower) ||
-                lesson.room.toLowerCase().includes(searchLower)
-              );
-            })
-            .map((lesson) => {
-              const subject = subjects.find((s) => s.id === lesson.subjectId);
-              const teacher = teachers.find((t) => t.uid === lesson.teacherId);
-              return (
-                <div
-                  key={lesson.id}
-                  className="p-4 border rounded-lg flex justify-between items-center"
-                >
-                  <div>
-                    <h3 className="font-semibold">{subject?.name}</h3>
-                    <p className="text-sm text-gray-500">
-                      {teacher?.lastName} {teacher?.firstName}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {lesson.room} • {lesson.startTime} - {lesson.endTime}
-                    </p>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="outline">{lesson.type}</Badge>
-                      <Badge variant="outline">{lesson.weekType}</Badge>
+      <ScrollArea className="h-[calc(100vh-200px)]">
+        <div className="grid grid-cols-7 gap-4">
+          {['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'].map((day, index) => (
+            <div key={day} className="space-y-2">
+              <h3 className="font-semibold">{day}</h3>
+              {lessons
+                .filter(lesson => lesson.dayOfWeek === index + 1)
+                .map(lesson => (
+                  <div
+                    key={lesson.id}
+                    className="p-2 border rounded-lg bg-card hover:bg-accent cursor-pointer"
+                    onClick={() => {
+                      setEditingLesson(lesson);
+                      setIsLessonFormOpen(true);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{subjects.find(s => s.id === lesson.subjectId)?.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {teachers.find(t => t.uid === lesson.teacherId)?.lastName}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{lesson.room}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteLesson(lesson.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
+                    <Badge className="mt-2">{lesson.type}</Badge>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditingLesson(lesson);
-                        setIsLessonFormOpen(true);
-                      }}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteLesson(lesson.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                ))}
+            </div>
+          ))}
         </div>
       </ScrollArea>
 
       <LessonForm
         open={isLessonFormOpen}
         onOpenChange={setIsLessonFormOpen}
-        onSubmit={editingLesson ? handleUpdateLesson : handleCreateLesson}
-        subjects={subjects}
-        teachers={teachers}
+        lesson={editingLesson}
         groupId={selectedGroup}
         semesterId={selectedSemester}
-        lesson={editingLesson}
+        subjects={subjects}
+        teachers={teachers}
+        onSubmit={editingLesson ? handleUpdateLesson : handleCreateLesson}
       />
 
       <BulkLessonForm
         open={isBulkLessonFormOpen}
         onOpenChange={setIsBulkLessonFormOpen}
         onSave={handleCreateLesson}
-        subjects={subjects}
-        teachers={teachers}
         groupId={selectedGroup}
         semesterId={selectedSemester}
+        subjects={subjects}
+        teachers={teachers}
       />
 
       <ScheduleTemplateForm
         open={isTemplateFormOpen}
         onOpenChange={setIsTemplateFormOpen}
         onSaveTemplate={handleSaveTemplate}
-        lessons={lessons}
         template={editingTemplate}
+        lessons={lessons}
       />
 
       <ScheduleTemplatesList
+        open={isTemplatesListOpen}
+        onOpenChange={setIsTemplatesListOpen}
         templates={templates}
         onApplyTemplate={handleApplyTemplate}
         onEditTemplate={(template) => {

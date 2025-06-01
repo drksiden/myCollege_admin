@@ -30,26 +30,31 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { updateUser } from '@/lib/firebaseService/userService';
-import type { AppUser } from '@/types/index';
+import type { AppUser, StudentUser, TeacherUser } from '@/types/index';
+import { Timestamp } from 'firebase/firestore';
 
 const baseSchema = z.object({
   firstName: z.string().min(1, 'Имя обязательно'),
   lastName: z.string().min(1, 'Фамилия обязательна'),
   middleName: z.string().optional(),
   email: z.string().email('Неверный формат email'),
+  phone: z.string().optional(),
+  iin: z.string().optional(),
   role: z.enum(['student', 'teacher', 'admin', 'pending_approval']),
   status: z.enum(['active', 'suspended', 'pending_approval']),
 });
 
 const studentSchema = baseSchema.extend({
   role: z.literal('student'),
-  groupId: z.string().min(1, 'Группа обязательна'),
-  specialization: z.string().optional(),
+  groupId: z.string().nullable(),
+  studentIdNumber: z.string().optional(),
+  enrollmentDate: z.instanceof(Timestamp).optional(),
+  dateOfBirth: z.instanceof(Timestamp).optional(),
 });
 
 const teacherSchema = baseSchema.extend({
   role: z.literal('teacher'),
-  specialization: z.string().min(1, 'Специализация обязательна'),
+  specialization: z.string().optional(),
   education: z.string().optional(),
   experience: z.coerce.number().optional(),
 });
@@ -69,7 +74,7 @@ const formSchema = z.discriminatedUnion('role', [
   pendingSchema,
 ]);
 
-type EditUserFormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof formSchema>;
 
 interface EditUserDialogProps {
   user: AppUser | null;
@@ -85,18 +90,37 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onUserUpdated,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  // Type guards for role-specific fields
-  const getStudentFields = (u: AppUser) => u.role === 'student' ? { groupId: u.groupId, specialization: u.specialization } : {};
-  const getTeacherFields = (u: AppUser) => u.role === 'teacher' ? { specialization: u.specialization, education: u.education, experience: u.experience } : {};
 
-  const form = useForm<EditUserFormValues>({
+  // Type guards for role-specific fields
+  const getStudentFields = (u: AppUser): Partial<FormValues> => {
+    if (u.role !== 'student') return {};
+    const student = u as StudentUser;
+    return {
+      groupId: student.groupId,
+      studentIdNumber: student.studentIdNumber,
+      enrollmentDate: student.enrollmentDate,
+      dateOfBirth: student.dateOfBirth,
+    };
+  };
+
+  const getTeacherFields = (u: AppUser): Partial<FormValues> => {
+    if (u.role !== 'teacher') return {};
+    const teacher = u as TeacherUser;
+    return {
+      specialization: teacher.specialization,
+      education: teacher.education,
+      experience: teacher.experience,
+    };
+  };
+
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: user
       ? {
           ...user,
           ...getStudentFields(user),
           ...getTeacherFields(user),
-        }
+        } as FormValues
       : undefined,
   });
 
@@ -106,7 +130,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
         ...user,
         ...getStudentFields(user),
         ...getTeacherFields(user),
-      });
+      } as FormValues);
     } else if (!open) {
       form.reset();
     }
@@ -114,7 +138,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   const selectedRole = form.watch('role');
 
-  const onSubmit = async (values: EditUserFormValues) => {
+  const onSubmit = async (values: FormValues) => {
     if (!user) {
       toast.error('Пользователь не выбран для редактирования');
       return;
@@ -175,6 +199,20 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 <FormMessage />
               </FormItem>
             )} />
+            <FormField control={form.control} name="phone" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Телефон</FormLabel>
+                <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="iin" render={({ field }) => (
+              <FormItem>
+                <FormLabel>ИИН</FormLabel>
+                <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
             <FormField control={form.control} name="role" render={({ field }) => (
               <FormItem>
                 <FormLabel>Роль</FormLabel>
@@ -194,16 +232,86 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 <FormMessage />
               </FormItem>
             )} />
-            {/* Условные поля */}
+            <FormField control={form.control} name="status" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Статус</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите статус" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="active">Активен</SelectItem>
+                    <SelectItem value="suspended">Неактивен</SelectItem>
+                    <SelectItem value="pending_approval">Ожидает подтверждения</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            {/* Условные поля для студента */}
             {selectedRole === 'student' && (
-              <FormField control={form.control} name="groupId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Группа</FormLabel>
-                  <FormControl><Input {...field} disabled={isLoading} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <>
+                <FormField control={form.control} name="groupId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Группа</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        value={field.value || ''} 
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="studentIdNumber" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Номер студенческого</FormLabel>
+                    <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="enrollmentDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Дата зачисления</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        {...field} 
+                        value={field.value?.toDate().toISOString().split('T')[0] || ''}
+                        onChange={(e) => {
+                          const date = e.target.value ? new Date(e.target.value) : null;
+                          field.onChange(date ? Timestamp.fromDate(date) : null);
+                        }}
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Дата рождения</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        {...field} 
+                        value={field.value?.toDate().toISOString().split('T')[0] || ''}
+                        onChange={(e) => {
+                          const date = e.target.value ? new Date(e.target.value) : null;
+                          field.onChange(date ? Timestamp.fromDate(date) : null);
+                        }}
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </>
             )}
+            {/* Условные поля для преподавателя */}
             {selectedRole === 'teacher' && (
               <>
                 <FormField control={form.control} name="specialization" render={({ field }) => (

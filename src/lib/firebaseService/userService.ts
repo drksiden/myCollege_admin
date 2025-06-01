@@ -234,10 +234,11 @@ export const getUserById = async (userId: string): Promise<AppUser | null> => {
 export const getUsers = async (options: {
   role?: UserRole;
   status?: UserStatus;
+  groupId?: string | null;
   limit?: number;
   startAfterDoc?: DocumentSnapshot;
 } = {}): Promise<{ users: AppUser[]; lastDoc: DocumentSnapshot | null }> => {
-  const { role, status, limit: limitCount = 20, startAfterDoc } = options;
+  const { role, status, groupId, limit: limitCount = 20, startAfterDoc } = options;
 
   let q = query(
     collection(db, USERS_COLLECTION),
@@ -252,6 +253,10 @@ export const getUsers = async (options: {
     q = query(q, where('status', '==', status));
   }
 
+  if (groupId !== undefined) {
+    q = query(q, where('groupId', '==', groupId));
+  }
+
   if (limitCount) {
     q = query(q, limit(limitCount));
   }
@@ -260,15 +265,16 @@ export const getUsers = async (options: {
     q = query(q, startAfter(startAfterDoc));
   }
 
-  const querySnapshot = await getDocs(q);
-  const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
-
-  const users = querySnapshot.docs.map(doc => ({
+  const snapshot = await getDocs(q);
+  const users = snapshot.docs.map(doc => ({
     uid: doc.id,
     ...doc.data(),
-  })) as AppUser[];
+  } as AppUser));
 
-  return { users, lastDoc };
+  return {
+    users,
+    lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+  };
 };
 
 /**
@@ -281,11 +287,12 @@ export const updateUser = async (
   userId: string,
   dataToUpdate: Partial<Omit<AppUser, 'uid' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
-  const userDocRef = doc(db, USERS_COLLECTION, userId);
-  await updateDoc(userDocRef, {
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  const updateData = {
     ...dataToUpdate,
     updatedAt: serverTimestamp(),
-  });
+  };
+  await updateDoc(userRef, updateData);
 };
 
 /**

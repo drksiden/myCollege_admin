@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -30,14 +30,46 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { updateUser } from '@/lib/firebaseService/userService';
-import type { AppUser } from '@/types/index';
+import { getGroups } from '@/lib/firebaseService/groupService';
+import type { AppUser, Group } from '@/types/index';
 
 const formSchema = z.object({
   role: z.enum(['student', 'teacher'], {
     required_error: 'Роль обязательна',
   }),
-  groupId: z.string().optional(),
-  specialization: z.string().optional(),
+  studentDetails: z.object({
+    groupId: z.string().min(1, 'Группа обязательна для студента'),
+    studentIdNumber: z.string().optional(),
+    enrollmentDate: z.date().optional(),
+    dateOfBirth: z.date().optional(),
+  }).optional(),
+  teacherDetails: z.object({
+    specialization: z.string().min(1, 'Специализация обязательна для преподавателя'),
+    education: z.string().min(1, 'Образование обязательно для преподавателя'),
+    experience: z.number().min(0, 'Опыт не может быть отрицательным').optional(),
+  }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'student' && !data.studentDetails?.groupId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Группа обязательна для студента',
+      path: ['studentDetails', 'groupId'],
+    });
+  }
+  if (data.role === 'teacher' && !data.teacherDetails?.specialization) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Специализация обязательна для преподавателя',
+      path: ['teacherDetails', 'specialization'],
+    });
+  }
+  if (data.role === 'teacher' && !data.teacherDetails?.education) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Образование обязательно для преподавателя',
+      path: ['teacherDetails', 'education'],
+    });
+  }
 });
 
 type ApproveUserFormValues = z.infer<typeof formSchema>;
@@ -56,14 +88,54 @@ const ApproveUserDialog: React.FC<ApproveUserDialogProps> = ({
   onApproved,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const groupsList = await getGroups();
+        setGroups(groupsList);
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+        toast.error('Не удалось загрузить список групп');
+      }
+    };
+
+    if (open) {
+      fetchGroups();
+    }
+  }, [open]);
+
   const form = useForm<ApproveUserFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       role: undefined,
-      groupId: '',
-      specialization: '',
+      studentDetails: {
+        groupId: '',
+        studentIdNumber: '',
+      },
+      teacherDetails: {
+        specialization: '',
+        education: '',
+        experience: 0,
+      },
     },
   });
+
+  // Очищаем детали при смене роли
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'role') {
+        if (value.role !== 'student') {
+          form.setValue('studentDetails', undefined);
+        }
+        if (value.role !== 'teacher') {
+          form.setValue('teacherDetails', undefined);
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   const selectedRole = form.watch('role');
 
@@ -72,8 +144,19 @@ const ApproveUserDialog: React.FC<ApproveUserDialogProps> = ({
     try {
       await updateUser(user.uid, {
         ...user,
-        ...values,
+        role: values.role,
         status: 'active',
+        ...(values.role === 'student' ? {
+          groupId: values.studentDetails?.groupId,
+          studentIdNumber: values.studentDetails?.studentIdNumber,
+          enrollmentDate: values.studentDetails?.enrollmentDate,
+          dateOfBirth: values.studentDetails?.dateOfBirth,
+        } : {}),
+        ...(values.role === 'teacher' ? {
+          specialization: values.teacherDetails?.specialization,
+          education: values.teacherDetails?.education,
+          experience: values.teacherDetails?.experience,
+        } : {}),
       });
       toast.success('Пользователь успешно одобрен');
       onApproved();
@@ -124,35 +207,134 @@ const ApproveUserDialog: React.FC<ApproveUserDialogProps> = ({
             />
             
             {selectedRole === 'student' && (
-              <FormField
-                control={form.control}
-                name="groupId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Группа</FormLabel>
-                    <FormControl>
-                      <Input {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <FormField
+                  control={form.control}
+                  name="studentDetails.groupId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Группа</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Выберите группу" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {groups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="studentDetails.studentIdNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Номер студенческого</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Введите номер студенческого" {...field} disabled={isLoading} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="studentDetails.enrollmentDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Дата зачисления</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="date" 
+                          {...field} 
+                          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                          onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          disabled={isLoading} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="studentDetails.dateOfBirth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Дата рождения</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="date" 
+                          {...field} 
+                          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                          onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          disabled={isLoading} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
             
             {selectedRole === 'teacher' && (
-              <FormField
-                control={form.control}
-                name="specialization"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Специализация</FormLabel>
-                    <FormControl>
-                      <Input {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <FormField
+                  control={form.control}
+                  name="teacherDetails.specialization"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Специализация</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Введите специализацию" {...field} disabled={isLoading} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="teacherDetails.education"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Образование</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Введите образование" {...field} disabled={isLoading} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="teacherDetails.experience"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Опыт (лет)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          min="0"
+                          placeholder="Введите опыт работы" 
+                          {...field} 
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                          disabled={isLoading} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
 
             <DialogFooter>
