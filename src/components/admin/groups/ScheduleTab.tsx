@@ -16,7 +16,10 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ group, semesterId }) => {
   useEffect(() => {
     const fetchSchedule = async () => {
       try {
-        await getGroupSchedule(group.id, semesterId);
+        await getGroupSchedule({ 
+          groupId: group.id,
+          semesterId: semesterId
+        });
       } catch (error) {
         console.error('Error fetching schedule:', error);
       } finally {

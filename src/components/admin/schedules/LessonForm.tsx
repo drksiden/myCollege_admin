@@ -26,7 +26,6 @@ import { canAddLesson } from '@/lib/utils/scheduleValidation';
 import { useWatch } from 'react-hook-form';
 import { addMinutes, format } from 'date-fns';
 import TimePicker24 from '@/components/ui/TimePicker24';
-import { Timestamp } from 'firebase/firestore';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Timestamp } from 'firebase/firestore';
 
 // Zod schema for the form
 const lessonSchema = z.object({
@@ -49,7 +49,7 @@ const lessonSchema = z.object({
   duration: z.number().min(1, 'Длительность должна быть больше 0'),
   weekType: z.enum(['all', 'odd', 'even'] as const),
   isFloating: z.boolean().optional(),
-  teacherId: z.string().optional(),
+  teacherId: z.string().nullable(),
 }).refine(data => data.startTime < data.endTime, {
   message: "Время окончания должно быть позже времени начала",
   path: ["endTime"],
@@ -60,7 +60,7 @@ type LessonFormValues = z.infer<typeof lessonSchema>;
 interface LessonFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (lesson: Omit<Lesson, 'id'>) => Promise<void>;
+  onSubmit: (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   subjects: Subject[];
   teachers: TeacherUser[];
   groupId: string;
@@ -103,8 +103,10 @@ const LessonForm: React.FC<LessonFormProps> = ({
 
   useEffect(() => {
     if (lesson) {
+      const allowedTypes = ['lecture', 'seminar', 'lab', 'exam'];
+      const safeType = allowedTypes.includes(lesson.type) ? lesson.type : 'lecture';
       form.reset({
-        type: lesson.type,
+        type: safeType,
         dayOfWeek: lesson.dayOfWeek,
         startTime: lesson.startTime,
         endTime: lesson.endTime,
@@ -156,8 +158,11 @@ const LessonForm: React.FC<LessonFormProps> = ({
   useEffect(() => {
     const loadExistingLessons = async () => {
       try {
-        const lessons = await getGroupSchedule(groupId, semesterId);
-        setExistingLessons(lessons);
+        const lessons = await getGroupSchedule({ 
+          groupId,
+          semesterId
+        });
+        setExistingLessons(lessons || []);
       } catch (error) {
         console.error('Failed to load existing lessons:', error);
         toast.error('Не удалось загрузить существующие занятия');
@@ -176,13 +181,11 @@ const LessonForm: React.FC<LessonFormProps> = ({
         return;
       }
 
-      const newLesson: Omit<Lesson, 'id'> = {
+      const newLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
         ...data,
-        teacherId: data.teacherId || subject.teacherId || '',
+        teacherId: data.teacherId || null,
         groupId,
         semesterId,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
       };
 
       const schedule = {
@@ -192,10 +195,13 @@ const LessonForm: React.FC<LessonFormProps> = ({
         lessons: existingLessons,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
+        semester: 1, // TODO: заменить на актуальное значение
+        year: 2024,  // TODO: заменить на актуальное значение
       };
 
-      if (!canAddLesson(newLesson as Lesson, schedule)) {
-        toast.error('Невозможно добавить занятие: конфликт с существующим расписанием');
+      const validationErrors = canAddLesson(newLesson as Lesson, schedule);
+      if (validationErrors.length > 0) {
+        toast.error(`Невозможно добавить занятие: ${validationErrors[0].message}`);
         return;
       }
 
@@ -253,13 +259,18 @@ const LessonForm: React.FC<LessonFormProps> = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Преподаватель</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                  <Select 
+                    onValueChange={field.onChange} 
+                    value={field.value || ''} 
+                    disabled={isLoading}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Выберите преподавателя" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      <SelectItem value="">Нет преподавателя</SelectItem>
                       {teachers.map(teacher => (
                         <SelectItem key={teacher.uid} value={teacher.uid}>
                           {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}

@@ -4,7 +4,7 @@ import type { SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, isEqual } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -24,9 +24,13 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { addOrUpdateJournalEntriesForDate, removeJournalEntriesForDate } from '@/lib/firebaseService/journalService';
+import { 
+  getJournalEntriesByDate, 
+  addOrUpdateJournalEntriesForDate, 
+  removeJournalEntriesForDate 
+} from '@/lib/firebaseService/journalService';
 import { getUsers } from '@/lib/firebaseService/userService';
-import type { Journal, Group, StudentUser, JournalEntry } from '@/types';
+import type { Journal, Group, StudentUser, JournalEntry, GradeValue } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import {
   AlertDialog,
@@ -53,7 +57,7 @@ import { Save, Loader2, Trash2 } from "lucide-react";
 const journalEntryRowSchema = z.object({
   studentId: z.string(),
   studentName: z.string(),
-  attendance: z.enum(['present', 'absent', 'late']),
+  attendance: z.enum(['present', 'absent', 'late', 'excused']),
   grade: z.coerce.number().optional().refine((val) => val === undefined || (val >= 0 && val <= 100), {
     message: "Grade must be between 0 and 100"
   }),
@@ -143,62 +147,58 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       comment: "",
     }));
 
-    // Если нет записей в журнале, возвращаем пустые записи
-    if (!journal.entries || journal.entries.length === 0) {
-      replace(emptyEntries);
-      return;
-    }
+    // Загружаем записи для выбранной даты
+    const loadEntriesForDate = async () => {
+      try {
+        const entries = await getJournalEntriesByDate(journal.id, Timestamp.fromDate(startOfDay(selectedDate)));
+        if (entries.length === 0) {
+          replace(emptyEntries);
+          return;
+        }
 
-    // Находим запись для выбранной даты
-    const entryForDate = journal.entries.find(entry => 
-      isEqual(entry.date.toDate(), startOfDay(selectedDate))
-    );
+        // Заполняем записи данными из журнала
+        const filledEntries = studentsInGroup.map(student => {
+          const entry = entries.find(e => e.studentId === student.uid);
+          return {
+            studentId: student.uid,
+            studentName: student.fullName || 'Unknown Student',
+            attendance: entry?.attendanceStatus || 'present',
+            grade: entry?.grade ? parseInt(entry.grade) : undefined,
+            comment: entry?.comment || "",
+          };
+        });
 
-    if (!entryForDate) {
-      replace(emptyEntries);
-      return;
-    }
+        replace(filledEntries);
+      } catch (error) {
+        console.error('Error loading journal entries:', error);
+        toast.error('Не удалось загрузить записи в журнале');
+        replace(emptyEntries);
+      }
+    };
 
-    // Заполняем записи данными из журнала
-    const filledEntries = studentsInGroup.map(student => {
-      const attendance = entryForDate.attendance.find(a => a.studentId === student.uid);
-      const grade = entryForDate.grades.find(g => g.studentId === student.uid);
-
-      return {
-        studentId: student.uid,
-        studentName: student.fullName || 'Unknown Student',
-        attendance: attendance?.present ? 'present' as const : 'absent' as const,
-        grade: grade?.grade,
-        comment: grade?.comment || "",
-      };
-    });
-
-    replace(filledEntries);
-  }, [selectedDate, studentsInGroup, journal.entries, replace]);
+    loadEntriesForDate();
+  }, [selectedDate, studentsInGroup, journal.id, replace]);
 
   const onSubmit: SubmitHandler<FormValues> = async (values) => {
     setIsSubmitting(true);
     try {
       const dateForFirestore = Timestamp.fromDate(startOfDay(values.selectedDate));
       
-      // Создаем новую запись в журнале
-      const newEntry: JournalEntry = {
+      // Создаем записи в журнале для каждого студента
+      const entries: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>[] = values.entries.map(entry => ({
+        journalId: journal.id,
+        lessonId: '', // TODO: Добавить lessonId
+        studentId: entry.studentId,
         date: dateForFirestore,
-        topic: `Занятие ${format(values.selectedDate, "dd.MM.yyyy")}`,
-        attendance: values.entries.map(e => ({
-          studentId: e.studentId,
-          present: e.attendance === 'present'
-        })),
-        grades: values.entries
-          .filter(e => e.grade !== undefined)
-          .map(e => ({
-            studentId: e.studentId,
-            grade: e.grade,
-            comment: e.comment
-          }))
-      };
+        present: entry.attendance === 'present',
+        attendanceStatus: entry.attendance,
+        grade: entry.grade?.toString() as GradeValue,
+        gradeType: 'current',
+        comment: entry.comment,
+        topicCovered: `Занятие ${format(values.selectedDate, "dd.MM.yyyy")}`,
+      }));
 
-      await addOrUpdateJournalEntriesForDate(journal.id, dateForFirestore, [newEntry]);
+      await addOrUpdateJournalEntriesForDate(journal.id, dateForFirestore, entries);
       toast.success('Записи в журнале обновлены');
       onEntriesUpdated();
     } catch (error) {
@@ -248,42 +248,28 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                       type="date"
                       {...field}
                       value={format(field.value, "yyyy-MM-dd")}
-                      onChange={(e) => field.onChange(new Date(e.target.value))}
-                      disabled={isSubmitting}
+                      onChange={(e) => {
+                        const date = new Date(e.target.value);
+                        field.onChange(date);
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            <div className="flex space-x-2">
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={openDeleteConfirm}
-                disabled={isSubmitting || !selectedDate}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Удалить записи
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Сохранение...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Сохранить
-                  </>
-                )}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={openDeleteConfirm}
+              disabled={isSubmitting}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Удалить записи
+            </Button>
           </div>
 
-          <ScrollArea className="h-[600px] rounded-md border">
+          <ScrollArea className="h-[400px] rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -306,7 +292,6 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
-                              disabled={isSubmitting}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -317,6 +302,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                                 <SelectItem value="present">Присутствует</SelectItem>
                                 <SelectItem value="absent">Отсутствует</SelectItem>
                                 <SelectItem value="late">Опоздал</SelectItem>
+                                <SelectItem value="excused">Уважительная причина</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -336,8 +322,10 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                                 min={0}
                                 max={100}
                                 {...field}
-                                onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                                disabled={isSubmitting}
+                                onChange={(e) => {
+                                  const value = e.target.value === '' ? undefined : parseInt(e.target.value);
+                                  field.onChange(value);
+                                }}
                               />
                             </FormControl>
                             <FormMessage />
@@ -354,8 +342,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                             <FormControl>
                               <Textarea
                                 {...field}
-                                disabled={isSubmitting}
-                                placeholder="Комментарий..."
+                                placeholder="Комментарий"
                               />
                             </FormControl>
                             <FormMessage />
@@ -368,24 +355,38 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
               </TableBody>
             </Table>
           </ScrollArea>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Сохранение...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Сохранить
+                </>
+              )}
+            </Button>
+          </div>
         </form>
       </Form>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить записи в журнале?</AlertDialogTitle>
+            <AlertDialogTitle>Удалить записи</AlertDialogTitle>
             <AlertDialogDescription>
-              Вы уверены, что хотите удалить все записи в журнале за {format(selectedDate, "dd.MM.yyyy")}?
-              Это действие нельзя отменить.
+              Вы уверены, что хотите удалить все записи за выбранную дату? Это действие нельзя отменить.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteEntriesForDate}
               disabled={isSubmitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isSubmitting ? (
                 <>

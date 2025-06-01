@@ -18,20 +18,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { getJournal, createJournal, updateJournal } from '@/lib/firebaseService/journalService';
-import type { Group, Subject, TeacherUser, Journal } from '@/types';
+import { getSemesters } from '@/lib/firebaseService/semesterService';
+import type { Group, Subject, TeacherUser, Journal, Semester } from '@/types';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
   groupId: z.string().min(1, 'Выберите группу'),
   subjectId: z.string().min(1, 'Выберите предмет'),
   teacherId: z.string().min(1, 'Выберите преподавателя'),
-  semester: z.coerce.number().min(1, 'Выберите семестр').max(8, 'Семестр должен быть от 1 до 8'),
-  year: z.coerce.number().min(2000, 'Год должен быть не меньше 2000').max(2100, 'Год должен быть не больше 2100'),
+  semesterId: z.string().min(1, 'Выберите семестр'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -47,6 +46,7 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -54,8 +54,7 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
       groupId: '',
       subjectId: '',
       teacherId: '',
-      semester: 1,
-      year: new Date().getFullYear(),
+      semesterId: '',
     },
   });
 
@@ -66,15 +65,17 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
   const loadData = async () => {
     try {
       setLoading(true);
-      const [groupsData, subjectsData, teachersData] = await Promise.all([
+      const [groupsData, subjectsData, teachersData, semestersData] = await Promise.all([
         getAllGroups(),
         getAllSubjects(),
         getUsers({ role: 'teacher' }),
+        getSemesters(),
       ]);
 
       setGroups(groupsData);
       setSubjects(subjectsData);
       setTeachers(teachersData.users as TeacherUser[]);
+      setSemesters(semestersData);
 
       if (journalId) {
         const journal = await getJournal(journalId);
@@ -83,8 +84,7 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
             groupId: journal.groupId,
             subjectId: journal.subjectId,
             teacherId: journal.teacherId,
-            semester: journal.semester,
-            year: journal.year,
+            semesterId: journal.semesterId,
           });
         }
       }
@@ -99,12 +99,11 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
   const onSubmit = async (values: FormValues) => {
     try {
       setLoading(true);
-      const journalData: Pick<Journal, 'groupId' | 'subjectId' | 'teacherId' | 'semester' | 'year'> = {
+      const journalData: Pick<Journal, 'groupId' | 'subjectId' | 'teacherId' | 'semesterId'> = {
         groupId: values.groupId,
         subjectId: values.subjectId,
         teacherId: values.teacherId,
-        semester: values.semester,
-        year: values.year,
+        semesterId: values.semesterId,
       };
 
       if (journalId) {
@@ -216,55 +215,39 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
 
         <FormField
           control={form.control}
-          name="semester"
+          name="semesterId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Семестр</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  min={1}
-                  max={8}
-                  {...field}
-                  disabled={loading}
-                />
-              </FormControl>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                disabled={loading}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите семестр" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {semesters.map((semester) => (
+                    <SelectItem key={semester.id} value={semester.id}>
+                      {semester.name} ({semester.academicYear})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="year"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Год</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  {...field}
-                  disabled={loading}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="flex justify-end space-x-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={loading}
-          >
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
             Отмена
           </Button>
           <Button type="submit" disabled={loading}>
-            {journalId ? 'Обновить' : 'Создать'}
+            {loading ? 'Сохранение...' : journalId ? 'Обновить' : 'Создать'}
           </Button>
         </div>
       </form>

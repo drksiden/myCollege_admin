@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth';
 interface NewsEditorProps {
   mode: 'create' | 'edit';
   newsId?: string;
-  initialData?: News;
+  initialData?: News | null;
   onSuccess: () => void;
 }
 

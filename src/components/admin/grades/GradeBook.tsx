@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { getGrades, createGrade, updateGrade } from '@/lib/firebaseService/gradeService';
 import { getUsers } from '@/lib/firebaseService/userService';
-import { getSubjects } from '@/lib/firebaseService/subjectService';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getGroups } from '@/lib/firebaseService/groupService';
 import type { Grade, AppUser, Subject, Group, GradeValue, GradeType, JournalEntry } from '@/types';
 import { toast } from 'sonner';
@@ -64,7 +64,7 @@ export function GradeBook({ teacherId }: GradeBookProps) {
       const [gradesData, studentsData, subjectsData, groupsData, journalsData] = await Promise.all([
         getGrades(),
         getUsers({ role: 'student' }),
-        getSubjects(),
+        getAllSubjects(),
         getGroups(),
         getAllJournals(),
       ]);

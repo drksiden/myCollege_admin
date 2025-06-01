@@ -15,6 +15,7 @@ import NewsEditor from '@/components/admin/news/NewsEditor';
 
 export default function NewsPage() {
   const [loading, setLoading] = useState(true);
+  const [news, setNews] = useState<News[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingNews, setEditingNews] = useState<News | null>(null);
 
@@ -25,7 +26,8 @@ export default function NewsPage() {
   const loadNews = async () => {
     try {
       setLoading(true);
-      await getNews({});
+      const newsData = await getNews({});
+      setNews(newsData);
     } catch (error) {
       console.error('Error loading news:', error);
       toast.error('Не удалось загрузить новости');
@@ -37,7 +39,7 @@ export default function NewsPage() {
   const handleSubmit = async () => {
     setIsDialogOpen(false);
     setEditingNews(null);
-    loadNews();
+    await loadNews();
   };
 
   const handleEdit = (news: News) => {
@@ -65,14 +67,16 @@ export default function NewsPage() {
             </DialogHeader>
 
             <NewsEditor
-              news={editingNews}
-              onClose={handleSubmit}
+              mode={editingNews ? 'edit' : 'create'}
+              newsId={editingNews?.id}
+              initialData={editingNews}
+              onSuccess={handleSubmit}
             />
           </DialogContent>
         </Dialog>
       </div>
 
-      <NewsList onEditNews={handleEdit} />
+      <NewsList news={news} onEditNews={handleEdit} onNewsUpdate={loadNews} />
     </div>
   );
 } 

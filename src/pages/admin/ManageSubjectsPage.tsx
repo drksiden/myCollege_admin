@@ -25,8 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
-import { getAllSubjects, deleteSubject as deleteSubjectService } from '@/lib/firebaseService/subjectService';
+import { getAllSubjects as getSubjectsService, deleteSubject as deleteSubjectService } from '@/lib/firebaseService/subjectService';
 import SubjectForm from '@/components/admin/subjects/SubjectForm';
 import type { Subject } from '@/types';
 import {
@@ -40,6 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Toaster } from '@/components/ui/sonner';
+import SubjectFormDialog from '@/components/admin/subjects/SubjectFormDialog';
 
 const ManageSubjectsPage: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -54,7 +54,7 @@ const ManageSubjectsPage: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const allSubjects = await getAllSubjects();
+      const allSubjects = await getSubjectsService();
       setSubjects(allSubjects);
     } catch (error) {
       console.error('Error fetching subjects:', error);
@@ -92,10 +92,11 @@ const ManageSubjectsPage: React.FC = () => {
 
   const handleDeleteConfirm = async () => {
     if (!subjectToDelete) return;
+
     try {
-      await deleteSubjectService(db, subjectToDelete.id);
-      toast.success(`Subject "${subjectToDelete.name}" deleted successfully.`);
-      await fetchData();
+      await deleteSubjectService(subjectToDelete.id);
+      fetchData();
+      toast.success('Subject deleted successfully.');
     } catch (error) {
       console.error('Error deleting subject:', error);
       toast.error('Failed to delete subject.');
@@ -129,11 +130,16 @@ const ManageSubjectsPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           {showFormDialog && (
-            <SubjectForm
-              mode={formMode}
-              subjectId={selectedSubject?.id}
+            <SubjectFormDialog
+              open={showFormDialog}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setSelectedSubject(null);
+                }
+                setShowFormDialog(open);
+              }}
+              subject={selectedSubject}
               onFormSubmitSuccess={handleFormSuccess}
-              onCancel={() => setShowFormDialog(false)}
             />
           )}
         </DialogContent>

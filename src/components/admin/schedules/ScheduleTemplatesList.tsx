@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import type { ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
+import type { ScheduleTemplate } from '@/types';
 
 interface ScheduleTemplatesListProps {
   open: boolean;
@@ -38,7 +38,7 @@ export function ScheduleTemplatesList({
 
   const filteredTemplates = templates.filter(template =>
     template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    template.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (template.description && template.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const sortedTemplates = [...filteredTemplates].sort((a, b) => {
@@ -125,7 +125,7 @@ export function ScheduleTemplatesList({
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {template.description}
+                      {template.description || 'Без описания'}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Создан: {format(template.createdAt.toDate(), 'd MMMM yyyy', { locale: ru })}

@@ -1,20 +1,12 @@
 import { db } from '@/lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy, Timestamp } from 'firebase/firestore';
-import type { Lesson } from '@/types';
+import type { Lesson, ScheduleTemplate } from '@/types';
 
-export interface ScheduleTemplate {
-  id: string;
-  name: string;
-  description: string;
-  lessons: Lesson[];
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-export const saveScheduleTemplate = async (template: { name: string; description: string; lessons: Lesson[] }): Promise<void> => {
+export const saveScheduleTemplate = async (template: { name: string; description?: string; lessons: Partial<Omit<Lesson, 'id' | 'semesterId' | 'groupId' | 'createdAt' | 'updatedAt'>>[] }): Promise<void> => {
   const templatesRef = collection(db, 'scheduleTemplates');
   await addDoc(templatesRef, {
     ...template,
+    description: template.description || '',
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
@@ -38,11 +30,12 @@ export const deleteScheduleTemplate = async (templateId: string): Promise<void> 
 
 export const updateScheduleTemplate = async (
   templateId: string,
-  template: { name: string; description: string; lessons: Lesson[] }
+  template: { name: string; description?: string; lessons: Partial<Omit<Lesson, 'id' | 'semesterId' | 'groupId' | 'createdAt' | 'updatedAt'>>[] }
 ): Promise<void> => {
   const templateRef = doc(db, 'scheduleTemplates', templateId);
   await updateDoc(templateRef, {
     ...template,
+    description: template.description || '',
     updatedAt: Timestamp.now(),
   });
 }; 

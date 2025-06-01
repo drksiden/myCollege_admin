@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,43 +19,32 @@ import {
 } from "@/components/ui/tooltip";
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { getNews, deleteNews, publishNews, unpublishNews } from '@/lib/firebaseService/newsService';
+import { deleteNews, publishNews, unpublishNews } from '@/lib/firebaseService/newsService';
 import type { News } from '@/types/index';
 import { Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface NewsListProps {
+  news: News[];
   onEditNews: (news: News) => void;
+  onNewsUpdate: () => Promise<void>;
 }
 
-export default function NewsList({ onEditNews }: NewsListProps) {
-  const [news, setNews] = useState<News[]>([]);
+export default function NewsList({ news, onEditNews, onNewsUpdate }: NewsListProps) {
   const [filter, setFilter] = useState({
     search: '',
     status: 'all',
   });
 
-  useEffect(() => {
-    loadNews();
-  }, [filter.status]);
-
-  const loadNews = async () => {
-    try {
-      const newsData = await getNews({
-        publishedOnly: filter.status === 'published',
-      });
-      setNews(newsData);
-    } catch (error) {
-      console.error('Error loading news:', error);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     if (window.confirm('Вы уверены, что хотите удалить эту новость?')) {
       try {
         await deleteNews(id);
-        await loadNews();
+        await onNewsUpdate();
+        toast.success('Новость успешно удалена');
       } catch (error) {
         console.error('Error deleting news:', error);
+        toast.error('Ошибка при удалении новости');
       }
     }
   };
@@ -64,18 +53,24 @@ export default function NewsList({ onEditNews }: NewsListProps) {
     try {
       if (news.isPublished) {
         await unpublishNews(news.id);
+        toast.success('Новость снята с публикации');
       } else {
         await publishNews(news.id);
+        toast.success('Новость опубликована');
       }
-      await loadNews();
+      await onNewsUpdate();
     } catch (error) {
       console.error('Error toggling news status:', error);
+      toast.error('Ошибка при изменении статуса новости');
     }
   };
 
   const filteredNews = news.filter(item =>
-    item.title.toLowerCase().includes(filter.search.toLowerCase()) ||
-    item.content.toLowerCase().includes(filter.search.toLowerCase())
+    (item.title.toLowerCase().includes(filter.search.toLowerCase()) ||
+    item.content.toLowerCase().includes(filter.search.toLowerCase())) &&
+    (filter.status === 'all' ||
+     (filter.status === 'published' && item.isPublished) ||
+     (filter.status === 'draft' && !item.isPublished))
   );
 
   return (

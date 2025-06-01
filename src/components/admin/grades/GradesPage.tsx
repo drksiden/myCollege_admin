@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getGroups } from '@/lib/firebaseService/groupService';
-import { getSubjects } from '@/lib/firebaseService/subjectService';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import type { Group, Subject } from '@/types';
 import { toast } from 'sonner';
 import { GradeBook } from './GradeBook';
@@ -41,7 +41,7 @@ export function GradesPage() {
       setLoading(true);
       const [groupsData, subjectsData] = await Promise.all([
         getGroups(),
-        getSubjects(),
+        getAllSubjects(),
       ]);
 
       setGroups(groupsData);

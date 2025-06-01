@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+// TODO: Implement journal functionality
 export default function TeacherJournalPage() {
   return (
     <Card>
@@ -7,7 +8,7 @@ export default function TeacherJournalPage() {
         <CardTitle>Журнал преподавателя</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground">Функционал журнала в разработке</p>
+        {/* TODO: Add journal content */}
       </CardContent>
     </Card>
   );

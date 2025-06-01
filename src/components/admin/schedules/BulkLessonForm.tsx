@@ -20,13 +20,11 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Lesson, Subject, TeacherUser } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
-import { Timestamp } from 'firebase/firestore';
 
 interface BulkLessonFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (lesson: Omit<Lesson, 'id'>) => Promise<void>;
+  onSave: (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   subjects: Subject[];
   teachers: TeacherUser[];
   groupId: string;
@@ -79,6 +77,11 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
       return;
     }
 
+    if (!selectedTeacher) {
+      toast.error('Пожалуйста, выберите преподавателя');
+      return;
+    }
+
     const subject = subjects.find(s => s.id === selectedSubject);
     if (!subject) {
       toast.error('Ошибка: предмет не найден');
@@ -88,9 +91,9 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
     for (const day of selectedDays) {
       for (const timeSlot of selectedTimeSlots) {
         const [startTime, endTime] = timeSlot.split('-');
-        const lesson: Omit<Lesson, 'id'> = {
+        const lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
           subjectId: selectedSubject,
-          teacherId: selectedTeacher || subject.teacherId || '',
+          teacherId: selectedTeacher,
           room: selectedRoom,
           dayOfWeek: DAYS_OF_WEEK.findIndex(d => d.value === day) + 1,
           startTime,
@@ -99,8 +102,6 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
           weekType: selectedWeekType,
           groupId,
           semesterId,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
         };
 
         try {
@@ -266,7 +267,9 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
                 Отмена
               </Button>
             </DialogClose>
-            <Button type="submit">Добавить занятия</Button>
+            <Button type="submit">
+              Сохранить
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

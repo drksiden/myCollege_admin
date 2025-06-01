@@ -22,7 +22,7 @@ import { getUsers, getUserById } from '@/lib/firebaseService/userService';
 import { getGroupSchedule } from '@/lib/firebaseService/scheduleService';
 import ScheduleTab from './ScheduleTab';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
-import type { Group, StudentUser, TeacherUser } from '@/types';
+import type { Group, StudentUser, TeacherUser, Lesson } from '@/types';
 import { toast } from 'sonner';
 import {
   Select,
@@ -65,13 +65,19 @@ export function GroupDetailsPage() {
       setStudents(studentsData as StudentUser[]);
 
       // Load teachers through schedule
-      if (selectedSemesterId) {
-        const schedule = await getGroupSchedule(selectedSemesterId, groupId);
-        const uniqueTeacherIds = [...new Set(schedule.map(lesson => lesson.teacherId))];
-        const teachersData = await Promise.all(
-          uniqueTeacherIds.map(id => getUserById(id))
-        );
-        setTeachers(teachersData.filter(Boolean) as TeacherUser[]);
+      const lessons = await getGroupSchedule({ 
+        groupId: groupData.id,
+        semesterId: selectedSemesterId
+      });
+      
+      if (lessons && lessons.length > 0) {
+        const uniqueTeacherIds = [...new Set(lessons.map((lesson: Lesson) => lesson.teacherId))]
+          .filter((id): id is string => typeof id === 'string');
+        const teacherPromises = uniqueTeacherIds.map(id => getUserById(id));
+        const teachers = await Promise.all(teacherPromises);
+        setTeachers(teachers.filter((teacher): teacher is TeacherUser => teacher !== null));
+      } else {
+        setTeachers([]);
       }
 
       // Load curator if exists

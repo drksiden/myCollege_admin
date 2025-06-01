@@ -3,7 +3,7 @@ import type { Grade, AppUser, Subject, Group } from '@/types';
 import { getUsers } from './firebaseService/userService';
 import { getGrades } from './firebaseService/gradeService';
 import { getGroups } from './firebaseService/groupService';
-import { getSubjects } from './firebaseService/subjectService';
+import { getAllSubjects } from './firebaseService/subjectService';
 import { Timestamp } from 'firebase/firestore';
 
 interface ExportData {
@@ -47,7 +47,7 @@ export async function exportGradesToExcel(data?: ExportData) {
         getGrades(),
         getUsers({ role: 'student' }),
         getGroups(),
-        getSubjects(),
+        getAllSubjects(),
       ]);
       grades = gradesData;
       students = studentsData.users;

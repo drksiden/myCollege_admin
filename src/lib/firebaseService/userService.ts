@@ -25,14 +25,13 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import type { User } from '@/types';
 import { db } from '@/lib/firebase';
-import type { AppUser, UserRole, UserStatus, StudentData, TeacherData } from '@/types/index';
+import type { AppUser, UserRole, UserStatus, StudentUser, TeacherUser } from '@/types/index';
 // import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth'; // unused
 // import { format } from 'date-fns'; // unused
 
 // Re-export User type for convenience
-export type { User };
+export type User = AppUser; // Alias AppUser as User
 
 export interface CreateUserData {
   email: string;
@@ -148,7 +147,19 @@ export const getUsersFromFirestore = async (): Promise<User[]> => {
 export const updateUserInFirestore = async (
   db: Firestore,
   uid: string,
-  dataToUpdate: Partial<Pick<User, 'firstName' | 'lastName' | 'role' | 'groupId' | 'studentDetails' | 'teacherDetails'>>
+  dataToUpdate: Partial<Pick<User, 'firstName' | 'lastName' | 'role'>> & {
+    groupId?: string | null;
+    studentDetails?: {
+      studentIdNumber?: string;
+      enrollmentDate?: any;
+      dateOfBirth?: any;
+    };
+    teacherDetails?: {
+      specialization?: string;
+      education?: string;
+      experience?: number;
+    };
+  }
 ): Promise<void> => {
   const userRef = doc(db, 'users', uid);
   const updatePayload = {
@@ -343,14 +354,13 @@ export const approveUser = async (
   if (approvalData.role === 'student' && approvalData.groupId) {
     roleSpecificData = {
       groupId: approvalData.groupId,
-    } as Partial<StudentData>;
+    };
   } else if (approvalData.role === 'teacher') {
     roleSpecificData = {
       specialization: approvalData.specialization,
       education: approvalData.education,
       experience: approvalData.experience,
-      subjects: [],
-    } as Partial<TeacherData>;
+    };
   }
 
   await updateDoc(userDocRef, {
@@ -391,21 +401,24 @@ export const reactivateUser = async (userId: string): Promise<void> => {
  * @returns Promise<AppUser[]>
  */
 export const searchUsers = async (searchTerm: string): Promise<AppUser[]> => {
-  const usersCollection = collection(db, USERS_COLLECTION);
-  const usersSnapshot = await getDocs(usersCollection);
+  // Получаем всех пользователей
+  const usersCollection = collection(db, 'users');
+  const q = query(usersCollection, orderBy('createdAt', 'desc'));
+  const usersSnapshot = await getDocs(q);
   
+  const users = usersSnapshot.docs.map(doc => ({
+    uid: doc.id,
+    ...doc.data()
+  })) as AppUser[];
+  
+  // Фильтруем по поисковому запросу
   const searchTermLower = searchTerm.toLowerCase();
   
-  return usersSnapshot.docs
-    .map(doc => ({
-      uid: doc.id,
-      ...doc.data(),
-    } as AppUser))
-    .filter(user => 
-      user.firstName.toLowerCase().includes(searchTermLower) ||
-      user.lastName.toLowerCase().includes(searchTermLower) ||
-      (user.email && user.email.toLowerCase().includes(searchTermLower))
-    );
+  return users.filter(user => 
+    (user.firstName && user.firstName.toLowerCase().includes(searchTermLower)) ||
+    (user.lastName && user.lastName.toLowerCase().includes(searchTermLower)) ||
+    (user.email && user.email.toLowerCase().includes(searchTermLower))
+  );
 };
 
 /**

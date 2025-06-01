@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Group, StudentUser } from '@/types';
+import type { Group, StudentUser, AppUser } from '@/types';
 import { getUsers, updateUser } from '@/lib/firebaseService/userService';
 import { toast } from 'sonner';
 
@@ -46,7 +46,7 @@ export function GroupStudentsDialog({ open, onOpenChange, onSuccess, group }: Gr
         throw new Error('Student not found');
       }
       const updateData: Partial<StudentUser> = { role: 'student', groupId: group.id };
-      await updateUser(selectedStudentId, updateData);
+      await updateUser(selectedStudentId, updateData as Partial<AppUser>);
       toast.success('Студент добавлен в группу');
       onSuccess();
       setSelectedStudentId('');
@@ -66,7 +66,7 @@ export function GroupStudentsDialog({ open, onOpenChange, onSuccess, group }: Gr
         throw new Error('Student not found');
       }
       const updateData: Partial<StudentUser> = { role: 'student', groupId: null };
-      await updateUser(studentId, updateData);
+      await updateUser(studentId, updateData as Partial<AppUser>);
       toast.success('Студент удален из группы');
       onSuccess();
     } catch (error) {

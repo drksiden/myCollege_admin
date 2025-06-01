@@ -53,7 +53,7 @@ const ScheduleExport: React.FC<ScheduleExportProps> = ({
         day: getDayName(lesson.dayOfWeek),
         time: `${lesson.startTime} - ${lesson.endTime}`,
         subject: subjectMap.get(lesson.subjectId) || 'Неизвестный предмет',
-        teacher: teacherMap.get(lesson.teacherId) || 'Неизвестный преподаватель',
+        teacher: lesson.teacherId ? (teacherMap.get(lesson.teacherId) || 'Неизвестный преподаватель') : 'Преподаватель не назначен',
         room: lesson.room,
         type: getLessonType(lesson.type),
       }));
@@ -110,12 +110,14 @@ const ScheduleExport: React.FC<ScheduleExportProps> = ({
     switch (type) {
       case 'lecture':
         return 'Лекция';
-      case 'practice':
-        return 'Практика';
-      case 'laboratory':
+      case 'seminar':
+        return 'Семинар';
+      case 'lab':
         return 'Лабораторная';
+      case 'exam':
+        return 'Экзамен';
       default:
-        return 'Неизвестный тип';
+        return 'Занятие';
     }
   };
 

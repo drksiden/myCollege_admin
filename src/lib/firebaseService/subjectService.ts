@@ -19,7 +19,6 @@ import type { Subject } from '@/types';
 export type { Subject };
 
 const SUBJECTS_COLLECTION = 'subjects';
-const TEACHERS_COLLECTION = 'teachers';
 const SCHEDULES_COLLECTION = 'schedules';
 
 /**

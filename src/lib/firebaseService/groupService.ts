@@ -6,11 +6,10 @@ import {
   collection,
   addDoc,
   getDocs,
-  serverTimestamp,
-  Timestamp,
   query,
   where,
   orderBy,
+  Timestamp,
 } from 'firebase/firestore';
 import type { Group } from '@/types';
 import { db } from '@/lib/firebase';

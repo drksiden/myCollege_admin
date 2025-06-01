@@ -13,8 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import type { Lesson } from '@/types';
-import type { ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
+import type { Lesson, ScheduleTemplate } from '@/types';
 
 interface ScheduleTemplateFormProps {
   open: boolean;
@@ -37,7 +36,7 @@ const ScheduleTemplateForm: React.FC<ScheduleTemplateFormProps> = ({
   React.useEffect(() => {
     if (template) {
       setName(template.name);
-      setDescription(template.description);
+      setDescription(template.description || '');
     } else {
       resetForm();
     }

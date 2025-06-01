@@ -1,12 +1,12 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
-import type { Group, User } from "@/types";
+import type { Group, AppUser } from "@/types";
 
 const functions = getFunctions();
 
 export const getTeachers = async () => {
   const getTeachersFn = httpsCallable(functions, "getTeachers");
   const result = await getTeachersFn({ data: {} });
-  return (result.data as { teachers: User[] }).teachers;
+  return (result.data as { teachers: AppUser[] }).teachers;
 };
 
 export const getGroups = async () => {
@@ -53,7 +53,7 @@ export const deleteGroup = async (groupId: string) => {
 export const getGroupStudents = async (groupId: string) => {
   const getGroupStudentsFn = httpsCallable(functions, "getGroupStudents");
   const result = await getGroupStudentsFn({ data: { groupId } });
-  return (result.data as { students: User[] }).students;
+  return (result.data as { students: AppUser[] }).students;
 };
 
 export const addStudentToGroup = async (data: {

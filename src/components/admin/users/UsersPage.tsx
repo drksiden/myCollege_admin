@@ -1,20 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserFormDialog } from './UserFormDialog';
-import { UserList } from './UserList';
+import UserList from './UserList';
 import { getUsers, deleteUser, searchUsers } from '@/lib/firebaseService/userService';
 import type { AppUser, UserRole, UserStatus } from '@/types/index';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { DocumentSnapshot, DocumentData } from 'firebase/firestore';
+import EditUserDialog from './EditUserDialog';
 
 export function UsersPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<AppUser | undefined>();
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<UserStatus | 'all'>('all');
   const [hasMore, setHasMore] = useState(true);
@@ -92,7 +91,6 @@ export function UsersPage() {
     <div className="container mx-auto py-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Users Management</h1>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>Add User</Button>
       </div>
 
       <div className="flex gap-4 mb-6">
@@ -146,26 +144,12 @@ export function UsersPage() {
         </div>
       )}
 
-      <UserFormDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        onSuccess={() => {
-          setIsCreateDialogOpen(false);
-          loadUsers(true);
-        }}
+      <EditUserDialog
+        user={editingUser}
+        open={!!editingUser}
+        onOpenChange={(open: boolean) => !open && setEditingUser(null)}
+        onUserUpdated={loadUsers}
       />
-
-      {editingUser && (
-        <UserFormDialog
-          open={!!editingUser}
-          onOpenChange={(open) => !open && setEditingUser(undefined)}
-          user={editingUser}
-          onSuccess={() => {
-            setEditingUser(undefined);
-            loadUsers(true);
-          }}
-        />
-      )}
     </div>
   );
 } 

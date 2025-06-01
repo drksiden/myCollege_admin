@@ -39,13 +39,15 @@ const PAIRS = [
 const getLessonTypeColor = (type: Lesson['type']) => {
   switch (type) {
     case 'lecture':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'practice':
-      return 'bg-green-100 text-green-800 border-green-200';
-    case 'laboratory':
-      return 'bg-purple-100 text-purple-800 border-purple-200';
+      return 'bg-blue-100 text-blue-800';
+    case 'seminar':
+      return 'bg-green-100 text-green-800';
+    case 'lab':
+      return 'bg-purple-100 text-purple-800';
+    case 'exam':
+      return 'bg-red-100 text-red-800';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-gray-100 text-gray-800';
   }
 };
 

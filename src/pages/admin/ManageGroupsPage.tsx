@@ -252,7 +252,9 @@ const ManageGroupsPage: React.FC = () => {
                   <TableCell className="font-medium">{group.name}</TableCell>
                   <TableCell>{group.specialization}</TableCell>
                   <TableCell className="text-center">{group.year}</TableCell>
-                  <TableCell className="text-center">{group.students?.length || 0}</TableCell>
+                  <TableCell className="text-center">
+                    {'N/A' /* TODO: Implement student count for group list (denormalization or efficient query) */}
+                  </TableCell>
                   <TableCell className="text-right">
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>

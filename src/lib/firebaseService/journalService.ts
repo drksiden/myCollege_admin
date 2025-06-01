@@ -11,6 +11,7 @@ import {
   orderBy,
   query,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Journal, JournalEntry } from '@/types';
@@ -164,4 +165,97 @@ export const deleteJournalEntry = async (
 ): Promise<void> => {
   const entryRef = doc(db, 'journalEntries', entryId);
   return deleteDoc(entryRef);
+};
+
+/**
+ * Fetches journal entries for a specific date.
+ * @param journalId The document ID of the journal.
+ * @param date The date to fetch entries for.
+ * @returns Promise<JournalEntry[]> An array of journal entries for the date.
+ */
+export const getJournalEntriesByDate = async (
+  journalId: string,
+  date: Timestamp
+): Promise<JournalEntry[]> => {
+  const journalEntriesCollection = collection(db, 'journalEntries');
+  const startOfDay = new Date(date.toDate());
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date.toDate());
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const q = query(
+    journalEntriesCollection,
+    where('journalId', '==', journalId),
+    where('date', '>=', Timestamp.fromDate(startOfDay)),
+    where('date', '<=', Timestamp.fromDate(endOfDay)),
+    orderBy('date', 'desc')
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(docSnap => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  } as JournalEntry));
+};
+
+/**
+ * Adds or updates journal entries for a specific date.
+ * @param journalId The document ID of the journal.
+ * @param date The date for the entries.
+ * @param entries Array of journal entries to add or update.
+ * @returns Promise<void>
+ */
+export const addOrUpdateJournalEntriesForDate = async (
+  journalId: string,
+  date: Timestamp,
+  entries: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>[]
+): Promise<void> => {
+  const batch = writeBatch(db);
+  const journalEntriesCollection = collection(db, 'journalEntries');
+
+  // Get existing entries for the date
+  const existingEntries = await getJournalEntriesByDate(journalId, date);
+
+  // Update or create entries
+  for (const entry of entries) {
+    const existingEntry = existingEntries.find(e => e.studentId === entry.studentId);
+    if (existingEntry) {
+      // Update existing entry
+      const entryRef = doc(db, 'journalEntries', existingEntry.id);
+      batch.update(entryRef, {
+        ...entry,
+        updatedAt: serverTimestamp() as Timestamp,
+      });
+    } else {
+      // Create new entry
+      const newEntryRef = doc(journalEntriesCollection);
+      batch.set(newEntryRef, {
+        ...entry,
+        createdAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp() as Timestamp,
+      });
+    }
+  }
+
+  await batch.commit();
+};
+
+/**
+ * Removes all journal entries for a specific date.
+ * @param journalId The document ID of the journal.
+ * @param date The date to remove entries for.
+ * @returns Promise<void>
+ */
+export const removeJournalEntriesForDate = async (
+  journalId: string,
+  date: Timestamp
+): Promise<void> => {
+  const entries = await getJournalEntriesByDate(journalId, date);
+  const batch = writeBatch(db);
+
+  for (const entry of entries) {
+    const entryRef = doc(db, 'journalEntries', entry.id);
+    batch.delete(entryRef);
+  }
+
+  await batch.commit();
 };

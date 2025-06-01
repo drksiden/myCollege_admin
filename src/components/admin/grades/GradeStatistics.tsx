@@ -228,7 +228,7 @@ export default function GradeStatistics({
                       outerRadius={100}
                       label
                     >
-                      {gradeDistribution.map((entry, index) => (
+                      {gradeDistribution.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>

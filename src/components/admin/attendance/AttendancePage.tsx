@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getGroups } from '@/lib/firebaseService/groupService';
-import { getSubjects } from '@/lib/firebaseService/subjectService';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import type { Group, Subject, StudentUser } from '@/types';
 import { toast } from 'sonner';
@@ -46,7 +46,7 @@ export function AttendancePage() {
       setLoading(true);
       const [groupsData, subjectsData, studentsData] = await Promise.all([
         getGroups(),
-        getSubjects(),
+        getAllSubjects(),
         getUsers({ role: 'student' }),
       ]);
 

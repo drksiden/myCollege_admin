@@ -109,7 +109,7 @@ export interface Lesson {
   semesterId: string;
   groupId: string;
   subjectId: string;
-  teacherId: string;
+  teacherId: string | null;
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -152,8 +152,11 @@ export interface JournalEntry {
 // 8. Расписание (Метаданные)
 export interface Schedule {
   id: string;
-  semesterId: string;
   groupId: string;
+  semesterId: string;
+  semester: number;
+  year: number;
+  lessons: Lesson[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

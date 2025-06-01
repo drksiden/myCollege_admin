@@ -29,7 +29,7 @@ import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { getAllJournals, deleteJournal as deleteJournalService, getJournal } from '@/lib/firebaseService/journalService';
-import JournalMetadataForm from '@/components/admin/journals/JournalMetadataForm';
+import { JournalMetadataForm } from '@/components/admin/journals/JournalMetadataForm';
 import ManageJournalEntriesView from '@/components/admin/journals/ManageJournalEntriesView';
 import type { Journal, Group, Subject, TeacherUser } from '@/types';
 import {
@@ -136,7 +136,7 @@ const ManageJournalsPage: React.FC = () => {
     }
   };
 
-  const handleMetadataFormSuccess = (journalId: string) => {
+  const handleMetadataFormSuccess = () => {
     setShowMetadataDialog(false);
     fetchData();
   };

@@ -23,25 +23,30 @@ export async function updateNews(id: string, data: Partial<Omit<News, 'id' | 'cr
 }
 
 export async function deleteNews(id: string) {
+  // Get news to delete images from storage
   const newsRef = doc(db, 'news', id);
   const newsDoc = await getDoc(newsRef);
   
   if (!newsDoc.exists()) {
     throw new Error('News not found');
   }
-
-  const news = newsDoc.data() as News;
   
-  // Delete associated images
-  for (const image of news.images) {
-    try {
-      const imageRef = ref(storage, image.url);
-      await deleteObject(imageRef);
-    } catch (error) {
-      console.error('Error deleting image:', error);
+  const news = newsDoc.data();
+  
+  // Delete images from storage
+  if (news.images && Array.isArray(news.images)) {
+    for (const image of news.images) {
+      try {
+        const imageRef = ref(storage, image.url);
+        await deleteObject(imageRef);
+      } catch (error) {
+        console.error('Error deleting image:', error);
+        // Continue even if image deletion fails
+      }
     }
   }
-
+  
+  // Delete news document
   await deleteDoc(newsRef);
 }
 

@@ -72,7 +72,10 @@ export default function ManageSchedulesPage() {
     const fetchLessons = async () => {
       if (selectedGroup && selectedSemester) {
         try {
-          const lessonsData = await getGroupSchedule(selectedGroup, selectedSemester);
+          const lessonsData = await getGroupSchedule({ 
+            groupId: selectedGroup,
+            semesterId: selectedSemester
+          });
           setLessons(lessonsData);
         } catch {
           toast.error('Не удалось загрузить расписание');
@@ -83,10 +86,13 @@ export default function ManageSchedulesPage() {
     fetchLessons();
   }, [selectedGroup, selectedSemester]);
 
-  const handleCreateLesson = async (lesson: Omit<Lesson, 'id'>) => {
+  const handleCreateLesson = async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       await createLesson(lesson);
-      const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
       setLessons(updatedLessons);
       setIsLessonFormOpen(false);
       toast.success('Занятие успешно создано');
@@ -95,11 +101,14 @@ export default function ManageSchedulesPage() {
     }
   };
 
-  const handleUpdateLesson = async (lesson: Omit<Lesson, 'id'>) => {
+  const handleUpdateLesson = async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!editingLesson) return;
     try {
       await updateLesson(editingLesson.id, lesson);
-      const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
       setLessons(updatedLessons);
       setEditingLesson(null);
       toast.success('Занятие успешно обновлено');
@@ -111,7 +120,10 @@ export default function ManageSchedulesPage() {
   const handleDeleteLesson = async (lessonId: string) => {
     try {
       await deleteLesson(lessonId);
-      const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
       setLessons(updatedLessons);
       toast.success('Занятие успешно удалено');
     } catch {
@@ -155,18 +167,31 @@ export default function ManageSchedulesPage() {
 
     try {
       // Создаем новые занятия из шаблона
-      const newLessons = template.lessons.map(lesson => ({
-        ...lesson,
-        id: '', // ID будет создан при сохранении
-        groupId: selectedGroup,
-        semesterId: selectedSemester,
-      }));
+      const newLessons = template.lessons.map(lesson => {
+        const fullLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
+          semesterId: selectedSemester,
+          groupId: selectedGroup,
+          subjectId: lesson.subjectId || '',
+          teacherId: lesson.teacherId || null,
+          dayOfWeek: lesson.dayOfWeek || 1,
+          startTime: lesson.startTime || '08:00',
+          endTime: lesson.endTime || '09:30',
+          room: lesson.room || '',
+          type: lesson.type || 'lecture',
+          weekType: lesson.weekType || 'all',
+          topic: lesson.topic,
+        };
+        return fullLesson;
+      });
 
       // Сохраняем все занятия
       await Promise.all(newLessons.map(lesson => createLesson(lesson)));
 
       // Обновляем список занятий
-      const updatedLessons = await getGroupSchedule(selectedGroup, selectedSemester);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
       setLessons(updatedLessons);
       setIsTemplatesListOpen(false);
       toast.success('Шаблон успешно применен');
