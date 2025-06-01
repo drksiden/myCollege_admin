@@ -1,49 +1,34 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Group, StudentUser, TeacherUser } from '@/types';
+import type { Group, StudentUser } from '@/types';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { toast } from 'sonner';
 
 export function GradesPage() {
-  const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [students, setStudents] = useState<StudentUser[]>([]);
-  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setLoading(true);
         const [{ users }, groupsList] = await Promise.all([
           getUsers(),
           getAllGroups(),
         ]);
         const studentUsers = users.filter(user => user.role === 'student') as StudentUser[];
-        const teacherUsers = users.filter(user => user.role === 'teacher') as TeacherUser[];
 
         setStudents(studentUsers);
-        setTeachers(teacherUsers);
         setGroups(groupsList);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Ошибка при загрузке данных');
-      } finally {
-        setLoading(false);
       }
     };
 
     fetchData();
   }, []);
-
-  const getTeacherName = (teacherId: string) => {
-    const teacher = teachers.find(t => t.uid === teacherId);
-    return teacher ? `${teacher.firstName} ${teacher.lastName}` : 'Неизвестный преподаватель';
-  };
 
   const filteredStudents = selectedGroup
     ? students.filter(student => student.groupId === selectedGroup)

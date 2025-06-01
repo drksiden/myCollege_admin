@@ -23,7 +23,6 @@ import { getGroupSchedule } from '@/lib/firebaseService/scheduleService';
 import ScheduleTab from './ScheduleTab';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
 import type { Group, StudentUser, TeacherUser } from '@/types';
-import { Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import {
   Select,
@@ -33,16 +32,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-interface StudentWithDetails extends StudentUser {
-  studentIdNumber?: string;
-  enrollmentDate?: Timestamp;
-}
-
 export function GroupDetailsPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
-  const [students, setStudents] = useState<StudentWithDetails[]>([]);
+  const [students, setStudents] = useState<StudentUser[]>([]);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
   const [curator, setCurator] = useState<TeacherUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +62,7 @@ export function GroupDetailsPage() {
         role: 'student',
         groupId 
       });
-      setStudents(studentsData as StudentWithDetails[]);
+      setStudents(studentsData as StudentUser[]);
 
       // Load teachers through schedule
       if (selectedSemesterId) {
@@ -345,7 +339,7 @@ export function GroupDetailsPage() {
 
       <ManageTeachersDialog
         open={isManageTeachersOpen}
-        onClose={() => setIsManageTeachersOpen(false)}
+        onOpenChange={setIsManageTeachersOpen}
         group={group}
         onSuccess={loadGroupData}
       />

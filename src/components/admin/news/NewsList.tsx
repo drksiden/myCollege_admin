@@ -106,11 +106,11 @@ export default function NewsList({ onEditNews }: NewsListProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredNews.map((item) => (
             <Card key={item.id} className="overflow-hidden">
-              {item.images[0] && (
+              {item.images?.[0] && (
                 <div className="relative h-48">
                   <img
                     src={item.images[0].url}
-                    alt={item.images[0].alt}
+                    alt={item.images[0].alt || item.title}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -123,13 +123,15 @@ export default function NewsList({ onEditNews }: NewsListProps) {
                   <p className="text-sm text-muted-foreground line-clamp-3">
                     {item.content}
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {item.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
+                  {item.tags && item.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {item.tags.map((tag) => (
+                        <Badge key={tag} variant="secondary">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>
                       {format(item.createdAt.toDate(), 'd MMMM yyyy', { locale: ru })}

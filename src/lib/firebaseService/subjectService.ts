@@ -7,12 +7,8 @@ import {
   where,
   Timestamp,
   orderBy,
-  Firestore,
   serverTimestamp,
-  writeBatch,
-  arrayUnion,
-  arrayRemove,
-  setDoc,
+  addDoc,
   updateDoc,
   deleteDoc,
 } from 'firebase/firestore';
@@ -27,53 +23,33 @@ const TEACHERS_COLLECTION = 'teachers';
 const SCHEDULES_COLLECTION = 'schedules';
 
 /**
- * Creates a new subject in Firestore and updates the teacher's subjects array.
- * @param db Firestore instance.
+ * Creates a new subject in Firestore.
  * @param subjectData Object containing subject details.
  * @returns Promise<Subject> The newly created subject.
  */
 export const createSubject = async (
-  db: Firestore,
   subjectData: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Subject> => {
-  const batch = writeBatch(db);
-  
-  // Create new subject document
-  const subjectRef = doc(collection(db, SUBJECTS_COLLECTION));
   const newSubject = {
     ...subjectData,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
   };
   
-  batch.set(subjectRef, newSubject);
-  
-  // If teacherId is provided, update teacher's subjects array
-  if (subjectData.teacherId) {
-    const teacherRef = doc(db, TEACHERS_COLLECTION, subjectData.teacherId);
-    batch.update(teacherRef, {
-      subjects: arrayUnion(subjectRef.id),
-      updatedAt: serverTimestamp() as Timestamp,
-    });
-  }
-  
-  // Commit the batch
-  await batch.commit();
+  const docRef = await addDoc(collection(db, SUBJECTS_COLLECTION), newSubject);
   
   return {
-    id: subjectRef.id,
+    id: docRef.id,
     ...newSubject,
   } as Subject;
 };
 
 /**
  * Fetches a specific subject from Firestore by its document ID.
- * @param db Firestore instance.
  * @param subjectId The document ID of the subject.
  * @returns Promise<Subject | null> The subject or null if not found.
  */
 export const getSubject = async (
-  db: Firestore,
   subjectId: string
 ): Promise<Subject | null> => {
   const subjectRef = doc(db, SUBJECTS_COLLECTION, subjectId);
@@ -86,7 +62,6 @@ export const getSubject = async (
 
 /**
  * Fetches all subjects from Firestore, ordered by name.
- * @param db Firestore instance.
  * @returns Promise<Subject[]> An array of subjects.
  */
 export const getAllSubjects = async (): Promise<Subject[]> => {
@@ -100,122 +75,48 @@ export const getAllSubjects = async (): Promise<Subject[]> => {
 };
 
 /**
- * Updates an existing subject in Firestore and handles teacher synchronization.
- * @param db Firestore instance.
+ * Updates an existing subject in Firestore.
  * @param subjectId The document ID of the subject to update.
  * @param updates Partial data of Subject to update.
- * @param oldTeacherId The previous teacherId (if any) for handling teacher changes.
  * @returns Promise<void>
  */
 export const updateSubject = async (
-  db: Firestore,
   subjectId: string,
-  updates: Partial<Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>>,
-  oldTeacherId?: string | null
+  updates: Partial<Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
-  const batch = writeBatch(db);
   const subjectRef = doc(db, SUBJECTS_COLLECTION, subjectId);
-  
-  // Update subject
-  batch.update(subjectRef, {
+  await updateDoc(subjectRef, {
     ...updates,
     updatedAt: serverTimestamp() as Timestamp,
   });
-  
-  const newTeacherId = updates.teacherId;
-  
-  // Handle teacher changes
-  if (oldTeacherId !== newTeacherId) {
-    // Remove subject from old teacher's subjects array
-    if (oldTeacherId) {
-      const oldTeacherRef = doc(db, TEACHERS_COLLECTION, oldTeacherId);
-      batch.update(oldTeacherRef, {
-        subjects: arrayRemove(subjectId),
-        updatedAt: serverTimestamp() as Timestamp,
-      });
-    }
-    
-    // Add subject to new teacher's subjects array
-    if (newTeacherId) {
-      const newTeacherRef = doc(db, TEACHERS_COLLECTION, newTeacherId);
-      batch.update(newTeacherRef, {
-        subjects: arrayUnion(subjectId),
-        updatedAt: serverTimestamp() as Timestamp,
-      });
-    }
-  }
-  
-  // Commit the batch
-  await batch.commit();
 };
 
 /**
- * Deletes a subject from Firestore and removes it from the teacher's subjects array.
- * @param db Firestore instance.
+ * Deletes a subject from Firestore.
  * @param subjectId The document ID of the subject to delete.
  * @returns Promise<void>
  */
 export const deleteSubject = async (
-  db: Firestore,
   subjectId: string
 ): Promise<void> => {
-  const batch = writeBatch(db);
-  
-  // Get the subject to find its teacherId
   const subjectRef = doc(db, SUBJECTS_COLLECTION, subjectId);
-  const subjectDoc = await getDoc(subjectRef);
-  
-  if (!subjectDoc.exists()) {
-    throw new Error('Subject not found');
-  }
-  
-  const subjectData = subjectDoc.data() as Subject;
-  
-  // Delete the subject
-  batch.delete(subjectRef);
-  
-  // Remove subject from teacher's subjects array if teacherId exists
-  if (subjectData.teacherId) {
-    const teacherRef = doc(db, TEACHERS_COLLECTION, subjectData.teacherId);
-    batch.update(teacherRef, {
-      subjects: arrayRemove(subjectId),
-      updatedAt: serverTimestamp() as Timestamp,
-    });
-  }
-  
-  // Commit the batch
-  await batch.commit();
+  await deleteDoc(subjectRef);
 };
 
 /**
- * Fetches all subjects from Firestore.
- * @param db Firestore instance
- * @returns Promise<Subject[]>
+ * Fetches subjects by their IDs.
+ * @param subjectIds Array of subject IDs to fetch.
+ * @returns Promise<Subject[]> Array of found subjects.
  */
-export const getSubjects = async (): Promise<Subject[]> => {
-  const subjectsCollection = collection(db, SUBJECTS_COLLECTION);
-  const q = query(subjectsCollection, orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  } as Subject));
-};
-
-/**
- * Fetches a single subject by ID.
- * @param db Firestore instance
- * @param id Subject ID
- * @returns Promise<Subject | null>
- */
-export const getSubjectById = async (db: Firestore, id: string): Promise<Subject | null> => {
-  const subjectRef = doc(db, SUBJECTS_COLLECTION, id);
-  const snapshot = await getDoc(subjectRef);
-  if (!snapshot.exists()) return null;
-  return {
-    id: snapshot.id,
-    ...snapshot.data(),
-  } as Subject;
+export const getSubjectsByIds = async (subjectIds: string[]): Promise<Subject[]> => {
+  const subjects: Subject[] = [];
+  for (const id of subjectIds) {
+    const subject = await getSubject(id);
+    if (subject) {
+      subjects.push(subject);
+    }
+  }
+  return subjects;
 };
 
 export async function getSubjectsByTeacher(teacherId: string) {
@@ -248,20 +149,3 @@ export async function getSubjectsByGroup(groupId: string) {
     ...doc.data()
   })) as Subject[];
 }
-
-/**
- * Gets subjects by IDs
- * @param subjectIds Array of subject IDs
- * @returns Promise<Subject[]>
- */
-export const getSubjectsByIds = async (subjectIds: string[]): Promise<Subject[]> => {
-  if (!subjectIds.length) return [];
-
-  const subjectsRef = collection(db, SUBJECTS_COLLECTION);
-  const q = query(subjectsRef, where('__name__', 'in', subjectIds));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  } as Subject));
-};

@@ -10,6 +10,7 @@ export type WeekType = 'all' | 'odd' | 'even';
 export type SemesterStatus = 'planning' | 'active' | 'archived';
 export type GradeValue = '5' | '4' | '3' | '2' | 'н/а' | 'зачет' | 'незачет';
 export type GradeType = 'current' | 'midterm' | 'exam' | 'final';
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
 // --------------------
 // ОСНОВНЫЕ СУЩНОСТИ
@@ -93,8 +94,8 @@ export interface Group {
   id: string;
   name: string;
   description?: string;
-  year: number; // Год начала обучения группы, например, 2023
-  course: number; // Курс (1-4)
+  year?: number;
+  course?: number;
   specialization?: string;
   curatorId?: string; // uid преподавателя-куратора из коллекции users
   subjectIds: string[]; // Массив ID предметов, которые изучает эта группа
@@ -115,24 +116,40 @@ export interface Lesson {
   room: string;
   type: LessonType;
   weekType: WeekType;
+  topic?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-// 6. Запись в журнале (для оценок и посещаемости)
+// 6. Журнал (Метаданные/Обложка)
+export interface Journal {
+  id: string;
+  semesterId: string;
+  groupId: string;
+  subjectId: string;
+  teacherId: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// 7. Запись в журнале (Модель А: одна запись на студента на одном занятии)
 export interface JournalEntry {
   id: string;
-  lessonId: string; // ID конкретного занятия из расписания (Lesson.id)
-  date: Timestamp; // Фактическая дата проведения занятия
-  studentId: string; // uid студента
-  present: boolean;  // Присутствовал ли
-  grade?: GradeValue; // Оценка (строго типизированное значение)
+  journalId: string;
+  lessonId: string;
+  studentId: string;
+  date: Timestamp;
+  present: boolean;
+  attendanceStatus?: AttendanceStatus;
+  grade?: GradeValue;
+  gradeType?: GradeType;
   comment?: string;
+  topicCovered?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-// 7. Расписание (Метаданные, если нужны как отдельная сущность)
+// 8. Расписание (Метаданные)
 export interface Schedule {
   id: string;
   semesterId: string;
@@ -141,7 +158,7 @@ export interface Schedule {
   updatedAt: Timestamp;
 }
 
-// 8. Чат и Сообщения
+// 9. Чат и Сообщения
 export interface Chat {
   id: string;
   name?: string; // Если это групповой чат
@@ -164,7 +181,7 @@ export interface Message {
   // readBy?: string[]; // Массив uid пользователей, прочитавших сообщение (может быть сложным в реализации)
 }
 
-// 9. Уведомление
+// 10. Уведомление
 export interface Notification {
   id: string;
   recipientId: string; // uid получателя
@@ -176,7 +193,7 @@ export interface Notification {
   createdAt: Timestamp;
 }
 
-// 10. Комментарий
+// 11. Комментарий
 export interface Comment {
   id: string;
   parentId: string; // ID сущности, к которой относится комментарий
@@ -197,6 +214,8 @@ export interface News {
   updatedAt: Timestamp;
   isPublished: boolean;
   imageUrl?: string;
+  images?: { url: string; alt?: string }[]; // Для галереи изображений
+  tags?: string[]; // Теги для категоризации
 }
 
 export interface Grade {
@@ -215,12 +234,25 @@ export interface Grade {
   updatedAt: Timestamp;
 }
 
-// 11. Шаблон расписания
+// 12. Шаблон расписания
 export interface ScheduleTemplate {
   id: string;
   name: string;
-  description: string;
-  lessons: Lesson[];
+  description?: string;
+  lessons: Partial<Omit<Lesson, 'id' | 'semesterId' | 'groupId' | 'createdAt' | 'updatedAt'>>[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// 13. Запись посещаемости
+export interface AttendanceEntry {
+  id: string;
+  lessonId: string;    // Ссылка на Lesson.id из расписания
+  studentId: string;   // uid студента
+  date: Timestamp;     // Фактическая дата занятия
+  status: AttendanceStatus;
+  comment?: string;    // Комментарий преподавателя
+  recordedBy: string;  // uid того, кто отметил (преподаватель/админ)
   createdAt: Timestamp;
   updatedAt: Timestamp;
 } 

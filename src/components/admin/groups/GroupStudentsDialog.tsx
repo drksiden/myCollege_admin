@@ -22,14 +22,14 @@ import type { Group, StudentUser } from '@/types';
 interface GroupStudentsDialogProps {
   open: boolean;
   group: Group;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
 export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   open,
   group,
-  onClose,
+  onOpenChange,
   onSuccess,
 }) => {
   const [assignedStudents, setAssignedStudents] = useState<StudentUser[]>([]);
@@ -70,7 +70,11 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const handleAssignStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await updateUser(student.uid, { groupId: group.id });
+      const updateData: Partial<StudentUser> = { 
+        groupId: group.id,
+        role: 'student'
+      };
+      await updateUser(student.uid, updateData);
       toast.success('Студент добавлен в группу');
       await loadStudents();
       onSuccess();
@@ -85,7 +89,11 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const handleRemoveStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await updateUser(student.uid, { groupId: null });
+      const updateData: Partial<StudentUser> = { 
+        groupId: null,
+        role: 'student'
+      };
+      await updateUser(student.uid, updateData);
       toast.success('Студент удален из группы');
       await loadStudents();
       onSuccess();
@@ -98,7 +106,7 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Управление студентами - {group.name}</DialogTitle>

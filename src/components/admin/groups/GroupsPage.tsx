@@ -178,14 +178,14 @@ const GroupsPage: React.FC = () => {
         <>
           <GroupStudentsDialog
             open={showStudentsDialog}
-            onClose={() => setShowStudentsDialog(false)}
+            onOpenChange={setShowStudentsDialog}
             group={selectedGroup}
             onSuccess={fetchGroups}
           />
 
           <ManageTeachersDialog
             open={showTeachersDialog}
-            onClose={() => setShowTeachersDialog(false)}
+            onOpenChange={setShowTeachersDialog}
             group={selectedGroup}
             onSuccess={fetchGroups}
           />

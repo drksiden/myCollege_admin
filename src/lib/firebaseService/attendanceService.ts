@@ -10,18 +10,18 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Attendance } from '@/types';
+import type { AttendanceEntry } from '@/types';
 
 const ATTENDANCE_COLLECTION = 'attendance';
 
-export async function getAttendanceByGroup(groupId: string) {
+export async function getAttendanceByLesson(lessonId: string) {
   const attendanceRef = collection(db, ATTENDANCE_COLLECTION);
-  const q = query(attendanceRef, where('groupId', '==', groupId));
+  const q = query(attendanceRef, where('lessonId', '==', lessonId));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
-  })) as Attendance[];
+  })) as AttendanceEntry[];
 }
 
 export async function getAttendanceByStudent(studentId: string) {
@@ -31,7 +31,7 @@ export async function getAttendanceByStudent(studentId: string) {
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
-  })) as Attendance[];
+  })) as AttendanceEntry[];
 }
 
 export async function getAttendanceBySubject(subjectId: string) {
@@ -41,29 +41,29 @@ export async function getAttendanceBySubject(subjectId: string) {
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
-  })) as Attendance[];
+  })) as AttendanceEntry[];
 }
 
-export async function createAttendanceRecord(data: Omit<Attendance, 'id' | 'createdAt' | 'updatedAt'>) {
+export async function createAttendanceRecord(data: Omit<AttendanceEntry, 'id' | 'createdAt' | 'updatedAt'>) {
   const attendanceRef = collection(db, ATTENDANCE_COLLECTION);
   const docRef = await addDoc(attendanceRef, {
     ...data,
-    createdAt: Timestamp.fromDate(new Date()),
-    updatedAt: Timestamp.fromDate(new Date()),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
   });
   return {
     id: docRef.id,
     ...data,
-    createdAt: Timestamp.fromDate(new Date()),
-    updatedAt: Timestamp.fromDate(new Date()),
-  } as Attendance;
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  } as AttendanceEntry;
 }
 
-export async function updateAttendanceRecord(id: string, data: Partial<Omit<Attendance, 'id' | 'createdAt' | 'updatedAt'>>) {
+export async function updateAttendanceRecord(id: string, data: Partial<Omit<AttendanceEntry, 'id' | 'createdAt' | 'updatedAt'>>) {
   const attendanceRef = doc(db, ATTENDANCE_COLLECTION, id);
   await updateDoc(attendanceRef, {
     ...data,
-    updatedAt: Timestamp.fromDate(new Date()),
+    updatedAt: Timestamp.now(),
   });
 }
 
@@ -88,5 +88,5 @@ export async function getAttendanceByDate(date: Date) {
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
-  })) as Attendance[];
+  })) as AttendanceEntry[];
 } 

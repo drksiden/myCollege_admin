@@ -27,9 +27,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import { getAllGroups } from '@/lib/firebaseService/groupService';
+import { getAllGroups, deleteGroup } from '@/lib/firebaseService/groupService';
+import { getUsers, updateUser } from '@/lib/firebaseService/userService';
 import GroupForm from '@/components/admin/groups/GroupForm';
-import type { Group } from '@/types';
+import type { Group, StudentUser } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Toaster } from '@/components/ui/sonner';
-import { writeBatch, doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 const ManageGroupsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -98,34 +99,43 @@ const ManageGroupsPage: React.FC = () => {
     setIsLoading(true);
     try {
       const groupBackup = { ...groupToDelete };
-      // Удаляем группу и отвязываем студентов
-      const batch = writeBatch(db);
-      if (groupToDelete.students && groupToDelete.students.length > 0) {
-        groupToDelete.students.forEach(studentProfileId => {
-          const studentProfileRef = doc(db, 'students', studentProfileId);
-          batch.update(studentProfileRef, { groupId: "" });
-        });
-      }
-      const groupRef = doc(db, 'groups', groupToDelete.id);
-      batch.delete(groupRef);
-      await batch.commit();
+      
+      // Получаем всех студентов группы
+      const { users: studentsInGroup } = await getUsers({ 
+        role: 'student',
+        groupId: groupToDelete.id 
+      });
+
+      // Отвязываем студентов от группы
+      await Promise.all(
+        (studentsInGroup as StudentUser[]).map(student => {
+          const updateData: Partial<StudentUser> = { groupId: null, role: 'student' };
+          return updateUser(student.uid, updateData);
+        })
+      );
+
+      // Удаляем группу
+      await deleteGroup(groupToDelete.id);
+
       setLastDeletedGroup(groupBackup);
       toast.success(`Группа "${groupToDelete.name}" удалена`, {
         action: {
           label: 'Отменить',
           onClick: async () => {
             if (!lastDeletedGroup) return;
-            // Восстанавливаем группу и студентов
+            
+            // Восстанавливаем группу
             const groupDocRef = doc(db, 'groups', lastDeletedGroup.id);
             await setDoc(groupDocRef, { ...lastDeletedGroup });
-            if (lastDeletedGroup.students && lastDeletedGroup.students.length > 0) {
-              const batchRestore = writeBatch(db);
-              lastDeletedGroup.students.forEach(studentProfileId => {
-                const studentProfileRef = doc(db, 'students', studentProfileId);
-                batchRestore.update(studentProfileRef, { groupId: lastDeletedGroup.id });
-              });
-              await batchRestore.commit();
-            }
+
+            // Возвращаем студентов в группу
+            await Promise.all(
+              (studentsInGroup as StudentUser[]).map(student => {
+                const updateData: Partial<StudentUser> = { groupId: lastDeletedGroup.id, role: 'student' };
+                return updateUser(student.uid, updateData);
+              })
+            );
+
             toast.success('Группа и студенты восстановлены');
             await fetchData();
             setLastDeletedGroup(null);
@@ -134,6 +144,7 @@ const ManageGroupsPage: React.FC = () => {
         },
         duration: 8000,
       });
+
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       undoTimeoutRef.current = setTimeout(() => setLastDeletedGroup(null), 8000);
       await fetchData();

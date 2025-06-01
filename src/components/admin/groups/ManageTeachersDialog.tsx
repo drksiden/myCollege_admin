@@ -24,14 +24,14 @@ import type { Group, TeacherUser } from '@/types';
 interface ManageTeachersDialogProps {
   open: boolean;
   group: Group;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
 export const ManageTeachersDialog: React.FC<ManageTeachersDialogProps> = ({
   open,
   group,
-  onClose,
+  onOpenChange,
   onSuccess,
 }) => {
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
@@ -66,7 +66,7 @@ export const ManageTeachersDialog: React.FC<ManageTeachersDialogProps> = ({
       await updateGroup(group.id, { curatorId: selectedTeacherId });
       toast.success(selectedTeacherId ? 'Куратор назначен' : 'Куратор снят');
       onSuccess();
-      onClose();
+      onOpenChange(false);
     } catch (error) {
       console.error('Error updating curator:', error);
       toast.error('Ошибка при обновлении куратора');
@@ -76,7 +76,7 @@ export const ManageTeachersDialog: React.FC<ManageTeachersDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Назначение куратора для группы: {group.name}</DialogTitle>

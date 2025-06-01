@@ -34,8 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: firebaseUser.email || '',
             firstName: firebaseUser.displayName?.split(' ')[0] || '',
             lastName: firebaseUser.displayName?.split(' ')[1] || '',
-            iin: '', // Required field, but we don't have it from Firebase Auth
-            birthDate: Timestamp.now(), // Required field, but we don't have it from Firebase Auth
+            iin: '000000000000', // Временное значение, которое нужно будет обновить
             role: 'pending_approval',
             status: 'pending_approval',
             createdAt: Timestamp.now(),

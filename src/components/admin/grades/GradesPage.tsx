@@ -159,7 +159,6 @@ export function GradesPage() {
 
           <div className="mt-6">
             <GradeStatistics
-              grades={[]} // TODO: Получать оценки через gradeService
               subjects={subjects}
               groups={groups}
               selectedGroup={selectedGroup}

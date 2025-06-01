@@ -30,7 +30,8 @@ const formSchema = z.object({
   groupId: z.string().min(1, 'Выберите группу'),
   subjectId: z.string().min(1, 'Выберите предмет'),
   teacherId: z.string().min(1, 'Выберите преподавателя'),
-  date: z.string().min(1, 'Выберите дату'),
+  semester: z.coerce.number().min(1, 'Выберите семестр').max(8, 'Семестр должен быть от 1 до 8'),
+  year: z.coerce.number().min(2000, 'Год должен быть не меньше 2000').max(2100, 'Год должен быть не больше 2100'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -53,7 +54,8 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
       groupId: '',
       subjectId: '',
       teacherId: '',
-      date: new Date().toISOString().split('T')[0],
+      semester: 1,
+      year: new Date().getFullYear(),
     },
   });
 
@@ -81,7 +83,8 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
             groupId: journal.groupId,
             subjectId: journal.subjectId,
             teacherId: journal.teacherId,
-            date: new Date(journal.date.seconds * 1000).toISOString().split('T')[0],
+            semester: journal.semester,
+            year: journal.year,
           });
         }
       }
@@ -96,13 +99,12 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
   const onSubmit = async (values: FormValues) => {
     try {
       setLoading(true);
-      const journalData: Partial<Journal> = {
+      const journalData: Pick<Journal, 'groupId' | 'subjectId' | 'teacherId' | 'semester' | 'year'> = {
         groupId: values.groupId,
         subjectId: values.subjectId,
         teacherId: values.teacherId,
-        date: new Date(values.date),
-        attendance: [],
-        grades: [],
+        semester: values.semester,
+        year: values.year,
       };
 
       if (journalId) {
@@ -202,7 +204,7 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
                 <SelectContent>
                   {teachers.map((teacher) => (
                     <SelectItem key={teacher.uid} value={teacher.uid}>
-                      {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
+                      {`${teacher.lastName || ''} ${teacher.firstName || ''} ${teacher.middleName || ''}`.trim() || 'Безымянный преподаватель'}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -214,12 +216,38 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
 
         <FormField
           control={form.control}
-          name="date"
+          name="semester"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Дата</FormLabel>
+              <FormLabel>Семестр</FormLabel>
               <FormControl>
-                <Input type="date" {...field} disabled={loading} />
+                <Input
+                  type="number"
+                  min={1}
+                  max={8}
+                  {...field}
+                  disabled={loading}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="year"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Год</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  {...field}
+                  disabled={loading}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -227,7 +255,12 @@ export function JournalMetadataForm({ journalId, onSuccess, onCancel }: JournalM
         />
 
         <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={loading}
+          >
             Отмена
           </Button>
           <Button type="submit" disabled={loading}>

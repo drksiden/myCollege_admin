@@ -62,8 +62,7 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
           <TableRow>
             <TableHead>Название</TableHead>
             <TableHead>Описание</TableHead>
-            <TableHead>Кредиты</TableHead>
-            <TableHead>Часы</TableHead>
+            <TableHead>Часов в неделю</TableHead>
             <TableHead className="w-[100px]">Действия</TableHead>
           </TableRow>
         </TableHeader>
@@ -72,8 +71,7 @@ export const SubjectsList: React.FC<SubjectsListProps> = ({
             <TableRow key={subject.id}>
               <TableCell className="font-medium">{subject.name}</TableCell>
               <TableCell>{subject.description}</TableCell>
-              <TableCell>{subject.credits}</TableCell>
-              <TableCell>{subject.hours}</TableCell>
+              <TableCell>{subject.hoursPerWeek}</TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <Button

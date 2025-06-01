@@ -9,12 +9,12 @@ import { toast } from 'sonner';
 
 interface GroupStudentsDialogProps {
   open: boolean;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
   group: Group;
 }
 
-export function GroupStudentsDialog({ open, onClose, onSuccess, group }: GroupStudentsDialogProps) {
+export function GroupStudentsDialog({ open, onOpenChange, onSuccess, group }: GroupStudentsDialogProps) {
   const [loading, setLoading] = useState(false);
   const [students, setStudents] = useState<StudentUser[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
@@ -45,10 +45,8 @@ export function GroupStudentsDialog({ open, onClose, onSuccess, group }: GroupSt
       if (!student) {
         throw new Error('Student not found');
       }
-      await updateUser(selectedStudentId, {
-        role: 'student',
-        groupId: group.id,
-      });
+      const updateData: Partial<StudentUser> = { role: 'student', groupId: group.id };
+      await updateUser(selectedStudentId, updateData);
       toast.success('Студент добавлен в группу');
       onSuccess();
       setSelectedStudentId('');
@@ -67,10 +65,8 @@ export function GroupStudentsDialog({ open, onClose, onSuccess, group }: GroupSt
       if (!student) {
         throw new Error('Student not found');
       }
-      await updateUser(studentId, {
-        role: 'student',
-        groupId: null,
-      });
+      const updateData: Partial<StudentUser> = { role: 'student', groupId: null };
+      await updateUser(studentId, updateData);
       toast.success('Студент удален из группы');
       onSuccess();
     } catch (error) {
@@ -84,7 +80,7 @@ export function GroupStudentsDialog({ open, onClose, onSuccess, group }: GroupSt
   const groupStudents = students.filter(student => student.groupId === group.id);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Управление студентами группы</DialogTitle>
