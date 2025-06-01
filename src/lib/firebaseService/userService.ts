@@ -22,11 +22,10 @@ import {
   startAfter,
   DocumentSnapshot,
   documentId,
-  Timestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '@/lib/firebase';
-import type { AppUser, UserRole, UserStatus, StudentUser, TeacherUser } from '@/types/index';
+import type { AppUser, UserRole, UserStatus, Timestamp } from '@/types/index';
 // import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth'; // unused
 // import { format } from 'date-fns'; // unused
 
@@ -151,8 +150,8 @@ export const updateUserInFirestore = async (
     groupId?: string | null;
     studentDetails?: {
       studentIdNumber?: string;
-      enrollmentDate?: any;
-      dateOfBirth?: any;
+      enrollmentDate?: Timestamp | null;
+      dateOfBirth?: Timestamp | null;
     };
     teacherDetails?: {
       specialization?: string;

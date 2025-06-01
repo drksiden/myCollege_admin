@@ -1,4 +1,4 @@
-import type { Timestamp } from 'firebase/firestore';
+import type { Timestamp } from 'firebase/firestore'; // Keep this import
 
 // --------------------
 // ВСПОМОГАТЕЛЬНЫЕ ТИПЫ
@@ -11,6 +11,9 @@ export type SemesterStatus = 'planning' | 'active' | 'archived';
 export type GradeValue = '5' | '4' | '3' | '2' | 'н/а' | 'зачет' | 'незачет';
 export type GradeType = 'current' | 'midterm' | 'exam' | 'final';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+
+// Re-export Timestamp for use in other modules
+export type { Timestamp };
 
 // --------------------
 // ОСНОВНЫЕ СУЩНОСТИ

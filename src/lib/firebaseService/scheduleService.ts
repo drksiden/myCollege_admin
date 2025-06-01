@@ -1,5 +1,5 @@
 import { collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, query, where, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '@/lib/firebase';
 import type { Lesson, Schedule } from '@/types';
 
 const LESSONS_COLLECTION = 'lessons';

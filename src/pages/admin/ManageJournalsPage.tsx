@@ -176,7 +176,7 @@ const ManageJournalsPage: React.FC = () => {
                 <TableCell>{getGroupName(journal.groupId)}</TableCell>
                 <TableCell>{getSubjectName(journal.subjectId)}</TableCell>
                 <TableCell>{getTeacherName(journal.teacherId)}</TableCell>
-                <TableCell>{journal.date.toDate().toLocaleDateString()}</TableCell>
+                <TableCell>{journal.createdAt?.toDate().toLocaleDateString() || 'N/A'}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -224,9 +224,8 @@ const ManageJournalsPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <JournalMetadataForm
-            mode={metadataFormMode}
             journalId={selectedJournalForMetadata?.id}
-            onFormSubmitSuccess={handleMetadataFormSuccess}
+            onSuccess={handleMetadataFormSuccess}
             onCancel={() => setShowMetadataDialog(false)}
           />
         </DialogContent>

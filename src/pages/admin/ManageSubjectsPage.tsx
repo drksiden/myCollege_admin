@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { getAllSubjects as getSubjectsService, deleteSubject as deleteSubjectService } from '@/lib/firebaseService/subjectService';
-import SubjectForm from '@/components/admin/subjects/SubjectForm';
 import type { Subject } from '@/types';
 import {
   AlertDialog,
@@ -138,8 +137,9 @@ const ManageSubjectsPage: React.FC = () => {
                 }
                 setShowFormDialog(open);
               }}
-              subject={selectedSubject}
-              onFormSubmitSuccess={handleFormSuccess}
+              mode={formMode}
+              subjectId={selectedSubject?.id}
+              onSuccess={handleFormSuccess}
             />
           )}
         </DialogContent>
