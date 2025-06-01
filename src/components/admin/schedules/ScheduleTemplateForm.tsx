@@ -13,35 +13,35 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import type { Schedule } from '@/types';
+import type { Lesson } from '@/types';
 import type { ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
 
 interface ScheduleTemplateFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaveTemplate: (template: { name: string; description: string; schedule: Schedule }) => void;
-  schedule: Schedule;
-  editingTemplate: ScheduleTemplate | null;
+  onSaveTemplate: (template: { name: string; description: string; lessons: Lesson[] }) => void;
+  lessons: Lesson[];
+  template: ScheduleTemplate | null;
 }
 
 const ScheduleTemplateForm: React.FC<ScheduleTemplateFormProps> = ({
   open,
   onOpenChange,
   onSaveTemplate,
-  schedule,
-  editingTemplate,
+  lessons,
+  template,
 }) => {
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
 
   React.useEffect(() => {
-    if (editingTemplate) {
-      setName(editingTemplate.name);
-      setDescription(editingTemplate.description);
+    if (template) {
+      setName(template.name);
+      setDescription(template.description);
     } else {
       resetForm();
     }
-  }, [editingTemplate]);
+  }, [template]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +54,7 @@ const ScheduleTemplateForm: React.FC<ScheduleTemplateFormProps> = ({
     onSaveTemplate({
       name: name.trim(),
       description: description.trim(),
-      schedule,
+      lessons,
     });
 
     onOpenChange(false);
@@ -70,9 +70,9 @@ const ScheduleTemplateForm: React.FC<ScheduleTemplateFormProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{editingTemplate ? 'Редактировать шаблон' : 'Сохранить как шаблон'}</DialogTitle>
+          <DialogTitle>{template ? 'Редактировать шаблон' : 'Сохранить как шаблон'}</DialogTitle>
           <DialogDescription>
-            {editingTemplate
+            {template
               ? 'Измените детали шаблона.'
               : 'Сохраните это расписание как шаблон для будущего использования.'}
           </DialogDescription>
@@ -107,7 +107,7 @@ const ScheduleTemplateForm: React.FC<ScheduleTemplateFormProps> = ({
                 Отмена
               </Button>
             </DialogClose>
-            <Button type="submit">{editingTemplate ? 'Обновить шаблон' : 'Сохранить шаблон'}</Button>
+            <Button type="submit">{template ? 'Обновить шаблон' : 'Сохранить шаблон'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -19,14 +19,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import type { Lesson } from '@/types';
+import type { Lesson, Subject, TeacherUser } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+import { Timestamp } from 'firebase/firestore';
 
 interface BulkLessonFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddLessons: (lessons: Lesson[]) => void;
-  subjects: { id: string; name: string; teacherId?: string }[];
+  onSave: (lesson: Omit<Lesson, 'id'>) => Promise<void>;
+  subjects: Subject[];
+  teachers: TeacherUser[];
+  groupId: string;
+  semesterId: string;
 }
 
 const DAYS_OF_WEEK = [
@@ -51,16 +55,22 @@ const TIME_SLOTS = [
 const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
   open,
   onOpenChange,
-  onAddLessons,
+  onSave,
   subjects,
+  teachers,
+  groupId,
+  semesterId,
 }) => {
   const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedTeacher, setSelectedTeacher] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [selectedTimeSlots, setSelectedTimeSlots] = useState<string[]>([]);
+  const [selectedType, setSelectedType] = useState<'lecture' | 'seminar' | 'lab' | 'exam'>('lecture');
+  const [selectedWeekType, setSelectedWeekType] = useState<'all' | 'odd' | 'even'>('all');
   const [roomError, setRoomError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRoomError(null);
     if (!selectedSubject || !selectedRoom || selectedDays.length === 0 || selectedTimeSlots.length === 0) {
@@ -69,39 +79,52 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
       return;
     }
 
-    const lessons: Lesson[] = [];
     const subject = subjects.find(s => s.id === selectedSubject);
     if (!subject) {
       toast.error('Ошибка: предмет не найден');
       return;
     }
+
     for (const day of selectedDays) {
       for (const timeSlot of selectedTimeSlots) {
         const [startTime, endTime] = timeSlot.split('-');
-        lessons.push({
-          id: uuidv4(),
+        const lesson: Omit<Lesson, 'id'> = {
           subjectId: selectedSubject,
-          teacherId: subject.teacherId || '',
+          teacherId: selectedTeacher || subject.teacherId || '',
           room: selectedRoom,
           dayOfWeek: DAYS_OF_WEEK.findIndex(d => d.value === day) + 1,
           startTime,
           endTime,
-          type: 'lecture',
-          weekType: 'all'
-        });
+          type: selectedType,
+          weekType: selectedWeekType,
+          groupId,
+          semesterId,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+
+        try {
+          await onSave(lesson);
+        } catch (error) {
+          console.error('Failed to save lesson:', error);
+          toast.error('Не удалось сохранить занятие');
+          return;
+        }
       }
     }
 
-    onAddLessons(lessons);
     onOpenChange(false);
     resetForm();
   };
 
   const resetForm = () => {
     setSelectedSubject('');
+    setSelectedTeacher('');
     setSelectedRoom('');
     setSelectedDays([]);
     setSelectedTimeSlots([]);
+    setSelectedType('lecture');
+    setSelectedWeekType('all');
   };
 
   const handleDayToggle = (day: string) => {
@@ -126,7 +149,7 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
         <DialogHeader>
           <DialogTitle>Массовое добавление занятий</DialogTitle>
           <DialogDescription>
-            Добавьте несколько занятий одновременно, выбрав предмет, аудиторию, дни недели и время.
+            Добавьте несколько занятий одновременно, выбрав предмет, преподавателя, аудиторию, дни недели и время.
           </DialogDescription>
         </DialogHeader>
 
@@ -143,6 +166,51 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
                     {subject.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="teacher">Преподаватель</Label>
+            <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите преподавателя" />
+              </SelectTrigger>
+              <SelectContent>
+                {teachers.map(teacher => (
+                  <SelectItem key={teacher.uid} value={teacher.uid}>
+                    {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="type">Тип занятия</Label>
+            <Select value={selectedType} onValueChange={(value: 'lecture' | 'seminar' | 'lab' | 'exam') => setSelectedType(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите тип занятия" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lecture">Лекция</SelectItem>
+                <SelectItem value="seminar">Семинар</SelectItem>
+                <SelectItem value="lab">Лабораторная</SelectItem>
+                <SelectItem value="exam">Экзамен</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="weekType">Тип недели</Label>
+            <Select value={selectedWeekType} onValueChange={(value: 'all' | 'odd' | 'even') => setSelectedWeekType(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите тип недели" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Каждую неделю</SelectItem>
+                <SelectItem value="odd">По нечетным</SelectItem>
+                <SelectItem value="even">По четным</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -12,6 +12,9 @@ import {
   writeBatch,
   arrayUnion,
   arrayRemove,
+  setDoc,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Subject } from '@/types';
@@ -21,6 +24,7 @@ export type { Subject };
 
 const SUBJECTS_COLLECTION = 'subjects';
 const TEACHERS_COLLECTION = 'teachers';
+const SCHEDULES_COLLECTION = 'schedules';
 
 /**
  * Creates a new subject in Firestore and updates the teacher's subjects array.
@@ -87,11 +91,12 @@ export const getSubject = async (
  */
 export const getAllSubjects = async (): Promise<Subject[]> => {
   const subjectsRef = collection(db, SUBJECTS_COLLECTION);
-  const snapshot = await getDocs(subjectsRef);
+  const q = query(subjectsRef, orderBy('name'));
+  const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
-  })) as Subject[];
+  } as Subject));
 };
 
 /**
@@ -214,13 +219,24 @@ export const getSubjectById = async (db: Firestore, id: string): Promise<Subject
 };
 
 export async function getSubjectsByTeacher(teacherId: string) {
-  const subjectsRef = collection(db, SUBJECTS_COLLECTION);
-  const q = query(subjectsRef, where('teacherId', '==', teacherId));
+  // Get all schedules where this teacher is assigned
+  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
+  const q = query(schedulesRef, where('teacherId', '==', teacherId));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Subject[];
+  
+  // Get unique subject IDs from schedules
+  const subjectIds = [...new Set(snapshot.docs.map(doc => doc.data().subjectId))];
+  
+  // Get subject details for these IDs
+  const subjects: Subject[] = [];
+  for (const subjectId of subjectIds) {
+    const subjectDoc = await getDoc(doc(db, SUBJECTS_COLLECTION, subjectId));
+    if (subjectDoc.exists()) {
+      subjects.push({ id: subjectDoc.id, ...subjectDoc.data() } as Subject);
+    }
+  }
+  
+  return subjects;
 }
 
 export async function getSubjectsByGroup(groupId: string) {
@@ -232,3 +248,20 @@ export async function getSubjectsByGroup(groupId: string) {
     ...doc.data()
   })) as Subject[];
 }
+
+/**
+ * Gets subjects by IDs
+ * @param subjectIds Array of subject IDs
+ * @returns Promise<Subject[]>
+ */
+export const getSubjectsByIds = async (subjectIds: string[]): Promise<Subject[]> => {
+  if (!subjectIds.length) return [];
+
+  const subjectsRef = collection(db, SUBJECTS_COLLECTION);
+  const q = query(subjectsRef, where('__name__', 'in', subjectIds));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  } as Subject));
+};

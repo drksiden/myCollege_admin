@@ -16,9 +16,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { PlusCircle, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
+import { getUsers } from '@/lib/firebaseService/userService';
 import { addStudentToGroup, removeStudentFromGroup } from '@/lib/firebaseService/groupService';
-import type { Group, Student } from '@/types';
+import type { Group, StudentUser } from '@/types';
 
 interface GroupStudentsDialogProps {
   open: boolean;
@@ -33,8 +33,8 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [assignedStudents, setAssignedStudents] = useState<Student[]>([]);
-  const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
+  const [assignedStudents, setAssignedStudents] = useState<StudentUser[]>([]);
+  const [availableStudents, setAvailableStudents] = useState<StudentUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,12 +47,18 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
   const loadStudents = async () => {
     setIsLoading(true);
     try {
-      const currentStudents = await getStudentsByGroup(group.id);
+      const { users } = await getUsers({ role: 'student' });
+      const students = users as StudentUser[];
+      
+      // Получаем текущих студентов группы
+      const currentStudents = students.filter(student => 
+        student.groupId === group.id
+      );
       setAssignedStudents(currentStudents);
 
-      // Filter students that are not assigned to this group
-      const available = currentStudents.filter(student => 
-        !student.groupId || student.groupId !== group.id
+      // Получаем доступных студентов (не в группе)
+      const available = students.filter(student => 
+        !student.groupId
       );
       setAvailableStudents(available);
     } catch (error) {
@@ -63,10 +69,10 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
     }
   };
 
-  const handleAssignStudent = async (student: Student) => {
+  const handleAssignStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await addStudentToGroup(group.id, student.id);
+      await addStudentToGroup(group.id, student.uid);
       toast.success('Student assigned to group');
       await loadStudents();
       onSuccess();
@@ -78,10 +84,10 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
     }
   };
 
-  const handleRemoveStudent = async (student: Student) => {
+  const handleRemoveStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await removeStudentFromGroup(group.id, student.id);
+      await removeStudentFromGroup(group.id, student.uid);
       toast.success('Student removed from group');
       await loadStudents();
       onSuccess();
@@ -120,7 +126,7 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
                   </TableHeader>
                   <TableBody>
                     {assignedStudents.map((student) => (
-                      <TableRow key={student.id}>
+                      <TableRow key={student.uid}>
                         <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
                         <TableCell>{student.studentCardId}</TableCell>
                         <TableCell className="text-right">
@@ -153,7 +159,7 @@ export const GroupStudentsDialog: React.FC<GroupStudentsDialogProps> = ({
                   </TableHeader>
                   <TableBody>
                     {availableStudents.map((student) => (
-                      <TableRow key={student.id}>
+                      <TableRow key={student.uid}>
                         <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
                         <TableCell>{student.studentCardId}</TableCell>
                         <TableCell className="text-right">

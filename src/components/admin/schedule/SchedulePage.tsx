@@ -17,8 +17,8 @@ import { toast } from 'sonner';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllLessons } from '@/lib/firebaseService/lessonService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import type { Group, Lesson, Subject, Teacher } from '@/types';
+import { getUsers } from '@/lib/firebaseService/userService';
+import type { Group, Lesson, Subject, TeacherUser } from '@/types';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -66,7 +66,7 @@ const SchedulePage: React.FC = () => {
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -86,10 +86,10 @@ const SchedulePage: React.FC = () => {
       try {
         const [subjectsData, teachersData] = await Promise.all([
           getAllSubjects(),
-          getAllTeachers(),
+          getUsers(),
         ]);
         setSubjects(subjectsData);
-        setTeachers(teachersData);
+        setTeachers(teachersData.users.filter(user => user.role === 'teacher') as TeacherUser[]);
       } catch (err) {
         console.error('Error fetching meta:', err);
         toast.error('Не удалось загрузить справочники');
@@ -191,7 +191,7 @@ const SchedulePage: React.FC = () => {
   };
 
   const getTeacherName = (teacherId: string) => {
-    const t = teachers.find((t: Teacher) => t.id === teacherId);
+    const t = teachers.find((t: TeacherUser) => t.uid === teacherId);
     return t ? `${t.firstName} ${t.lastName}` : '—';
   };
 

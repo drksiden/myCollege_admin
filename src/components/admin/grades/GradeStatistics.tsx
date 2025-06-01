@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Grade, Subject, Group } from '@/types';
+import type { Grade, Subject, Group, GradeValue, AppUser } from '@/types';
 import {
   BarChart,
   Bar,
@@ -14,111 +14,184 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
+import { getUsers } from '@/lib/firebaseService/userService';
+import { getGrades } from '@/lib/firebaseService/gradeService';
+import { toast } from 'sonner';
 
 interface GradeStatisticsProps {
-  grades: Grade[];
   subjects: Subject[];
   groups: Group[];
-  selectedGroup?: string;
-  selectedSubject?: string;
-  selectedSemester?: number;
+  selectedGroup: string;
+  selectedSubject: string;
+  selectedSemesterId: string;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
+// Функция для преобразования GradeValue в числовое значение
+const gradeValueToNumber = (value: GradeValue): number => {
+  switch (value) {
+    case '5': return 5;
+    case '4': return 4;
+    case '3': return 3;
+    case '2': return 2;
+    case 'зачет': return 4; // Приравниваем зачет к 4
+    case 'незачет': return 2; // Приравниваем незачет к 2
+    case 'н/а': return 0;
+    default: return 0;
+  }
+};
+
+// Функция для проверки, является ли оценка числовой
+const isNumericGrade = (value: GradeValue): boolean => {
+  return ['5', '4', '3', '2'].includes(value);
+};
+
 export default function GradeStatistics({
-  grades,
   subjects,
   groups,
   selectedGroup,
   selectedSubject,
-  selectedSemester,
+  selectedSemesterId,
 }: GradeStatisticsProps) {
-  const filteredGrades = useMemo(() => 
-    grades.filter(grade => {
-      if (selectedGroup && grade.groupId !== selectedGroup) return false;
-      if (selectedSubject && grade.subjectId !== selectedSubject) return false;
-      if (selectedSemester && grade.semester !== selectedSemester) return false;
-      return true;
-    }),
-    [grades, selectedGroup, selectedSubject, selectedSemester]
-  );
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Загрузка студентов группы и их оценок
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        // Загружаем студентов выбранной группы
+        const studentsData = await getUsers({ 
+          role: 'student'
+        });
+        
+        // Фильтруем студентов по группе
+        const groupStudents = studentsData.users.filter(
+          student => (student as AppUser & { groupId: string }).groupId === selectedGroup
+        );
+
+        // Загружаем оценки для этих студентов
+        const studentIds = groupStudents.map(student => student.uid);
+        const gradesData = await getGrades({
+          studentIds,
+          subjectId: selectedSubject,
+          semesterId: selectedSemesterId
+        });
+        setGrades(gradesData);
+      } catch (error) {
+        console.error('Error loading statistics data:', error);
+        toast.error('Не удалось загрузить данные для статистики');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (selectedGroup && selectedSubject && selectedSemesterId) {
+      loadData();
+    }
+  }, [selectedGroup, selectedSubject, selectedSemesterId]);
 
   // Calculate average grades by type
   const averageByType = useMemo(() => 
-    ['exam', 'test', 'homework', 'project'].map(type => {
-      const typeGrades = filteredGrades.filter(g => g.type === type);
-      const average = typeGrades.reduce((acc, g) => acc + g.value, 0) / typeGrades.length || 0;
+    ['current', 'midterm', 'exam', 'final'].map(type => {
+      const typeGrades = grades.filter(g => 
+        g.type === type && 
+        isNumericGrade(g.value)
+      );
+      const average = typeGrades.length > 0
+        ? typeGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / typeGrades.length
+        : 0;
       return {
-        type: type.charAt(0).toUpperCase() + type.slice(1),
+        type: type === 'current' ? 'Текущие' :
+              type === 'midterm' ? 'Рубежные' :
+              type === 'exam' ? 'Экзамены' : 'Итоговые',
         average: Number(average.toFixed(2)),
       };
     }),
-    [filteredGrades]
+    [grades]
   );
 
   // Calculate grade distribution
   const gradeDistribution = useMemo(() => {
     const distribution = [
-      { range: '90-100', count: 0 },
-      { range: '80-89', count: 0 },
-      { range: '70-79', count: 0 },
-      { range: '60-69', count: 0 },
-      { range: '0-59', count: 0 },
+      { range: '5', count: 0 },
+      { range: '4', count: 0 },
+      { range: '3', count: 0 },
+      { range: '2', count: 0 },
+      { range: 'н/а', count: 0 },
     ];
 
-    filteredGrades.forEach(grade => {
-      if (grade.value >= 90) distribution[0].count++;
-      else if (grade.value >= 80) distribution[1].count++;
-      else if (grade.value >= 70) distribution[2].count++;
-      else if (grade.value >= 60) distribution[3].count++;
-      else distribution[4].count++;
+    grades.forEach(grade => {
+      if (isNumericGrade(grade.value)) {
+        const index = ['5', '4', '3', '2'].indexOf(grade.value);
+        if (index !== -1) {
+          distribution[index].count++;
+        }
+      } else if (grade.value === 'н/а') {
+        distribution[4].count++;
+      }
     });
 
     return distribution;
-  }, [filteredGrades]);
+  }, [grades]);
 
   // Calculate average grades by subject
   const averageBySubject = useMemo(() => 
     subjects.map(subject => {
-      const subjectGrades = filteredGrades.filter(g => g.subjectId === subject.id);
-      const average = subjectGrades.reduce((acc, g) => acc + g.value, 0) / subjectGrades.length || 0;
+      const subjectGrades = grades.filter(g => 
+        g.subjectId === subject.id && 
+        isNumericGrade(g.value)
+      );
+      const average = subjectGrades.length > 0
+        ? subjectGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / subjectGrades.length
+        : 0;
       return {
         subject: subject.name,
         average: Number(average.toFixed(2)),
       };
     }),
-    [subjects, filteredGrades]
+    [subjects, grades]
   );
 
   // Calculate average grades by group
   const averageByGroup = useMemo(() => 
     groups.map(group => {
-      const groupGrades = filteredGrades.filter(g => g.groupId === group.id);
-      const average = groupGrades.reduce((acc, g) => acc + g.value, 0) / groupGrades.length || 0;
+      const groupGrades = grades.filter(g => 
+        group.subjectIds.includes(g.subjectId) && 
+        isNumericGrade(g.value)
+      );
+      const average = groupGrades.length > 0
+        ? groupGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / groupGrades.length
+        : 0;
       return {
         group: group.name,
         average: Number(average.toFixed(2)),
       };
     }),
-    [groups, filteredGrades]
+    [groups, grades]
   );
+
+  if (loading) {
+    return <div>Загрузка статистики...</div>;
+  }
 
   return (
     <div className="space-y-6">
       <Tabs defaultValue="overview" className="w-full">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="distribution">Distribution</TabsTrigger>
-          <TabsTrigger value="subjects">By Subject</TabsTrigger>
-          <TabsTrigger value="groups">By Group</TabsTrigger>
+          <TabsTrigger value="overview">Обзор</TabsTrigger>
+          <TabsTrigger value="distribution">Распределение</TabsTrigger>
+          <TabsTrigger value="subjects">По предметам</TabsTrigger>
+          <TabsTrigger value="groups">По группам</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
           <Card>
             <CardHeader>
-              <CardTitle>Average Grades by Type</CardTitle>
+              <CardTitle>Средние оценки по типам</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
@@ -126,7 +199,7 @@ export default function GradeStatistics({
                   <BarChart data={averageByType}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="type" />
-                    <YAxis domain={[0, 100]} />
+                    <YAxis domain={[0, 5]} />
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="average" fill="#8884d8" />
@@ -140,7 +213,7 @@ export default function GradeStatistics({
         <TabsContent value="distribution">
           <Card>
             <CardHeader>
-              <CardTitle>Grade Distribution</CardTitle>
+              <CardTitle>Распределение оценок</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
@@ -155,7 +228,7 @@ export default function GradeStatistics({
                       outerRadius={100}
                       label
                     >
-                      {gradeDistribution.map((_, index) => (
+                      {gradeDistribution.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -171,7 +244,7 @@ export default function GradeStatistics({
         <TabsContent value="subjects">
           <Card>
             <CardHeader>
-              <CardTitle>Average Grades by Subject</CardTitle>
+              <CardTitle>Средние оценки по предметам</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
@@ -179,7 +252,7 @@ export default function GradeStatistics({
                   <BarChart data={averageBySubject}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="subject" />
-                    <YAxis domain={[0, 100]} />
+                    <YAxis domain={[0, 5]} />
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="average" fill="#82ca9d" />
@@ -193,7 +266,7 @@ export default function GradeStatistics({
         <TabsContent value="groups">
           <Card>
             <CardHeader>
-              <CardTitle>Average Grades by Group</CardTitle>
+              <CardTitle>Средние оценки по группам</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
@@ -201,7 +274,7 @@ export default function GradeStatistics({
                   <BarChart data={averageByGroup}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="group" />
-                    <YAxis domain={[0, 100]} />
+                    <YAxis domain={[0, 5]} />
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="average" fill="#ffc658" />

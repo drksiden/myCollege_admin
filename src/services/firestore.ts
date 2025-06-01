@@ -57,33 +57,6 @@ export const deleteUser = async (uid: string) => {
   await deleteDoc(userRef);
 };
 
-// Teachers
-export const createTeacher = async (teacherData: Omit<Teacher, 'id'>) => {
-  const teacherRef = await addDoc(collection(db, 'teachers'), teacherData);
-  return teacherRef.id;
-};
-
-export const getTeacher = async (id: string) => {
-  const teacherRef = doc(db, 'teachers', id);
-  const teacherSnap = await getDoc(teacherRef);
-  return teacherSnap.exists() ? (teacherSnap.data() as Teacher) : null;
-};
-
-export const getAllTeachers = async () => {
-  const teachersSnap = await getDocs(collection(db, 'teachers'));
-  return teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher));
-};
-
-export const updateTeacher = async (id: string, teacherData: Partial<Teacher>) => {
-  const teacherRef = doc(db, 'teachers', id);
-  await updateDoc(teacherRef, teacherData);
-};
-
-export const deleteTeacher = async (id: string) => {
-  const teacherRef = doc(db, 'teachers', id);
-  await deleteDoc(teacherRef);
-};
-
 // Students
 export const createStudent = async (studentData: Omit<Student, 'id'>) => {
   const studentRef = await addDoc(collection(db, 'students'), {

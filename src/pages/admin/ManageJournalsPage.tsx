@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle, Edit2, Trash2, BookOpen, Loader2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Edit2, Trash2, Loader2, BookOpen } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,17 +25,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-// Services
-import { getAllJournals, deleteJournal as deleteJournalService, getJournal } from '@/lib/firebaseService/journalService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
-import { getUsersFromFirestore } from '@/lib/firebaseService/userService';
-// Components
+import { getUsers } from '@/lib/firebaseService/userService';
+import { getAllJournals, deleteJournal as deleteJournalService, getJournal } from '@/lib/firebaseService/journalService';
 import JournalMetadataForm from '@/components/admin/journals/JournalMetadataForm';
 import ManageJournalEntriesView from '@/components/admin/journals/ManageJournalEntriesView';
-// Types
-import type { Journal, Group, Subject, Teacher, User } from '@/types';
+import type { Journal, Group, Subject, TeacherUser } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,8 +48,8 @@ const ManageJournalsPage: React.FC = () => {
   const [journals, setJournals] = useState<Journal[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]); 
-  const [users, setUsers] = useState<User[]>([]); 
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
   const [metadataFormMode, setMetadataFormMode] = useState<'create' | 'edit'>('create');
@@ -64,185 +60,113 @@ const ManageJournalsPage: React.FC = () => {
   
   const [journalToDelete, setJournalToDelete] = useState<Journal | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedJournals, fetchedGroups, fetchedSubjects, fetchedTeacherProfiles, fetchedUsers] = await Promise.all([
-        getAllJournals(),
+      const [allGroups, allSubjects, { users: teachers }, allJournals] = await Promise.all([
         getAllGroups(),
         getAllSubjects(),
-        getAllTeacherProfiles(),
-        getUsersFromFirestore(),
+        getUsers({ role: 'teacher' }),
+        getAllJournals(),
       ]);
-      setJournals(fetchedJournals);
-      setGroups(fetchedGroups);
-      setSubjects(fetchedSubjects);
-      setTeachers(fetchedTeacherProfiles);
-      setUsers(fetchedUsers);
+      setGroups(allGroups);
+      setSubjects(allSubjects);
+      setTeachers(teachers as TeacherUser[]);
+      setJournals(allJournals);
     } catch (error) {
-      console.error('Error fetching initial data:', error);
-      toast.error('Failed to load necessary data for journals page.');
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load data');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, []);
 
   const getGroupName = (groupId: string) => groups.find(g => g.id === groupId)?.name || 'N/A';
   const getSubjectName = (subjectId: string) => subjects.find(s => s.id === subjectId)?.name || 'N/A';
-  const getTeacherName = (teacherProfileId: string) => {
-    const teacherProfile = teachers.find(t => t.id === teacherProfileId);
-    if (!teacherProfile) return 'N/A';
-    const user = users.find(u => u.uid === teacherProfile.userId);
-    return user ? `${user.firstName} ${user.lastName}`.trim() : 'N/A';
+  const getTeacherName = (teacherId: string) => {
+    const teacher = teachers.find(t => t.uid === teacherId);
+    return teacher ? `${teacher.lastName} ${teacher.firstName}` : 'N/A';
   };
 
   const handleOpenCreateJournalDialog = () => {
-    setSelectedJournalForMetadata(null);
     setMetadataFormMode('create');
+    setSelectedJournalForMetadata(null);
     setShowMetadataDialog(true);
   };
 
-  const handleOpenEditMetadataDialog = (journal: Journal) => {
-    setSelectedJournalForMetadata(journal);
-    setMetadataFormMode('edit');
-    setShowMetadataDialog(true);
-  };
-
-  const handleMetadataFormSuccess = async (journalId: string) => {
-    setShowMetadataDialog(false);
-    await fetchData(); 
-    if (metadataFormMode === 'create') {
-      const newJournal = await getJournal(journalId); // Fetch the newly created journal
-      if (newJournal) {
-        setCurrentManagingJournal(newJournal);
-        setShowManageEntriesDialog(true); 
-      } else {
-        toast.error("Could not load the new journal to manage entries.");
-      }
-    }
-  };
-
-  const handleOpenManageEntriesDialog = async (journal: Journal) => {
-    // Fetch latest journal data before opening, especially the 'entries'
-    setIsLoading(true);
-    const freshJournal = await getJournal(journal.id);
-    if (freshJournal) {
-        setCurrentManagingJournal(freshJournal);
-        setShowManageEntriesDialog(true);
-    } else {
-        toast.error("Could not load journal details.");
-        setCurrentManagingJournal(journal); // Fallback to potentially stale data
-        setShowManageEntriesDialog(true);
-    }
-    setIsLoading(false);
-  };
-  
-  const handleEntriesUpdated = async () => {
-    if (currentManagingJournal) {
-      const updatedJournal = await getJournal(currentManagingJournal.id);
-      if (updatedJournal) {
-        setCurrentManagingJournal(updatedJournal); 
-        setJournals(prev => prev.map(j => j.id === updatedJournal.id ? updatedJournal : j));
-      } else {
-        // Journal might have been deleted in another session, close dialog and refresh main list
-        setShowManageEntriesDialog(false);
-        fetchData();
-      }
-    }
-  };
-
-  const handleDeleteJournalInitiate = (journal: Journal) => setJournalToDelete(journal);
-
-  const confirmDeleteJournal = async () => {
-    if (!journalToDelete) return;
-    setIsSubmitting(true);
+  const handleOpenEditJournalDialog = async (journalId: string) => {
     try {
-      await deleteJournalService(journalToDelete.id);
-      toast.success(`Journal deleted successfully.`);
-      await fetchData();
+      const journal = await getJournal(journalId);
+      if (journal) {
+        setMetadataFormMode('edit');
+        setSelectedJournalForMetadata(journal);
+        setShowMetadataDialog(true);
+      }
     } catch (error) {
-      toast.error('Failed to delete journal.');
-      console.error("Error deleting journal:", error);
-    } finally {
-      setJournalToDelete(null);
-      setIsSubmitting(false);
+      console.error('Error fetching journal:', error);
+      toast.error('Failed to load journal data');
     }
   };
 
-  if (isLoading && journals.length === 0) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading journals...</span></div>;
-  }
+  const handleOpenManageEntriesDialog = async (journalId: string) => {
+    try {
+      const journal = await getJournal(journalId);
+      if (journal) {
+        setCurrentManagingJournal(journal);
+        setShowManageEntriesDialog(true);
+      }
+    } catch (error) {
+      console.error('Error fetching journal:', error);
+      toast.error('Failed to load journal data');
+    }
+  };
+
+  const handleDeleteJournal = async (journalId: string) => {
+    try {
+      await deleteJournalService(journalId);
+      setJournals(journals.filter(j => j.id !== journalId));
+      toast.success('Journal deleted successfully');
+    } catch (error) {
+      console.error('Error deleting journal:', error);
+      toast.error('Failed to delete journal');
+    }
+  };
+
+  const handleMetadataFormSuccess = (journalId: string) => {
+    setShowMetadataDialog(false);
+    fetchData();
+  };
+
+  const handleEntriesUpdated = async () => {
+    await fetchData();
+  };
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <Toaster richColors position="top-right" />
-
-      <Dialog open={showMetadataDialog} onOpenChange={(open) => { if (!open) setSelectedJournalForMetadata(null); setShowMetadataDialog(open); }}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader>
-            <DialogTitle>{metadataFormMode === 'create' ? 'Создать новый журнал' : 'Редактировать детали журнала'}</DialogTitle>
-            <DialogDescription>{metadataFormMode === 'create' ? 'Выберите группу, предмет, преподавателя, семестр и год.' : `Редактирование деталей журнала.`}</DialogDescription>
-          </DialogHeader>{showMetadataDialog && <JournalMetadataForm mode={metadataFormMode} journalId={selectedJournalForMetadata?.id} onFormSubmitSuccess={handleMetadataFormSuccess} onCancel={() => setShowMetadataDialog(false)} />}</DialogContent></Dialog>
-
-      <Dialog open={showManageEntriesDialog} onOpenChange={(open) => { if (!open) setCurrentManagingJournal(null); setShowManageEntriesDialog(open); }}>
-        <DialogContent className="max-w-4xl lg:max-w-5xl xl:max-w-7xl h-[90vh] flex flex-col"><DialogHeader>
-            <DialogTitle>Управление записями журнала</DialogTitle>
-            {currentManagingJournal && (<DialogDescription>
-                Группа: {getGroupName(currentManagingJournal.groupId)} | Предмет: {getSubjectName(currentManagingJournal.subjectId)} | Преподаватель: {getTeacherName(currentManagingJournal.teacherId)} <br/>
-                Семестр: {currentManagingJournal.semester} | Год: {currentManagingJournal.year}
-              </DialogDescription>)}
-          </DialogHeader>
-          {currentManagingJournal && (
-            <ManageJournalEntriesView
-              journal={currentManagingJournal}
-              group={groups.find(g => g.id === currentManagingJournal.groupId) || null}
-              onEntriesUpdated={handleEntriesUpdated}
-              className="h-full"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!journalToDelete} onOpenChange={(open) => !open && setJournalToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить журнал?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Это действие нельзя отменить. Это навсегда удалит журнал и все его записи.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteJournal} disabled={isSubmitting}>
-              {isSubmitting ? 'Удаление...' : 'Удалить'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
+    <div className="container mx-auto py-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Журналы</h1>
+        <h1 className="text-2xl font-bold">Управление журналами</h1>
         <Button onClick={handleOpenCreateJournalDialog}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Создать журнал
         </Button>
       </div>
 
-      <div className="rounded-md border">
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Группа</TableHead>
               <TableHead>Предмет</TableHead>
               <TableHead>Преподаватель</TableHead>
-              <TableHead>Семестр</TableHead>
-              <TableHead>Год</TableHead>
+              <TableHead>Дата</TableHead>
               <TableHead className="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
@@ -252,30 +176,28 @@ const ManageJournalsPage: React.FC = () => {
                 <TableCell>{getGroupName(journal.groupId)}</TableCell>
                 <TableCell>{getSubjectName(journal.subjectId)}</TableCell>
                 <TableCell>{getTeacherName(journal.teacherId)}</TableCell>
-                <TableCell>{journal.semester}</TableCell>
-                <TableCell>{journal.year}</TableCell>
+                <TableCell>{journal.date.toDate().toLocaleDateString()}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Открыть меню</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleOpenManageEntriesDialog(journal)}>
+                      <DropdownMenuItem onClick={() => handleOpenManageEntriesDialog(journal.id)}>
                         <BookOpen className="mr-2 h-4 w-4" />
                         Управление записями
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleOpenEditMetadataDialog(journal)}>
+                      <DropdownMenuItem onClick={() => handleOpenEditJournalDialog(journal.id)}>
                         <Edit2 className="mr-2 h-4 w-4" />
                         Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-red-600"
-                        onClick={() => handleDeleteJournalInitiate(journal)}
+                        onClick={() => setJournalToDelete(journal)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Удалить
@@ -287,7 +209,73 @@ const ManageJournalsPage: React.FC = () => {
             ))}
           </TableBody>
         </Table>
-      </div>
+      )}
+
+      <Dialog open={showMetadataDialog} onOpenChange={setShowMetadataDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {metadataFormMode === 'create' ? 'Создание журнала' : 'Редактирование журнала'}
+            </DialogTitle>
+            <DialogDescription>
+              {metadataFormMode === 'create'
+                ? 'Заполните информацию о новом журнале'
+                : 'Измените информацию о журнале'}
+            </DialogDescription>
+          </DialogHeader>
+          <JournalMetadataForm
+            mode={metadataFormMode}
+            journalId={selectedJournalForMetadata?.id}
+            onFormSubmitSuccess={handleMetadataFormSuccess}
+            onCancel={() => setShowMetadataDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showManageEntriesDialog} onOpenChange={setShowManageEntriesDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Управление записями журнала</DialogTitle>
+            <DialogDescription>
+              Добавляйте и редактируйте записи в журнале
+            </DialogDescription>
+          </DialogHeader>
+          {currentManagingJournal && (
+            <ManageJournalEntriesView
+              journal={currentManagingJournal}
+              group={groups.find(g => g.id === currentManagingJournal.groupId) || null}
+              onEntriesUpdated={handleEntriesUpdated}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!journalToDelete} onOpenChange={() => setJournalToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Подтверждение удаления</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить этот журнал? Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (journalToDelete) {
+                  handleDeleteJournal(journalToDelete.id);
+                  setJournalToDelete(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Toaster />
     </div>
   );
 };

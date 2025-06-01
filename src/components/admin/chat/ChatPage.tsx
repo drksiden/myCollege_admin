@@ -10,21 +10,20 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { createChat, deleteChat, sendMessage, deleteMessage, subscribeToChatMessages, subscribeToUserChats, createGroupChat, sendMassMessage } from '@/lib/firebaseService/chatService';
+import { createChat, deleteChat, sendMessage, subscribeToChatMessages, subscribeToUserChats, createGroupChat, sendMassMessage } from '@/lib/firebaseService/chatService';
 import { getUsers } from '@/lib/firebaseService/userService';
-import type { Chat, Message, User } from '@/types';
-import { ChatType } from '@/types';
+import type { Chat, Message, AppUser } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useAuth } from '@/lib/auth';
-import { Trash2, Send, Users, MessageSquare, Megaphone } from 'lucide-react';
+import { Trash2, Send, Users, MessageSquare, Megaphone, User } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { notificationService } from '@/lib/firebaseService/notificationService';
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -76,7 +75,7 @@ export default function ChatPage() {
     try {
       const data = await getUsers();
       // Фильтруем пользователей: исключаем только текущего пользователя
-      const filteredUsers = data.filter(u => u.uid !== user?.uid);
+      const filteredUsers = data.users.filter(u => u.uid !== user?.uid);
       setUsers(filteredUsers);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -88,7 +87,7 @@ export default function ChatPage() {
     if (!user || !selectedUser) return;
 
     try {
-      await createChat([user.uid, selectedUser], ChatType.PRIVATE);
+      await createChat([user.uid, selectedUser], 'private');
       setIsNewChatDialogOpen(false);
       setSelectedUser('');
       toast.success('Чат успешно создан');
@@ -127,22 +126,17 @@ export default function ChatPage() {
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    if (window.confirm('Вы уверены, что хотите удалить этот чат?')) {
-      try {
-        await deleteChat(chatId);
-        if (selectedChat?.id === chatId) {
-          setSelectedChat(null);
-          setMessages([]);
-        }
-        toast.success('Чат успешно удален');
-      } catch (error) {
-        console.error('Ошибка при удалении чата:', error);
-        toast.error('Не удалось удалить чат');
-      }
+    try {
+      await deleteChat(chatId);
+      setSelectedChat(null);
+      setMessages([]);
+    } catch {
+      toast.error('Ошибка при удалении чата');
     }
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user || !selectedChat || !newMessage.trim()) return;
 
     try {
@@ -154,22 +148,12 @@ export default function ChatPage() {
     }
   };
 
-  const handleDeleteMessage = async (messageId: string) => {
-    try {
-      await deleteMessage(messageId);
-      toast.success('Сообщение успешно удалено');
-    } catch (error) {
-      console.error('Ошибка при удалении сообщения:', error);
-      toast.error('Не удалось удалить сообщение');
-    }
-  };
-
   const getChatParticipant = (chat: Chat) => {
     if (!user) return null;
-    if (chat.type === ChatType.GROUP) {
+    if (chat.type === 'group') {
       return { firstName: chat.name, lastName: '' };
     }
-    const participantId = chat.participants.find(id => id !== user.uid);
+    const participantId = chat.participantIds.find(id => id !== user.uid);
     return users.find(u => u.uid === participantId);
   };
 
@@ -298,7 +282,6 @@ export default function ChatPage() {
         <div className="col-span-4 border rounded-lg">
           <ScrollArea className="h-full">
             {chats.map((chat) => {
-              const participant = getChatParticipant(chat);
               return (
                 <div
                   key={chat.id}
@@ -310,25 +293,21 @@ export default function ChatPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="font-medium">
-                        {chat.type === ChatType.GROUP ? (
+                        {chat.type === 'group' ? (
                           <span className="flex items-center">
                             <Users className="w-4 h-4 mr-2" />
                             {chat.name}
                           </span>
-                        ) : chat.type === ChatType.CHANNEL ? (
-                          <span className="flex items-center">
-                            <Megaphone className="w-4 h-4 mr-2" />
-                            Рассылка
-                          </span>
                         ) : (
-                          participant ? `${participant.firstName} ${participant.lastName}` : 'Неизвестный пользователь'
+                          <span className="flex items-center">
+                            <User className="w-4 h-4 mr-2" />
+                            {getChatParticipant(chat)?.firstName} {getChatParticipant(chat)?.lastName}
+                          </span>
                         )}
                       </div>
-                      {chat.lastMessage && (
-                        <div className="text-sm text-muted-foreground truncate">
-                          {chat.lastMessage.content}
-                        </div>
-                      )}
+                      <div className="text-sm text-gray-500">
+                        {chat.lastMessageText || 'Нет сообщений'}
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
@@ -352,19 +331,16 @@ export default function ChatPage() {
             <>
               <div className="p-4 border-b">
                 <div className="font-medium">
-                  {selectedChat.type === ChatType.GROUP ? (
+                  {selectedChat.type === 'group' ? (
                     <span className="flex items-center">
                       <Users className="w-4 h-4 mr-2" />
                       {selectedChat.name}
                     </span>
-                  ) : selectedChat.type === ChatType.CHANNEL ? (
-                    <span className="flex items-center">
-                      <Megaphone className="w-4 h-4 mr-2" />
-                      Рассылка
-                    </span>
                   ) : (
-                    getChatParticipant(selectedChat)?.firstName + ' ' +
-                    getChatParticipant(selectedChat)?.lastName
+                    <span className="flex items-center">
+                      <User className="w-4 h-4 mr-2" />
+                      {getChatParticipant(selectedChat)?.firstName} {getChatParticipant(selectedChat)?.lastName}
+                    </span>
                   )}
                 </div>
               </div>
@@ -374,9 +350,7 @@ export default function ChatPage() {
                   {messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`flex ${
-                        message.senderId === user?.uid ? 'justify-end' : 'justify-start'
-                      }`}
+                      className={`flex ${message.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
                         className={`max-w-[70%] rounded-lg p-3 ${
@@ -385,20 +359,8 @@ export default function ChatPage() {
                             : 'bg-muted'
                         }`}
                       >
-                        <div className="flex justify-between items-start gap-4">
-                          <div>{message.content}</div>
-                          {message.senderId === user?.uid && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => handleDeleteMessage(message.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                        <div className="text-xs mt-1 opacity-70">
+                        <div className="text-sm">{message.text}</div>
+                        <div className="text-xs opacity-70 mt-1">
                           {format(message.createdAt.toDate(), 'HH:mm')}
                         </div>
                       </div>
@@ -416,7 +378,7 @@ export default function ChatPage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        handleSendMessage();
+                        handleSendMessage(e);
                       }
                     }}
                   />

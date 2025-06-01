@@ -5,18 +5,14 @@ import AdminLayout from './components/layout/AdminLayout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import DashboardPage from './pages/admin/DashboardPage';
 import { GroupDetailsPage } from './components/admin/groups/GroupDetailsPage';
-import TeacherProfilePage from './components/admin/teachers/TeacherProfilePage';
 import SchedulePage from './pages/admin/SchedulePage';
-import AttendancePage from './components/admin/attendance/AttendancePage';
-import StudentProfilePage from './components/admin/students/StudentProfilePage';
-import GradesPage from './components/admin/grades/GradesPage';
+import { AttendancePage } from './components/admin/attendance/AttendancePage';
+import { GradesPage } from './components/admin/grades/GradesPage';
 import ManageUsersPage from './pages/admin/ManageUsersPage';
 import ManageGroupsPage from './pages/admin/ManageGroupsPage';
 import ManageJournalsPage from './pages/admin/ManageJournalsPage';
 import ManageSchedulesPage from './pages/admin/ManageSchedulesPage';
-import ManageStudentsPage from './pages/admin/ManageStudentsPage';
 import ManageSubjectsPage from './pages/admin/ManageSubjectsPage';
-import ManageTeachersPage from './pages/admin/ManageTeachersPage';
 import ChatPage from './pages/admin/ChatPage';
 import NewsPage from './pages/admin/NewsPage';
 import { useAuth } from './contexts/AuthContext';
@@ -46,8 +42,6 @@ function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           
           {/* Основные страницы */}
-          <Route path="students/:studentId" element={<StudentProfilePage />} />
-          <Route path="teachers/:teacherId" element={<TeacherProfilePage />} />
           <Route path="groups/:groupId" element={<GroupDetailsPage />} />
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="grades" element={<GradesPage />} />
@@ -58,9 +52,7 @@ function App() {
           <Route path="manage/groups" element={<ManageGroupsPage />} />
           <Route path="manage/journals" element={<ManageJournalsPage />} />
           <Route path="manage/schedules" element={<ManageSchedulesPage />} />
-          <Route path="manage/students" element={<ManageStudentsPage />} />
           <Route path="manage/subjects" element={<ManageSubjectsPage />} />
-          <Route path="manage/teachers" element={<ManageTeachersPage />} />
 
           {/* Новые разделы */}
           <Route path="chat" element={<ChatPage />} />

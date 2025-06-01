@@ -13,6 +13,7 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
+import { useAuth } from '@/lib/auth';
 
 interface NewsEditorProps {
   news?: News | null;
@@ -20,6 +21,7 @@ interface NewsEditorProps {
 }
 
 export default function NewsEditor({ news, onClose }: NewsEditorProps) {
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -107,6 +109,11 @@ export default function NewsEditor({ news, onClose }: NewsEditorProps) {
       return;
     }
 
+    if (!user?.uid) {
+      setError('Пользователь не авторизован');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -116,7 +123,7 @@ export default function NewsEditor({ news, onClose }: NewsEditorProps) {
         content: editor.getHTML(),
         tags,
         images,
-        authorId: 'current-user-id', // TODO: Get from auth context
+        authorId: user.uid,
         isPublished: false,
       };
 

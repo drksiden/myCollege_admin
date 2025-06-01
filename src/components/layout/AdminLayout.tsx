@@ -8,8 +8,6 @@ import {
   Users,
   LogOut,
   Settings,
-  GraduationCap,
-  UserCog,
   BookOpen,
   ClipboardList,
   BookMarked,
@@ -57,16 +55,6 @@ const Sidebar: React.FC = () => {
           to: '/admin/manage/users',
           icon: <Users className="h-5 w-5" />,
           label: 'Пользователи',
-        },
-        {
-          to: '/admin/manage/students',
-          icon: <GraduationCap className="h-5 w-5" />,
-          label: 'Студенты',
-        },
-        {
-          to: '/admin/manage/teachers',
-          icon: <UserCog className="h-5 w-5" />,
-          label: 'Преподаватели',
         },
         {
           to: '/admin/manage/groups',

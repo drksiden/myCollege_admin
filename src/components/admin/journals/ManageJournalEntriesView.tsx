@@ -25,9 +25,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { addOrUpdateJournalEntriesForDate, removeJournalEntriesForDate } from '@/lib/firebaseService/journalService';
-import { getStudentsInGroupDetails } from '@/lib/firebaseService/groupService';
-import { getUsersFromFirestoreByIds } from '@/lib/firebaseService/userService';
-import type { Journal, Student, Group, User, JournalEntry } from '@/types';
+import { getUsers } from '@/lib/firebaseService/userService';
+import type { Journal, Group, StudentUser } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import {
   AlertDialog,
@@ -69,7 +68,7 @@ const manageEntriesSchema = z.object({
 
 type FormValues = z.infer<typeof manageEntriesSchema>;
 
-interface StudentWithUserData extends Student {
+interface StudentWithUserData extends StudentUser {
   fullName?: string;
 }
 
@@ -109,39 +108,20 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
 
   useEffect(() => {
     const fetchStudents = async () => {
-      if (!group || !Array.isArray(group.students) || group.students.length === 0) {
+      if (!group) {
         setStudentsInGroup([]);
         setIsStudentDataLoading(false);
         return;
       }
       setIsStudentDataLoading(true);
       try {
-        const validStudentIds = group.students.filter(Boolean);
-        if (validStudentIds.length === 0) {
-          setStudentsInGroup([]);
-          setIsStudentDataLoading(false);
-          return;
-        }
-        const studentProfiles = await getStudentsInGroupDetails(validStudentIds);
-        if (!studentProfiles.length) {
-          setStudentsInGroup([]);
-          setIsStudentDataLoading(false);
-          return;
-        }
-        const userIds = studentProfiles.map(s => s.userId).filter(Boolean);
-        let users: User[] = [];
-        if (userIds.length > 0) {
-          users = await getUsersFromFirestoreByIds(userIds);
-        }
-        const userMap = new Map(users.map(u => [u.uid, u]));
-        const studentsWithNames = studentProfiles.map(sp => ({
-          ...sp,
-          fullName: (() => {
-            const user = userMap.get(sp.userId);
-            if (!user) return 'Нет данных';
-            return `${user.lastName || ''} ${user.firstName || ''} ${user.middleName || ''}`.trim() || 'Безымянный студент';
-          })()
-        }));
+        const { users } = await getUsers({ role: 'student' });
+        const studentsWithNames = users
+          .filter((user): user is StudentUser => user.role === 'student' && user.groupId === group.id)
+          .map(user => ({
+            ...user,
+            fullName: `${user.lastName || ''} ${user.firstName || ''} ${user.middleName || ''}`.trim() || 'Безымянный студент'
+          }));
         setStudentsInGroup(studentsWithNames);
       } catch (error) {
         toast.error("Не удалось загрузить студентов для группы.");
@@ -159,69 +139,65 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       replace([]);
       return;
     }
-    const dateNormalized = startOfDay(selectedDate);
-    const entriesForDate = Array.isArray(journal.entries)
-      ? journal.entries.filter(entry => entry && entry.date && isEqual(startOfDay(entry.date.toDate()), dateNormalized))
-      : [];
 
-    if (!entriesForDate.length) {
-      const emptyEntries = studentsInGroup.map(student => ({
-        studentId: student.id,
-        studentName: student.fullName || 'Unknown Student',
-        attendance: 'present' as const,
-        grade: undefined,
-        comment: "",
-      }));
+    const emptyEntries = studentsInGroup.map(student => ({
+      studentId: student.uid,
+      studentName: student.fullName || 'Unknown Student',
+      attendance: 'present' as const,
+      grade: undefined,
+      comment: "",
+    }));
+
+    // Если нет записей в журнале, возвращаем пустые записи
+    if (!journal.attendance || !journal.grades) {
       replace(emptyEntries);
       return;
     }
 
+    // Заполняем записи данными из журнала
     const filledEntries = studentsInGroup.map(student => {
-      const entry = entriesForDate.find(e => e && Array.isArray(e.attendance) && e.attendance.find(a => a.studentId === student.id));
-      let attendance: 'present' | 'absent' | 'late' = 'present';
-      if (entry?.attendance) {
-        const studentAttendance = Array.isArray(entry.attendance) ? entry.attendance.find(a => a.studentId === student.id) : undefined;
-        if (studentAttendance) {
-          if (studentAttendance.status === 'present' || studentAttendance.status === 'absent' || studentAttendance.status === 'late') {
-            attendance = studentAttendance.status;
-          } else if (studentAttendance.status === 'excused') {
-            attendance = 'absent';
-          }
-        }
-      }
+      const attendance = journal.attendance.find(a => a.studentId === student.uid);
+      const grade = journal.grades.find(g => g.studentId === student.uid);
+
       return {
-        studentId: student.id,
+        studentId: student.uid,
         studentName: student.fullName || 'Unknown Student',
-        attendance,
-        grade: undefined,
-        comment: entry?.notes || "",
+        attendance: attendance?.present ? 'present' as const : 'absent' as const,
+        grade: grade?.grade,
+        comment: grade?.comment || "",
       };
     });
+
     replace(filledEntries);
-  }, [selectedDate, studentsInGroup, journal.entries, replace]);
+  }, [selectedDate, studentsInGroup, journal.attendance, journal.grades, replace]);
 
   const onSubmit: SubmitHandler<FormValues> = async (values) => {
     setIsSubmitting(true);
     try {
       const dateForFirestore = Timestamp.fromDate(startOfDay(values.selectedDate));
-      const entriesToSave: JournalEntry[] = values.entries.map(e => ({
-        id: `${dateForFirestore.toMillis()}-${e.studentId}`,
-        journalId: journal.id,
-        date: dateForFirestore,
-        topic: journal.entries.find(entry => entry.date.isEqual(dateForFirestore))?.topic || '',
-        hours: 0,
-        type: 'lecture',
-        notes: e.comment,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      }));
+      
+      // Обновляем журнал с новыми данными
+      const updatedJournal: Partial<Journal> = {
+        attendance: values.entries.map(e => ({
+          studentId: e.studentId,
+          present: e.attendance === 'present'
+        })),
+        grades: values.entries
+          .filter(e => e.grade !== undefined)
+          .map(e => ({
+            studentId: e.studentId,
+            grade: e.grade!,
+            comment: e.comment
+          })),
+        updatedAt: Timestamp.now()
+      };
 
-      await addOrUpdateJournalEntriesForDate(journal.id, dateForFirestore, entriesToSave);
-      toast.success(`Entries for ${format(values.selectedDate, "PPP")} saved successfully.`);
+      await addOrUpdateJournalEntriesForDate(journal.id, dateForFirestore, [updatedJournal]);
+      toast.success(`Записи за ${format(values.selectedDate, "PPP")} успешно сохранены.`);
       onEntriesUpdated();
     } catch (error) {
       console.error("Error saving journal entries:", error);
-      toast.error("Failed to save entries.");
+      toast.error("Не удалось сохранить записи.");
     } finally {
       setIsSubmitting(false);
     }
@@ -232,11 +208,11 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
     setIsSubmitting(true);
     try {
       await removeJournalEntriesForDate(journal.id, dateToDelete);
-      toast.success(`All entries for ${format(dateToDelete.toDate(), "PPP")} deleted.`);
+      toast.success(`Все записи за ${format(dateToDelete.toDate(), "PPP")} удалены.`);
       onEntriesUpdated();
       if (selectedDate && isEqual(startOfDay(selectedDate), startOfDay(dateToDelete.toDate()))) {
         const resetEntries = studentsInGroup.map(student => ({
-          studentId: student.id,
+          studentId: student.uid,
           studentName: student.fullName || 'Unknown Student',
           attendance: 'present' as const,
           grade: undefined,
@@ -246,7 +222,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       }
     } catch (error) {
       console.error("Error deleting entries for date:", error);
-      toast.error("Failed to delete entries for the date.");
+      toast.error("Не удалось удалить записи за эту дату.");
     } finally {
       setIsSubmitting(false);
       setShowDeleteConfirm(false);
@@ -257,11 +233,10 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   const openDeleteConfirm = () => {
     if (selectedDate) {
       const dateNormalized = startOfDay(selectedDate);
-      const entriesExistForDate = journal.entries.some(entry =>
-        isEqual(startOfDay(entry.date.toDate()), dateNormalized)
-      );
-      if (!entriesExistForDate) {
-        toast.info(`No entries exist for ${format(selectedDate, "PPP")} to delete.`);
+      const hasEntries = journal.attendance?.length > 0 || journal.grades?.length > 0;
+      
+      if (!hasEntries) {
+        toast.info(`Нет записей за ${format(selectedDate, "PPP")} для удаления.`);
         return;
       }
       setDateToDelete(Timestamp.fromDate(dateNormalized));

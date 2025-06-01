@@ -1,22 +1,135 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Функция для проверки роли администратора
-    function isAdmin() {
-      return request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // --- Вспомогательные функции ---
+    
+    // Проверка роли админа
+    function isAdmin(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'admin';
     }
 
-    // Правила для коллекции users
+    // Проверка, что пользователь аутентифицирован
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Проверка, что пользователь является владельцем документа
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Проверка, что пользователь является студентом
+    function isStudent(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'student';
+    }
+
+    // Проверка, что пользователь является преподавателем
+    function isTeacher(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'teacher';
+    }
+
+    // --- Правила для коллекции 'users' ---
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
+      // Чтение: любой аутентифицированный пользователь может читать профили
+      allow read: if isAuthenticated();
+
+      // Создание: только с ролью pending_approval и без защищенных полей
+      allow create: if
+        isOwner(userId) &&
+        request.resource.data.role == 'pending_approval' &&
+        request.resource.data.status == 'pending_approval' &&
+        !('groupId' in request.resource.data) &&
+        !('specialization' in request.resource.data) &&
+        !('subjects' in request.resource.data) &&
+        !('experience' in request.resource.data) &&
+        !('education' in request.resource.data);
+
+      // Обновление: владелец может обновлять свой профиль, но не может менять роль/статус
+      // Админ может обновлять любой профиль
+      allow update: if
+        (isOwner(userId) &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.status == resource.data.status) ||
+        isAdmin(request.auth.uid);
+
+      // Удаление: только админ
+      allow delete: if isAdmin(request.auth.uid);
     }
 
-    // Правила для всех остальных коллекций
-    match /{document=**} {
-      allow read, write: if isAdmin();
+    // --- Правила для коллекции 'semesters' ---
+    match /semesters/{semesterId} {
+      // Чтение: любой аутентифицированный пользователь
+      allow read: if isAuthenticated();
+
+      // Создание: только админ
+      allow create: if isAdmin(request.auth.uid);
+
+      // Обновление: только админ
+      allow update: if isAdmin(request.auth.uid);
+
+      // Удаление: только админ
+      allow delete: if isAdmin(request.auth.uid);
+    }
+
+    // --- Правила для коллекции 'groups' ---
+    match /groups/{groupId} {
+      // Чтение: любой аутентифицированный пользователь
+      allow read: if isAuthenticated();
+
+      // Создание: только админ
+      allow create: if isAdmin(request.auth.uid);
+
+      // Обновление: только админ
+      allow update: if isAdmin(request.auth.uid);
+
+      // Удаление: только админ
+      allow delete: if isAdmin(request.auth.uid);
+    }
+
+    // --- Правила для коллекции 'subjects' ---
+    match /subjects/{subjectId} {
+      // Чтение: любой аутентифицированный пользователь
+      allow read: if isAuthenticated();
+
+      // Создание: только админ
+      allow create: if isAdmin(request.auth.uid);
+
+      // Обновление: только админ
+      allow update: if isAdmin(request.auth.uid);
+
+      // Удаление: только админ
+      allow delete: if isAdmin(request.auth.uid);
+    }
+
+    // --- Правила для коллекции 'journals' ---
+    match /journals/{journalId} {
+      // Чтение: преподаватель, который ведет предмет, или админ
+      allow read: if 
+        isAuthenticated() && (
+          isAdmin(request.auth.uid) ||
+          (isTeacher(request.auth.uid) && 
+           resource.data.teacherId == request.auth.uid)
+        );
+
+      // Создание: только преподаватель или админ
+      allow create: if 
+        isAuthenticated() && (
+          isAdmin(request.auth.uid) ||
+          (isTeacher(request.auth.uid) && 
+           request.resource.data.teacherId == request.auth.uid)
+        );
+
+      // Обновление: только преподаватель, который ведет предмет, или админ
+      allow update: if 
+        isAuthenticated() && (
+          isAdmin(request.auth.uid) ||
+          (isTeacher(request.auth.uid) && 
+           resource.data.teacherId == request.auth.uid)
+        );
+
+      // Удаление: только админ
+      allow delete: if isAdmin(request.auth.uid);
     }
   }
 } 

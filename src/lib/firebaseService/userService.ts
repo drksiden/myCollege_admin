@@ -22,10 +22,12 @@ import {
   startAfter,
   DocumentSnapshot,
   documentId,
+  Timestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { User } from '@/types';
 import { db } from '@/lib/firebase';
+import type { AppUser, UserRole, UserStatus, StudentData, TeacherData } from '@/types/index';
 // import { getAuth, deleteUser as deleteAuthUser } from 'firebase/auth'; // unused
 // import { format } from 'date-fns'; // unused
 
@@ -202,140 +204,217 @@ export const deleteUserFromFirestore = async (db: Firestore, uid: string): Promi
   }
 };
 
+const USERS_COLLECTION = 'users';
+
 /**
- * Fetches a single user by ID from Firestore.
- * @param db Firestore instance.
- * @param uid User's UID.
- * @returns Promise<User | null>
+ * Gets a user by their ID
+ * @param userId The ID of the user to retrieve
+ * @returns Promise<AppUser | null> The user or null if not found
  */
-export const getUserById = async (
-  db: Firestore,
-  uid: string
-): Promise<User | null> => {
-  const userRef = doc(db, 'users', uid);
-  const userSnap = await getDoc(userRef);
-  
+export const getUserById = async (userId: string): Promise<AppUser | null> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  const userSnap = await getDoc(userDocRef);
+
   if (!userSnap.exists()) {
+    console.warn(`User with ID ${userId} not found.`);
     return null;
   }
 
   return {
     uid: userSnap.id,
     ...userSnap.data(),
-  } as User;
+  } as AppUser;
 };
 
 /**
- * Fetches users filtered by role.
- * @param db Firestore instance.
- * @param role User role to filter by.
- * @returns Promise<User[]>
+ * Gets users with optional filtering by role and pagination
+ * @param options Optional parameters for filtering and pagination
+ * @returns Promise<{ users: AppUser[], lastDoc: DocumentSnapshot | null }>
  */
-export const getUsersByRole = async (
-  db: Firestore,
-  role: User['role']
-): Promise<User[]> => {
-  const usersCollection = collection(db, 'users');
-  const q = query(
-    usersCollection,
-    where('role', '==', role),
+export const getUsers = async (options: {
+  role?: UserRole;
+  status?: UserStatus;
+  limit?: number;
+  startAfterDoc?: DocumentSnapshot;
+} = {}): Promise<{ users: AppUser[]; lastDoc: DocumentSnapshot | null }> => {
+  const { role, status, limit: limitCount = 20, startAfterDoc } = options;
+
+  let q = query(
+    collection(db, USERS_COLLECTION),
     orderBy('createdAt', 'desc')
   );
-  
-  const usersSnapshot = await getDocs(q);
-  return usersSnapshot.docs.map(docSnapshot => ({
-    uid: docSnapshot.id,
-    ...docSnapshot.data(),
-  } as User));
-};
 
-/**
- * Fetches users with pagination.
- * @param db Firestore instance.
- * @param pageSize Number of users per page.
- * @param lastDoc Last document from previous page (for pagination).
- * @returns Promise<{ users: User[], lastDoc: DocumentSnapshot | null }>
- */
-export const getUsersWithPagination = async (
-  db: Firestore,
-  pageSize: number = 10,
-  lastDoc: DocumentSnapshot | null = null
-): Promise<{ users: User[], lastDoc: DocumentSnapshot | null }> => {
-  const usersCollection = collection(db, 'users');
-  let q = query(
-    usersCollection,
-    orderBy('createdAt', 'desc'),
-    limit(pageSize)
-  );
-
-  if (lastDoc) {
-    q = query(q, startAfter(lastDoc));
+  if (role) {
+    q = query(q, where('role', '==', role));
   }
 
-  const usersSnapshot = await getDocs(q);
-  const users = usersSnapshot.docs.map(docSnapshot => ({
-    uid: docSnapshot.id,
-    ...docSnapshot.data(),
-  } as User));
+  if (status) {
+    q = query(q, where('status', '==', status));
+  }
 
-  const lastVisible = usersSnapshot.docs[usersSnapshot.docs.length - 1] || null;
+  if (limitCount) {
+    q = query(q, limit(limitCount));
+  }
 
-  return {
-    users,
-    lastDoc: lastVisible,
-  };
+  if (startAfterDoc) {
+    q = query(q, startAfter(startAfterDoc));
+  }
+
+  const querySnapshot = await getDocs(q);
+  const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
+
+  const users = querySnapshot.docs.map(doc => ({
+    uid: doc.id,
+    ...doc.data(),
+  })) as AppUser[];
+
+  return { users, lastDoc };
 };
 
 /**
- * Searches users by name or email.
- * @param db Firestore instance.
- * @param searchTerm Search term to look for in firstName, lastName, or email.
- * @returns Promise<User[]>
+ * Updates a user's data
+ * @param userId The ID of the user to update
+ * @param dataToUpdate The data to update
+ * @returns Promise<void>
  */
-export const searchUsers = async (
-  db: Firestore,
-  searchTerm: string
-): Promise<User[]> => {
-  const usersCollection = collection(db, 'users');
+export const updateUser = async (
+  userId: string,
+  dataToUpdate: Partial<Omit<AppUser, 'uid' | 'createdAt' | 'updatedAt'>>
+): Promise<void> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  await updateDoc(userDocRef, {
+    ...dataToUpdate,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * Deletes a user
+ * @param userId The ID of the user to delete
+ * @returns Promise<void>
+ */
+export const deleteUser = async (userId: string): Promise<void> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  await deleteDoc(userDocRef);
+};
+
+/**
+ * Approves a pending user
+ * @param userId The ID of the user to approve
+ * @param approvalData The data needed for approval based on role
+ * @returns Promise<void>
+ */
+export const approveUser = async (
+  userId: string,
+  approvalData: {
+    role: UserRole;
+    groupId?: string;
+    specialization?: string;
+    education?: string;
+    experience?: number;
+  }
+): Promise<void> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  const userSnap = await getDoc(userDocRef);
+
+  if (!userSnap.exists()) {
+    throw new Error(`User with ID ${userId} not found.`);
+  }
+
+  const userData = userSnap.data() as AppUser;
+  if (userData.status !== 'pending_approval') {
+    throw new Error('User is not pending approval.');
+  }
+
+  const baseUpdateData = {
+    status: 'active' as const,
+    role: approvalData.role,
+    updatedAt: serverTimestamp(),
+  };
+
+  let roleSpecificData = {};
+  if (approvalData.role === 'student' && approvalData.groupId) {
+    roleSpecificData = {
+      groupId: approvalData.groupId,
+    } as Partial<StudentData>;
+  } else if (approvalData.role === 'teacher') {
+    roleSpecificData = {
+      specialization: approvalData.specialization,
+      education: approvalData.education,
+      experience: approvalData.experience,
+      subjects: [],
+    } as Partial<TeacherData>;
+  }
+
+  await updateDoc(userDocRef, {
+    ...baseUpdateData,
+    ...roleSpecificData,
+  });
+};
+
+/**
+ * Suspends a user
+ * @param userId The ID of the user to suspend
+ * @returns Promise<void>
+ */
+export const suspendUser = async (userId: string): Promise<void> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  await updateDoc(userDocRef, {
+    status: 'suspended',
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * Reactivates a suspended user
+ * @param userId The ID of the user to reactivate
+ * @returns Promise<void>
+ */
+export const reactivateUser = async (userId: string): Promise<void> => {
+  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  await updateDoc(userDocRef, {
+    status: 'active',
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * Searches users by name or email
+ * @param searchTerm Search term to look for in firstName, lastName, or email
+ * @returns Promise<AppUser[]>
+ */
+export const searchUsers = async (searchTerm: string): Promise<AppUser[]> => {
+  const usersCollection = collection(db, USERS_COLLECTION);
   const usersSnapshot = await getDocs(usersCollection);
   
   const searchTermLower = searchTerm.toLowerCase();
   
   return usersSnapshot.docs
-    .map(docSnapshot => ({
-      uid: docSnapshot.id,
-      ...docSnapshot.data(),
-    } as User))
+    .map(doc => ({
+      uid: doc.id,
+      ...doc.data(),
+    } as AppUser))
     .filter(user => 
       user.firstName.toLowerCase().includes(searchTermLower) ||
       user.lastName.toLowerCase().includes(searchTermLower) ||
-      user.email.toLowerCase().includes(searchTermLower)
+      (user.email && user.email.toLowerCase().includes(searchTermLower))
     );
 };
 
-export const getUsers = async (): Promise<User[]> => {
-  const usersRef = collection(db, 'users');
-  const snapshot = await getDocs(usersRef);
-  return snapshot.docs.map(doc => ({
-    uid: doc.id,
-    ...doc.data()
-  })) as User[];
-};
-
 /**
- * Fetches users by their IDs from Firestore.
- * @param userIds Array of user IDs to fetch.
- * @returns Promise<User[]>
+ * Gets users by their IDs
+ * @param userIds Array of user IDs to fetch
+ * @returns Promise<AppUser[]>
  */
-export const getUsersFromFirestoreByIds = async (userIds: string[]): Promise<User[]> => {
+export const getUsersByIds = async (userIds: string[]): Promise<AppUser[]> => {
   if (!userIds.length) return [];
   
-  const usersCollection = collection(db, 'users');
+  const usersCollection = collection(db, USERS_COLLECTION);
   const q = query(usersCollection, where(documentId(), 'in', userIds));
   const usersSnapshot = await getDocs(q);
   
-  return usersSnapshot.docs.map(docSnapshot => ({
-    uid: docSnapshot.id,
-    ...docSnapshot.data(),
-  } as User));
+  return usersSnapshot.docs.map(doc => ({
+    uid: doc.id,
+    ...doc.data(),
+  } as AppUser));
 };

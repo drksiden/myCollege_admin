@@ -23,6 +23,10 @@ import { createNews, getNews, updateNews, deleteNews } from '@/lib/firebaseServi
 import type { News } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useAuth } from '@/lib/auth';
+import { Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import NewsList from '@/components/admin/news/NewsList';
+import NewsEditor from '@/components/admin/news/NewsEditor';
 
 interface NewsFormProps {
   mode: 'create' | 'edit';
@@ -37,23 +41,63 @@ const NewsForm: React.FC<NewsFormProps> = ({
   onFormSubmitSuccess,
   onCancel,
 }) => {
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [imageUrl, setImageUrl] = useState<string | undefined>();
   const [isPublished, setIsPublished] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (newsId) {
+      loadNews(newsId);
+    }
+  }, [newsId]);
+
+  const loadNews = async (id: string) => {
+    try {
+      setIsLoading(true);
+      const news = await getNews(id);
+      if (news) {
+        setTitle(news.title);
+        setContent(news.content);
+        setImageUrl(news.imageUrl);
+        setIsPublished(news.isPublished);
+      }
+    } catch (error) {
+      console.error('Error loading news:', error);
+      toast.error('Failed to load news');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (!title || !content) {
+      setError('Заполните все обязательные поля');
+      return;
+    }
+
+    if (!user?.uid) {
+      setError('Пользователь не авторизован');
+      return;
+    }
+
     try {
+      setIsLoading(true);
+      setError('');
+
       const newsData = {
         title,
         content,
         images: imageUrl ? [{ url: imageUrl, alt: title, order: 0 }] : [],
         tags: [],
-        authorId: 'current-user-id', // TODO: Get from auth context
+        authorId: user.uid,
         isPublished,
+        createdAt: newsId ? news?.createdAt || new Date().toISOString() : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       if (mode === 'create') {
@@ -67,7 +111,7 @@ const NewsForm: React.FC<NewsFormProps> = ({
       toast.success(`News ${mode === 'create' ? 'created' : 'updated'} successfully`);
     } catch (error) {
       console.error('Error saving news:', error);
-      toast.error(`Failed to ${mode === 'create' ? 'create' : 'update'} news`);
+      setError('Ошибка при сохранении новости');
     } finally {
       setIsLoading(false);
     }

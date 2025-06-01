@@ -26,11 +26,9 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Group, Teacher, User } from '@/types';
+import type { Group, TeacherUser } from '@/types';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
-import { db } from '@/lib/firebase';
+import { getUsers } from '@/lib/firebaseService/userService';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
@@ -60,28 +58,21 @@ export default function GroupFormDialog({
   console.log('group:', group);
   
   const [loading, setLoading] = useState(false);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
 
   useEffect(() => {
     console.log('=== Эффект открытия диалога ===');
     console.log('open:', open);
     console.log('Текущие преподаватели:', teachers);
-    console.log('Текущие пользователи:', users);
     
     const fetchTeachers = async () => {
       try {
         console.log('=== Начало загрузки данных ===');
-        const fetchedTeachers = await getAllTeachers();
-        console.log('Полученные преподаватели:', fetchedTeachers);
-        console.log('Количество преподавателей:', fetchedTeachers.length);
-        setTeachers(fetchedTeachers);
-        
-        const fetchedUsers = await getUsersByRole(db, 'teacher');
-        console.log('Полученные пользователи:', fetchedUsers);
-        console.log('Количество пользователей:', fetchedUsers.length);
-        console.log('Пример пользователя:', fetchedUsers[0]);
-        setUsers(fetchedUsers);
+        const { users } = await getUsers();
+        const teachersData = users.filter(user => user.role === 'teacher') as TeacherUser[];
+        console.log('Полученные преподаватели:', teachersData);
+        console.log('Количество преподавателей:', teachersData.length);
+        setTeachers(teachersData);
         
         console.log('=== Загрузка данных завершена ===');
       } catch (error) {
@@ -100,31 +91,18 @@ export default function GroupFormDialog({
     console.log('=== Получение имени преподавателя ===');
     console.log('ID преподавателя:', teacherId);
     
-    const teacher = teachers.find(t => t.id === teacherId);
+    const teacher = teachers.find(t => t.uid === teacherId);
     console.log('Найденный преподаватель:', teacher);
-    console.log('userId преподавателя:', teacher?.userId);
+    console.log('userId преподавателя:', teacher?.uid);
     
     if (!teacher) {
       console.log('Преподаватель не найден');
       return 'Неизвестный преподаватель';
     }
     
-    const user = users.find(u => u.uid === teacher.userId);
-    console.log('Найденный пользователь:', user);
-    console.log('Данные пользователя:', {
-      uid: user?.uid,
-      firstName: user?.firstName,
-      lastName: user?.lastName
-    });
-    
-    if (!user) {
-      console.log('Пользователь не найден');
-      return 'Неизвестный преподаватель';
-    }
-    
     const fullName = [
-      user.lastName,
-      user.firstName
+      teacher.lastName,
+      teacher.firstName
     ].filter(Boolean).join(' ');
     
     console.log('Сформированное полное имя:', fullName);
@@ -146,27 +124,21 @@ export default function GroupFormDialog({
     try {
       setLoading(true);
       if (group) {
-        await updateGroup(group.id, {
-          name: values.name,
-          year: values.year,
-          specialization: values.specialization,
-          curatorId: values.curatorId,
-        });
-        toast.success('Group updated successfully');
+        await updateGroup(group.id, values);
       } else {
         await createGroup({
           name: values.name,
           year: values.year,
           specialization: values.specialization,
           curatorId: values.curatorId,
+          subjectIds: [],
         });
-        toast.success('Group created successfully');
       }
       onSuccess();
       onClose();
     } catch (error) {
       console.error('Error saving group:', error);
-      toast.error('Failed to save group');
+      toast.error('Ошибка при сохранении группы');
     } finally {
       setLoading(false);
     }
@@ -235,7 +207,6 @@ export default function GroupFormDialog({
                       console.log('=== Изменение значения куратора ===');
                       console.log('Новое значение:', value);
                       console.log('Текущие преподаватели:', teachers);
-                      console.log('Текущие пользователи:', users);
                       field.onChange(value);
                     }}
                     defaultValue={field.value}
@@ -250,10 +221,10 @@ export default function GroupFormDialog({
                     <SelectContent>
                       {teachers.map((teacher) => {
                         console.log('Рендер преподавателя:', teacher);
-                        const name = getTeacherName(teacher.id);
+                        const name = getTeacherName(teacher.uid);
                         console.log('Имя преподавателя:', name);
                         return (
-                          <SelectItem key={teacher.id} value={teacher.id}>
+                          <SelectItem key={teacher.uid} value={teacher.uid}>
                             {name}
                           </SelectItem>
                         );

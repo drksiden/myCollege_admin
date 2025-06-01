@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   Dialog,
   DialogContent,
@@ -5,34 +6,46 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import SubjectForm from './SubjectForm';
-import type { Subject } from '@/types';
 
 interface SubjectFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubjectSubmitSuccess: (data: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  initialData?: Subject;
+  mode: 'create' | 'edit';
+  subjectId?: string;
+  onSuccess?: () => void;
 }
 
-export function SubjectFormDialog({
+const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
   open,
   onOpenChange,
-  onSubjectSubmitSuccess,
-  initialData,
-}: SubjectFormDialogProps) {
+  mode,
+  subjectId,
+  onSuccess,
+}) => {
+  const handleFormSubmitSuccess = () => {
+    onOpenChange(false);
+    if (onSuccess) {
+      onSuccess();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{initialData ? 'Edit Subject' : 'Create Subject'}</DialogTitle>
+          <DialogTitle>
+            {mode === 'edit' ? 'Редактирование предмета' : 'Создание предмета'}
+          </DialogTitle>
         </DialogHeader>
         <SubjectForm
-          mode={initialData ? 'edit' : 'create'}
-          subjectId={initialData?.id}
-          onFormSubmitSuccess={onSubjectSubmitSuccess}
+          mode={mode}
+          subjectId={subjectId}
+          onFormSubmitSuccess={handleFormSubmitSuccess}
           onCancel={() => onOpenChange(false)}
         />
       </DialogContent>
     </Dialog>
   );
-} 
+};
+
+export default SubjectFormDialog; 

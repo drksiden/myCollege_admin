@@ -11,19 +11,48 @@ import {
   where,
   Timestamp,
   serverTimestamp,
+  and,
 } from 'firebase/firestore';
 import type { Grade } from '@/types';
 import { createNotification } from './notificationService';
 
 const GRADES_COLLECTION = 'grades';
 
-export async function getGrades() {
+interface GetGradesOptions {
+  studentIds?: string[];
+  subjectId?: string;
+  semesterId?: string;
+  type?: string;
+}
+
+export async function getGrades(options: GetGradesOptions = {}) {
   try {
     if (!db) {
       throw new Error('Firestore database is not initialized');
     }
     const gradesRef = collection(db, GRADES_COLLECTION);
-    const snapshot = await getDocs(gradesRef);
+    
+    // Создаем массив условий для фильтрации
+    const conditions = [];
+    if (options.studentIds?.length) {
+      conditions.push(where('studentId', 'in', options.studentIds));
+    }
+    if (options.subjectId) {
+      conditions.push(where('subjectId', '==', options.subjectId));
+    }
+    if (options.semesterId) {
+      conditions.push(where('semesterId', '==', options.semesterId));
+    }
+    if (options.type) {
+      conditions.push(where('type', '==', options.type));
+    }
+
+    // Создаем запрос с условиями
+    const q = conditions.length > 0 
+      ? query(gradesRef, and(...conditions))
+      : query(gradesRef);
+
+    const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()

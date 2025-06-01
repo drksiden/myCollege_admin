@@ -21,10 +21,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { createGroup, updateGroup } from '@/lib/firebaseService/groupService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import { getUsersByRole } from '@/lib/firebaseService/userService';
-import { db } from '@/lib/firebase';
-import type { Group, Teacher, User } from '@/types';
+import { getUsers } from '@/lib/firebaseService/userService';
+import type { Group, TeacherUser } from '@/types';
 
 // Zod schema for the form
 const groupSchema = z.object({
@@ -32,7 +30,7 @@ const groupSchema = z.object({
   year: z.number().min(1, 'Year is required'),
   specialization: z.string().min(1, 'Specialization is required'),
   curatorId: z.string().min(1, 'Curator is required'),
-  course: z.number().min(1, 'Course is required'),
+  subjectIds: z.array(z.string()),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
@@ -53,8 +51,7 @@ const GroupForm: React.FC<GroupFormProps> = ({
   group,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
 
   const form = useForm<GroupFormValues>({
     resolver: zodResolver(groupSchema),
@@ -63,23 +60,17 @@ const GroupForm: React.FC<GroupFormProps> = ({
       year: typeof group?.year === 'number' ? group.year : new Date().getFullYear(),
       specialization: group?.specialization || '',
       curatorId: group?.curatorId || '',
-      course: group?.course || 1,
+      subjectIds: group?.subjectIds || [],
     },
   });
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        console.log('=== Загрузка данных ===');
-        const fetchedTeachers = await getAllTeachers();
-        console.log('Полученные преподаватели:', fetchedTeachers);
-        setTeachers(fetchedTeachers);
-
-        const fetchedUsers = await getUsersByRole(db, 'teacher');
-        console.log('Полученные пользователи:', fetchedUsers);
-        setUsers(fetchedUsers);
+        const { users } = await getUsers({ role: 'teacher' });
+        setTeachers(users as TeacherUser[]);
       } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('Error loading teachers:', error);
         toast.error('Failed to load teachers');
       }
     };
@@ -87,13 +78,9 @@ const GroupForm: React.FC<GroupFormProps> = ({
   }, []);
 
   const getTeacherName = (teacherId: string) => {
-    const teacher = teachers.find(t => t.id === teacherId);
+    const teacher = teachers.find(t => t.uid === teacherId);
     if (!teacher) return 'Неизвестный преподаватель';
-    
-    const user = users.find(u => u.uid === teacher.userId);
-    if (!user) return 'Неизвестный преподаватель';
-    
-    return `${user.lastName} ${user.firstName}`;
+    return `${teacher.lastName} ${teacher.firstName}`;
   };
 
   const onSubmit = async (values: GroupFormValues) => {
@@ -178,32 +165,10 @@ const GroupForm: React.FC<GroupFormProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   {teachers.map(teacher => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {getTeacherName(teacher.id)}
+                    <SelectItem key={teacher.uid} value={teacher.uid}>
+                      {getTeacherName(teacher.uid)}
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="course"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Курс</FormLabel>
-              <Select onValueChange={value => field.onChange(Number(value))} value={field.value?.toString() || ''} disabled={isLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите курс" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1</SelectItem>
-                  <SelectItem value="2">2</SelectItem>
-                  <SelectItem value="3">3</SelectItem>
-                  <SelectItem value="4">4</SelectItem>
-                  <SelectItem value="5">5</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

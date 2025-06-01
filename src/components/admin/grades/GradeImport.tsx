@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { createGrade } from '@/lib/firebaseService/gradeService';
-import type { Grade } from '@/types';
+import type { GradeValue, GradeType } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 
 interface GradeImportProps {
@@ -15,12 +15,42 @@ interface GradeImportProps {
 interface ExcelRow {
   'Student ID': string;
   'Subject ID': string;
-  'Group ID': string;
-  'Grade': number;
-  'Type': Grade['type'];
-  'Semester': number;
-  'Notes'?: string;
+  'Grade': number | string;
+  'Type': string;
+  'Semester ID': string;
+  'Comment'?: string;
 }
+
+// Функция для преобразования числовой оценки в GradeValue
+const convertToGradeValue = (value: number | string): GradeValue => {
+  if (typeof value === 'string') {
+    if (['5', '4', '3', '2', 'н/а', 'зачет', 'незачет'].includes(value)) {
+      return value as GradeValue;
+    }
+  }
+  
+  const numValue = Number(value);
+  if (numValue >= 90) return '5';
+  if (numValue >= 75) return '4';
+  if (numValue >= 60) return '3';
+  return '2';
+};
+
+// Функция для преобразования строкового типа в GradeType
+const convertToGradeType = (type: string): GradeType => {
+  const typeMap: Record<string, GradeType> = {
+    'current': 'current',
+    'midterm': 'midterm',
+    'exam': 'exam',
+    'final': 'final',
+    'текущая': 'current',
+    'рубежная': 'midterm',
+    'экзамен': 'exam',
+    'итоговая': 'final'
+  };
+  
+  return typeMap[type.toLowerCase()] || 'current';
+};
 
 export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) {
   const [loading, setLoading] = useState(false);
@@ -45,52 +75,42 @@ export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) 
             const gradeData = {
               studentId: row['Student ID'],
               subjectId: row['Subject ID'],
-              groupId: row['Group ID'],
               teacherId,
-              value: Number(row['Grade']),
-              type: row['Type'],
-              semester: Number(row['Semester']),
+              value: convertToGradeValue(row['Grade']),
+              type: convertToGradeType(row['Type']),
+              semesterId: row['Semester ID'],
               date: Timestamp.now(),
-              notes: row['Notes'],
+              comment: row['Comment'],
+              isPublished: true,
             };
 
             // Validate required fields
-            if (!gradeData.studentId || !gradeData.subjectId || !gradeData.groupId || !gradeData.value || !gradeData.type || !gradeData.semester) {
-              throw new Error(`Invalid data in row: ${JSON.stringify(row)}`);
-            }
-
-            // Validate grade type
-            if (!['exam', 'test', 'homework', 'project'].includes(gradeData.type)) {
-              throw new Error(`Invalid grade type: ${gradeData.type}`);
-            }
-
-            // Validate grade value
-            if (gradeData.value < 0 || gradeData.value > 100) {
-              throw new Error(`Invalid grade value: ${gradeData.value}`);
+            if (!gradeData.studentId || !gradeData.subjectId || !gradeData.semesterId) {
+              throw new Error(`Неверные данные в строке: ${JSON.stringify(row)}`);
             }
 
             await createGrade(gradeData);
           }
 
-          toast.success('Grades imported successfully');
+          toast.success('Оценки успешно импортированы');
           onSuccess?.();
         } catch (error) {
           console.error('Error processing file:', error);
-          toast.error('Failed to process file: ' + (error as Error).message);
+          toast.error('Ошибка при обработке файла: ' + (error as Error).message);
         } finally {
           setLoading(false);
         }
       };
 
       reader.onerror = () => {
-        toast.error('Failed to read file');
+        toast.error('Ошибка при чтении файла');
         setLoading(false);
       };
 
       reader.readAsArrayBuffer(file);
     } catch (error) {
       console.error('Error uploading file:', error);
-      toast.error('Failed to upload file');
+      toast.error('Ошибка при загрузке файла');
       setLoading(false);
     }
   };
@@ -98,7 +118,7 @@ export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="file">Import Grades from Excel</Label>
+        <Label htmlFor="file">Импорт оценок из Excel</Label>
         <Input
           id="file"
           type="file"
@@ -108,15 +128,14 @@ export default function GradeImport({ teacherId, onSuccess }: GradeImportProps) 
         />
       </div>
       <div className="text-sm text-muted-foreground">
-        <p>Excel file should have the following columns:</p>
+        <p>Excel файл должен содержать следующие столбцы:</p>
         <ul className="list-disc list-inside">
-          <li>Student ID</li>
-          <li>Subject ID</li>
-          <li>Group ID</li>
-          <li>Grade (0-100)</li>
-          <li>Type (exam, test, homework, project)</li>
-          <li>Semester (1-8)</li>
-          <li>Notes (optional)</li>
+          <li>Student ID (ID студента)</li>
+          <li>Subject ID (ID предмета)</li>
+          <li>Grade (Оценка: число от 0 до 100 или текст: 5, 4, 3, 2, н/а, зачет, незачет)</li>
+          <li>Type (Тип: current/midterm/exam/final или текущая/рубежная/экзамен/итоговая)</li>
+          <li>Semester ID (ID семестра)</li>
+          <li>Comment (Комментарий, необязательно)</li>
         </ul>
       </div>
     </div>

@@ -11,15 +11,15 @@ import {
 import { PlusCircle, Users, BookOpen, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getAllGroups, deleteGroupInService } from '@/lib/firebaseService/groupService';
-import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
-import type { Group, Student } from '@/types';
+import { getUsers } from '@/lib/firebaseService/userService';
+import type { Group, StudentUser } from '@/types';
 import { GroupFormDialog } from './GroupFormDialog';
 import { ManageStudentsDialog } from './ManageStudentsDialog';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
-  const [students, setStudents] = useState<Record<string, Student[]>>({});
+  const [students, setStudents] = useState<Record<string, StudentUser[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | undefined>();
@@ -37,12 +37,13 @@ const GroupsPage: React.FC = () => {
       setGroups(fetchedGroups);
 
       // Fetch students for each group
-      const studentsData: Record<string, Student[]> = {};
+      const { users } = await getUsers({ role: 'student' });
+      const studentUsers = users as StudentUser[];
+      
+      const studentsData: Record<string, StudentUser[]> = {};
       for (const group of fetchedGroups) {
-        if (group.students && group.students.length > 0) {
-          const groupStudents = await getStudentsByGroup(group.id);
-          studentsData[group.id] = groupStudents;
-        }
+        const groupStudents = studentUsers.filter(student => student.groupId === group.id);
+        studentsData[group.id] = groupStudents;
       }
       setStudents(studentsData);
     } catch (error) {

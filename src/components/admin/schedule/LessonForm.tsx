@@ -21,20 +21,22 @@ import {
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { createLesson, updateLesson } from '@/lib/firebaseService/lessonService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
+import { getUsers } from '@/lib/firebaseService/userService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import type { Teacher, Group, Subject } from '@/types';
+import type { TeacherUser, Group, Subject } from '@/types';
 
 const formSchema = z.object({
-  teacherId: z.string().min(1, 'Teacher is required'),
-  groupId: z.string().min(1, 'Group is required'),
-  subjectId: z.string().min(1, 'Subject is required'),
-  dayOfWeek: z.number().min(0).max(6),
-  startTime: z.string().min(1, 'Start time is required'),
-  endTime: z.string().min(1, 'End time is required'),
-  room: z.string().min(1, 'Room is required'),
+  teacherId: z.string().min(1, 'Выберите преподавателя'),
   type: z.enum(['lecture', 'practice', 'laboratory']),
+  subjectId: z.string().min(1, 'Выберите предмет'),
+  groupId: z.string().min(1, 'Выберите группу'),
+  dayOfWeek: z.number().min(1).max(7),
+  startTime: z.string(),
+  endTime: z.string(),
+  room: z.string().min(1, 'Укажите аудиторию'),
+  semesterId: z.string().min(1, 'Выберите семестр'),
+  weekType: z.enum(['all', 'odd', 'even']),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -52,7 +54,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
   onFormSubmitSuccess,
   onCancel,
 }) => {
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +70,8 @@ const LessonForm: React.FC<LessonFormProps> = ({
       endTime: '',
       room: '',
       type: 'lecture',
+      semesterId: '',
+      weekType: 'all',
     },
   });
 
@@ -75,11 +79,12 @@ const LessonForm: React.FC<LessonFormProps> = ({
     const fetchData = async () => {
       try {
         const [teachersData, groupsData, subjectsData] = await Promise.all([
-          getAllTeachers(),
+          getUsers(),
           getAllGroups(),
           getAllSubjects(),
         ]);
-        setTeachers(teachersData);
+        const teachersDataFiltered = teachersData.users.filter(user => user.role === 'teacher') as TeacherUser[];
+        setTeachers(teachersDataFiltered);
         setGroups(groupsData);
         setSubjects(subjectsData);
       } catch (error) {
@@ -95,7 +100,16 @@ const LessonForm: React.FC<LessonFormProps> = ({
     setIsLoading(true);
     try {
       const lessonData = {
-        ...values,
+        teacherId: values.teacherId,
+        type: values.type,
+        subjectId: values.subjectId,
+        groupId: values.groupId,
+        dayOfWeek: values.dayOfWeek,
+        startTime: values.startTime,
+        endTime: values.endTime,
+        room: values.room,
+        semesterId: values.semesterId,
+        weekType: values.weekType,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -115,6 +129,11 @@ const LessonForm: React.FC<LessonFormProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getTeacherName = (teacherId: string) => {
+    const teacher = teachers.find(t => t.uid === teacherId);
+    return teacher ? `${teacher.firstName} ${teacher.lastName}` : '—';
   };
 
   return (
@@ -138,8 +157,8 @@ const LessonForm: React.FC<LessonFormProps> = ({
                 </FormControl>
                 <SelectContent>
                   {teachers.map((teacher) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {`${teacher.firstName} ${teacher.lastName}`}
+                    <SelectItem key={teacher.uid} value={teacher.uid}>
+                      {getTeacherName(teacher.uid)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -224,13 +243,13 @@ const LessonForm: React.FC<LessonFormProps> = ({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="0">Monday</SelectItem>
-                  <SelectItem value="1">Tuesday</SelectItem>
-                  <SelectItem value="2">Wednesday</SelectItem>
-                  <SelectItem value="3">Thursday</SelectItem>
-                  <SelectItem value="4">Friday</SelectItem>
-                  <SelectItem value="5">Saturday</SelectItem>
-                  <SelectItem value="6">Sunday</SelectItem>
+                  <SelectItem value="1">Monday</SelectItem>
+                  <SelectItem value="2">Tuesday</SelectItem>
+                  <SelectItem value="3">Wednesday</SelectItem>
+                  <SelectItem value="4">Thursday</SelectItem>
+                  <SelectItem value="5">Friday</SelectItem>
+                  <SelectItem value="6">Saturday</SelectItem>
+                  <SelectItem value="7">Sunday</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

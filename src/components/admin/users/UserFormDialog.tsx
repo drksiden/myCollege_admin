@@ -20,12 +20,12 @@ import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { createUserInAuth, updateUserInFirestore } from '@/lib/firebaseService/userService';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
-import type { User, Group } from '@/types';
+import type { AppUser, Group } from '@/types';
 
 interface UserFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user?: User;
+  user?: AppUser;
   onSuccess?: () => void;
 }
 
@@ -40,9 +40,9 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
     lastName: user?.lastName || '',
     role: (user?.role || 'student') as UserRole,
     password: '', // Only used for new users
-    groupId: user?.studentDetails?.groupId || '',
-    department: user?.teacherDetails?.department || '',
-    qualification: user?.teacherDetails?.qualification || '',
+    groupId: user?.role === 'student' ? (user as any).groupId : '',
+    department: user?.role === 'teacher' ? (user as any).specialization : '',
+    qualification: user?.role === 'teacher' ? (user as any).education : '',
     iin: user?.iin || '',
   });
 
@@ -70,12 +70,10 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           firstName: formData.firstName,
           lastName: formData.lastName,
           role: formData.role,
-          ...(formData.role === 'student' && { studentDetails: { groupId: formData.groupId } }),
+          ...(formData.role === 'student' && { groupId: formData.groupId }),
           ...(formData.role === 'teacher' && {
-            teacherDetails: {
-              department: formData.department,
-              qualification: formData.qualification,
-            },
+            specialization: formData.department,
+            education: formData.qualification,
           }),
         });
 
@@ -95,8 +93,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
           iin: formData.iin,
           ...(formData.role === 'student' && { groupId: formData.groupId }),
           ...(formData.role === 'teacher' && {
-            department: formData.department,
-            qualification: formData.qualification,
+            specialization: formData.department,
+            education: formData.qualification,
           }),
         };
 

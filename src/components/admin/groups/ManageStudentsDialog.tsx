@@ -16,9 +16,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { PlusCircle, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
+import { getUsers } from '@/lib/firebaseService/userService';
 import { addStudentToGroup, removeStudentFromGroup } from '@/lib/firebaseService/groupService';
-import type { Group, Student } from '@/types';
+import type { Group, StudentUser } from '@/types';
 
 interface ManageStudentsDialogProps {
   open: boolean;
@@ -33,8 +33,8 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [currentStudents, setCurrentStudents] = useState<Student[]>([]);
-  const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
+  const [currentStudents, setCurrentStudents] = useState<StudentUser[]>([]);
+  const [availableStudents, setAvailableStudents] = useState<StudentUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,12 +47,20 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
   const loadStudents = async () => {
     setIsLoading(true);
     try {
-      const currentStudents = await getStudentsByGroup(group.id);
+      // Получаем всех студентов
+      const { users: allStudents } = await getUsers({ role: 'student', limit: 100 });
+      
+      // Получаем текущих студентов группы
+      const currentStudents = allStudents.filter((student): student is StudentUser => 
+        student.role === 'student' && student.groupId === group.id
+      );
       setCurrentStudents(currentStudents);
 
-      // TODO: Implement fetching available students
-      // For now, we'll just set an empty array
-      setAvailableStudents([]);
+      // Получаем доступных студентов (не в группе)
+      const availableStudents = allStudents.filter((student): student is StudentUser => 
+        student.role === 'student' && !student.groupId
+      );
+      setAvailableStudents(availableStudents);
     } catch (error) {
       console.error('Error loading students:', error);
       toast.error('Failed to load students');
@@ -61,10 +69,10 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
     }
   };
 
-  const handleAddStudent = async (student: Student) => {
+  const handleAddStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await addStudentToGroup(group.id, student.id);
+      await addStudentToGroup(group.id, student.uid);
       toast.success('Student added to group');
       await loadStudents();
       onSuccess();
@@ -76,10 +84,10 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
     }
   };
 
-  const handleRemoveStudent = async (student: Student) => {
+  const handleRemoveStudent = async (student: StudentUser) => {
     setIsSubmitting(true);
     try {
-      await removeStudentFromGroup(group.id, student.id);
+      await removeStudentFromGroup(group.id, student.uid);
       toast.success('Student removed from group');
       await loadStudents();
       onSuccess();
@@ -118,9 +126,9 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
                   </TableHeader>
                   <TableBody>
                     {currentStudents.map((student) => (
-                      <TableRow key={student.id}>
+                      <TableRow key={student.uid}>
                         <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
-                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell>{student.uid}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"
@@ -151,9 +159,9 @@ export const ManageStudentsDialog: React.FC<ManageStudentsDialogProps> = ({
                   </TableHeader>
                   <TableBody>
                     {availableStudents.map((student) => (
-                      <TableRow key={student.id}>
+                      <TableRow key={student.uid}>
                         <TableCell>{`${student.firstName} ${student.lastName}`}</TableCell>
-                        <TableCell>{student.studentCardId}</TableCell>
+                        <TableCell>{student.uid}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"

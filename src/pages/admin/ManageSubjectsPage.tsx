@@ -27,7 +27,6 @@ import {
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { getAllSubjects, deleteSubject as deleteSubjectService } from '@/lib/firebaseService/subjectService';
-import { getAllTeachers as getAllTeacherProfiles } from '@/lib/firebaseService/teacherService';
 import SubjectForm from '@/components/admin/subjects/SubjectForm';
 import type { Subject } from '@/types';
 import {
@@ -55,14 +54,11 @@ const ManageSubjectsPage: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [allSubjects] = await Promise.all([
-        getAllSubjects(),
-        getAllTeacherProfiles(),
-      ]);
+      const allSubjects = await getAllSubjects();
       setSubjects(allSubjects);
     } catch (error) {
-      console.error('Error fetching initial data:', error);
-      toast.error('Failed to load necessary data for subjects page.');
+      console.error('Error fetching subjects:', error);
+      toast.error('Failed to load subjects.');
     } finally {
       setIsLoading(false);
     }

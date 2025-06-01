@@ -29,23 +29,50 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
-import { updateUserInFirestore } from '@/lib/firebaseService/userService';
-import type { User } from '@/types';
+import { updateUser } from '@/lib/firebaseService/userService';
+import type { AppUser } from '@/types/index';
 
-const formSchema = z.object({
+const baseSchema = z.object({
   firstName: z.string().min(1, 'Имя обязательно'),
   lastName: z.string().min(1, 'Фамилия обязательна'),
+  middleName: z.string().optional(),
   email: z.string().email('Неверный формат email'),
-  role: z.enum(['student', 'teacher', 'admin'], {
-    required_error: 'Роль обязательна',
-  }),
+  role: z.enum(['student', 'teacher', 'admin', 'pending_approval']),
+  status: z.enum(['active', 'suspended', 'pending_approval']),
 });
+
+const studentSchema = baseSchema.extend({
+  role: z.literal('student'),
+  groupId: z.string().min(1, 'Группа обязательна'),
+  specialization: z.string().optional(),
+});
+
+const teacherSchema = baseSchema.extend({
+  role: z.literal('teacher'),
+  specialization: z.string().min(1, 'Специализация обязательна'),
+  education: z.string().optional(),
+  experience: z.coerce.number().optional(),
+});
+
+const adminSchema = baseSchema.extend({
+  role: z.literal('admin'),
+});
+
+const pendingSchema = baseSchema.extend({
+  role: z.literal('pending_approval'),
+});
+
+const formSchema = z.discriminatedUnion('role', [
+  studentSchema,
+  teacherSchema,
+  adminSchema,
+  pendingSchema,
+]);
 
 type EditUserFormValues = z.infer<typeof formSchema>;
 
 interface EditUserDialogProps {
-  user: User | null;
+  user: AppUser | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUserUpdated: () => void;
@@ -58,33 +85,34 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onUserUpdated,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  // Type guards for role-specific fields
+  const getStudentFields = (u: AppUser) => u.role === 'student' ? { groupId: u.groupId, specialization: u.specialization } : {};
+  const getTeacherFields = (u: AppUser) => u.role === 'teacher' ? { specialization: u.specialization, education: u.education, experience: u.experience } : {};
+
   const form = useForm<EditUserFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      firstName: '',
-      lastName: '',
-      email: '',
-      role: undefined,
-    },
+    defaultValues: user
+      ? {
+          ...user,
+          ...getStudentFields(user),
+          ...getTeacherFields(user),
+        }
+      : undefined,
   });
 
   useEffect(() => {
     if (user && open) {
       form.reset({
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
+        ...user,
+        ...getStudentFields(user),
+        ...getTeacherFields(user),
       });
     } else if (!open) {
-      form.reset({
-        firstName: '',
-        lastName: '',
-        email: '',
-        role: undefined,
-      });
+      form.reset();
     }
   }, [user, open, form]);
+
+  const selectedRole = form.watch('role');
 
   const onSubmit = async (values: EditUserFormValues) => {
     if (!user) {
@@ -93,12 +121,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
     }
     setIsLoading(true);
     try {
-      const dataToUpdate = {
-        firstName: values.firstName,
-        lastName: values.lastName,
-        role: values.role as User['role'],
-      };
-      await updateUserInFirestore(db, user.uid, dataToUpdate);
+      await updateUser(user.uid, values);
       toast.success(`Пользователь ${user.email} успешно обновлен`);
       onUserUpdated();
       onOpenChange(false);
@@ -119,76 +142,93 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           <DialogTitle>Редактирование пользователя</DialogTitle>
           <DialogDescription>
             Обновите данные для {user.firstName} {user.lastName}. Email нельзя изменить.
-            Изменение пароля не поддерживается в этой форме.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-            <FormField
-              control={form.control}
-              name="firstName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Имя</FormLabel>
+            {/* Общие поля */}
+            <FormField control={form.control} name="lastName" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Фамилия</FormLabel>
+                <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="firstName" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Имя</FormLabel>
+                <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="middleName" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Отчество</FormLabel>
+                <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="email" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl><Input type="email" {...field} readOnly disabled /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="role" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Роль</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                   <FormControl>
-                    <Input placeholder="Иван" {...field} disabled={isLoading} />
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите роль" />
+                    </SelectTrigger>
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="lastName"
-              render={({ field }) => (
+                  <SelectContent>
+                    <SelectItem value="student">Студент</SelectItem>
+                    <SelectItem value="teacher">Преподаватель</SelectItem>
+                    <SelectItem value="admin">Администратор</SelectItem>
+                    <SelectItem value="pending_approval">На одобрении</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            {/* Условные поля */}
+            {selectedRole === 'student' && (
+              <FormField control={form.control} name="groupId" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Фамилия</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Иванов" {...field} disabled={isLoading} />
-                  </FormControl>
+                  <FormLabel>Группа</FormLabel>
+                  <FormControl><Input {...field} disabled={isLoading} /></FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email (только для чтения)</FormLabel>
-                  <FormControl>
-                    <Input type="email" {...field} readOnly disabled />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Роль</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={isLoading}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите роль" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="student">Студент</SelectItem>
-                      <SelectItem value="teacher">Преподаватель</SelectItem>
-                      <SelectItem value="admin">Администратор</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              )} />
+            )}
+            {selectedRole === 'teacher' && (
+              <>
+                <FormField control={form.control} name="specialization" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Специализация</FormLabel>
+                    <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="education" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Образование</FormLabel>
+                    <FormControl><Input {...field} disabled={isLoading} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="experience" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Опыт (лет)</FormLabel>
+                    <FormControl><Input type="number" {...field} disabled={isLoading} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </>
+            )}
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isLoading}>
