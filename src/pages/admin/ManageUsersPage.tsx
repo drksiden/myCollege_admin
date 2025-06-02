@@ -193,12 +193,12 @@ export default function ManageUsersPage() {
 
       {(allUsers.length > 0 || !isLoading) && (
         <>
-          <UserList
+      <UserList
             users={filteredUsers}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onApprove={handleApprove}
-          />
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onApprove={handleApprove}
+      />
         </>
       )}
 

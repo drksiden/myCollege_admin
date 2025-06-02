@@ -157,6 +157,7 @@ export interface Schedule {
   id: string;
   groupId: string;
   semesterId: string;
+  groupName: string;
   semester: number;
   year: number;
   lessons: Lesson[];

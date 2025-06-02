@@ -104,7 +104,6 @@ export default function ManageSchedulesPage() {
       toast.error('Некорректный ID занятия для обновления');
       return;
     }
-    console.log('Обновляю занятие с id:', editingLesson.id);
     try {
       await updateLesson(editingLesson.id, lesson);
       const updatedLessons = await getGroupSchedule({ 
@@ -124,7 +123,6 @@ export default function ManageSchedulesPage() {
       toast.error('Некорректный ID занятия для удаления');
       return;
     }
-    console.log('Удаляю занятие с id:', id);
     try {
       await deleteLesson(id);
       toast.success('Занятие удалено');
@@ -172,36 +170,94 @@ export default function ManageSchedulesPage() {
     }
 
     try {
-      // Создаем новые занятия из шаблона
-      const newLessons = template.lessons.map(lesson => {
-        const fullLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
-          semesterId: selectedSemester,
-          groupId: selectedGroup,
-          subjectId: lesson.subjectId || '',
-          teacherId: lesson.teacherId || null,
-          dayOfWeek: lesson.dayOfWeek || 1,
-          startTime: lesson.startTime || '08:00',
-          endTime: lesson.endTime || '09:30',
-          room: lesson.room || '',
-          type: lesson.type || 'lecture',
-          weekType: lesson.weekType || 'all',
-          topic: lesson.topic,
-        };
-        return fullLesson;
+      console.log('Начало применения шаблона:', {
+        templateName: template.name,
+        totalLessons: template.lessons.length,
+        lessons: template.lessons
       });
 
-      // Сохраняем все занятия
-      await Promise.all(newLessons.map(lesson => createLesson(lesson)));
+      // Создаем новые занятия из шаблона
+      const newLessons = template.lessons
+        .filter(lesson => {
+          // Проверяем наличие обязательных полей
+          const hasRequiredFields = 
+            typeof lesson.subjectId === 'string' &&
+            typeof lesson.dayOfWeek === 'number' &&
+            typeof lesson.startTime === 'string' &&
+            typeof lesson.endTime === 'string' &&
+            typeof lesson.room === 'string' &&
+            typeof lesson.type === 'string';
+
+          if (!hasRequiredFields) {
+            console.warn('Пропущено занятие из-за отсутствия обязательных полей:', {
+              lesson,
+              fields: {
+                subjectId: typeof lesson.subjectId,
+                dayOfWeek: typeof lesson.dayOfWeek,
+                startTime: typeof lesson.startTime,
+                endTime: typeof lesson.endTime,
+                room: typeof lesson.room,
+                type: typeof lesson.type
+              }
+            });
+            return false;
+          }
+          return true;
+        })
+        .map(lesson => {
+          // Убеждаемся, что все обязательные поля имеют значения
+          const fullLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
+            semesterId: selectedSemester,
+            groupId: selectedGroup,
+            subjectId: lesson.subjectId as string,
+            teacherId: lesson.teacherId || null,
+            dayOfWeek: lesson.dayOfWeek as number,
+            startTime: lesson.startTime as string,
+            endTime: lesson.endTime as string,
+            room: lesson.room as string,
+            type: lesson.type as Lesson['type'],
+            weekType: lesson.weekType || 'all',
+            topic: lesson.topic || ''
+          };
+          return fullLesson;
+        });
+
+      console.log('После фильтрации и преобразования:', {
+        filteredLessons: newLessons.length,
+        lessons: newLessons
+      });
+
+      if (newLessons.length === 0) {
+        toast.error('В шаблоне нет валидных занятий для применения');
+        return;
+      }
+
+      // Сохраняем все занятия последовательно
+      console.log('Начало сохранения занятий...');
+      for (const lesson of newLessons) {
+        await createLesson(lesson);
+      }
+      console.log('Занятия сохранены');
+
+      // Даем время на обновление индексов
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Обновляем список занятий
+      console.log('Получение обновленного расписания...');
       const updatedLessons = await getGroupSchedule({ 
         groupId: selectedGroup,
         semesterId: selectedSemester
       });
+      console.log('Получено обновленное расписание:', {
+        totalLessons: updatedLessons.length,
+        lessons: updatedLessons
+      });
+
       setLessons(updatedLessons);
       setIsTemplatesListOpen(false);
-      toast.success('Шаблон успешно применен');
-    } catch {
+      toast.success(`Шаблон успешно применен. Добавлено ${newLessons.length} занятий.`);
+    } catch (error) {
+      console.error('Error applying template:', error);
       toast.error('Не удалось применить шаблон');
     }
   };
@@ -265,6 +321,7 @@ export default function ManageSchedulesPage() {
               id: `${selectedSemester}_${selectedGroup}`,
               semesterId: selectedSemester,
               groupId: selectedGroup,
+              groupName: groups.find(g => g.id === selectedGroup)?.name || '',
               lessons,
               createdAt: Timestamp.now(),
               updatedAt: Timestamp.now(),

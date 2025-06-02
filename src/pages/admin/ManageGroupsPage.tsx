@@ -132,7 +132,7 @@ const ManageGroupsPage: React.FC = () => {
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Toaster richColors position="top-right" />
-
+      
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div>
@@ -152,21 +152,21 @@ const ManageGroupsPage: React.FC = () => {
                 Удалить выбранные ({selectedGroups.length})
               </Button>
             )}
-            <Button onClick={handleOpenCreateGroupDialog}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Добавить новую группу
-            </Button>
+          <Button onClick={handleOpenCreateGroupDialog}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Добавить новую группу
+          </Button>
           </div>
         </div>
       </header>
 
-      <div className="bg-card shadow sm:rounded-lg">
-        {groups.length === 0 && !isLoading ? (
-          <div className="p-10 text-center text-muted-foreground">
-            <ListChecks className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium">Группы не найдены</h3>
-            <p className="mt-1 text-sm">Начните с добавления новой группы.</p>
-          </div>
-        ) : (
+        <div className="bg-card shadow sm:rounded-lg">
+          {groups.length === 0 && !isLoading ? (
+            <div className="p-10 text-center text-muted-foreground">
+              <ListChecks className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium">Группы не найдены</h3>
+              <p className="mt-1 text-sm">Начните с добавления новой группы.</p>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -201,7 +201,7 @@ const ManageGroupsPage: React.FC = () => {
                     {studentCounts[group.id] || 0} студентов
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
+                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
                           <span className="sr-only">Открыть меню</span>
@@ -219,9 +219,9 @@ const ManageGroupsPage: React.FC = () => {
                           Редактировать
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
+                        <DropdownMenuItem 
                           className="text-red-600"
-                          onClick={() => handleDeleteInitiate(group)}
+                          onClick={() => handleDeleteInitiate(group)} 
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Удалить
@@ -233,8 +233,8 @@ const ManageGroupsPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
-        )}
-      </div>
+          )}
+        </div>
 
       {groupToDelete && (
         <AlertDialog open={!!groupToDelete} onOpenChange={() => setGroupToDelete(null)}>

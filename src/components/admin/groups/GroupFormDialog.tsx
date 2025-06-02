@@ -232,9 +232,9 @@ export function GroupFormDialog({
                   >
                     {subjects.map(subject => (
                       <option key={subject.id} value={subject.id}>
-                        {subject.name}
+                              {subject.name}
                       </option>
-                    ))}
+                          ))}
                   </select>
                   <FormMessage />
                 </FormItem>
