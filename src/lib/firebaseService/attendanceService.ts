@@ -34,11 +34,12 @@ export async function getAttendanceByStudent(studentId: string) {
   })) as AttendanceEntry[];
 }
 
-export async function getAttendanceBySubject(subjectId: string) {
+export async function getAttendanceBySubject(subjectId: string): Promise<AttendanceEntry[]> {
   const attendanceRef = collection(db, ATTENDANCE_COLLECTION);
   const q = query(attendanceRef, where('subjectId', '==', subjectId));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  const querySnapshot = await getDocs(q);
+  
+  return querySnapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   })) as AttendanceEntry[];
@@ -89,4 +90,21 @@ export async function getAttendanceByDate(date: Date) {
     id: doc.id,
     ...doc.data()
   })) as AttendanceEntry[];
+}
+
+export async function getGroupAttendanceSubjects(groupId: string): Promise<string[]> {
+  const attendanceRef = collection(db, ATTENDANCE_COLLECTION);
+  const q = query(attendanceRef, where('groupId', '==', groupId));
+  const querySnapshot = await getDocs(q);
+  
+  // Получаем уникальные ID предметов из записей посещаемости
+  const subjectIds = new Set<string>();
+  querySnapshot.docs.forEach(doc => {
+    const data = doc.data();
+    if (data.subjectId) {
+      subjectIds.add(data.subjectId);
+    }
+  });
+  
+  return Array.from(subjectIds);
 } 

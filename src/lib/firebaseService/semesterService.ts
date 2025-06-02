@@ -153,4 +153,39 @@ export const activateSemester = async (semesterId: string): Promise<void> => {
     status: 'active',
     updatedAt: serverTimestamp(),
   });
-}; 
+};
+
+export async function getCurrentSemester(): Promise<Semester | null> {
+  const now = Timestamp.now();
+  const semestersRef = collection(db, SEMESTERS_COLLECTION);
+  const q = query(
+    semestersRef,
+    where('startDate', '<=', now),
+    where('endDate', '>=', now)
+  );
+  const querySnapshot = await getDocs(q);
+  
+  if (querySnapshot.empty) {
+    return null;
+  }
+  
+  const doc = querySnapshot.docs[0];
+  return {
+    id: doc.id,
+    ...doc.data()
+  } as Semester;
+}
+
+export async function getSemesterById(semesterId: string): Promise<Semester | null> {
+  const semesterRef = doc(db, SEMESTERS_COLLECTION, semesterId);
+  const docSnap = await getDoc(semesterRef);
+  
+  if (!docSnap.exists()) {
+    return null;
+  }
+  
+  return {
+    id: docSnap.id,
+    ...docSnap.data()
+  } as Semester;
+} 

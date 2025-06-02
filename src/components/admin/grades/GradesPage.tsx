@@ -13,19 +13,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getGroups } from '@/lib/firebaseService/groupService';
-import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import type { Group, Subject } from '@/types';
+import { getGroups, getGroupSubjects } from '@/lib/firebaseService/groupService';
+import { getAllSubjects, getSubjectsByIds } from '@/lib/firebaseService/subjectService';
+import { getSemesters } from '@/lib/firebaseService/semesterService';
+import type { Group, Subject, Semester } from '@/types';
 import { toast } from 'sonner';
 import { GradeBook } from './GradeBook';
 import GradeStatistics from './GradeStatistics';
 import GradeImport from './GradeImport';
-import { useAuth } from '@/lib/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function GradesPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
@@ -39,13 +43,12 @@ export function GradesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [groupsData, subjectsData] = await Promise.all([
+      const [groupsData, semestersData] = await Promise.all([
         getGroups(),
-        getAllSubjects(),
+        getSemesters(),
       ]);
-
       setGroups(groupsData);
-      setSubjects(subjectsData);
+      setSemesters(semestersData);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error('Не удалось загрузить данные');
@@ -54,21 +57,69 @@ export function GradesPage() {
     }
   };
 
+  // Загружаем предметы только для выбранной группы
+  useEffect(() => {
+    const loadGroupSubjects = async () => {
+      if (selectedGroup) {
+        try {
+          const subjectIds = await getGroupSubjects(selectedGroup);
+          if (subjectIds.length > 0) {
+            const subjectsData = await getSubjectsByIds(subjectIds);
+            setSubjects(subjectsData);
+          } else {
+            setSubjects([]);
+          }
+        } catch (error) {
+          setSubjects([]);
+        }
+      } else {
+        setSubjects([]);
+      }
+    };
+    loadGroupSubjects();
+  }, [selectedGroup]);
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(parseInt(year));
+    setSelectedGroup('');
+    setSelectedSubject('');
+    setSelectedSemesterId('');
+  };
+
   const handleGroupChange = (groupId: string) => {
     setSelectedGroup(groupId);
     setSelectedSubject('');
+    setSelectedSemesterId('');
   };
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubject(subjectId);
+    setSelectedSemesterId('');
   };
 
   const handleSemesterChange = (semesterId: string) => {
     setSelectedSemesterId(semesterId);
   };
 
+  const getFilteredGroups = () => {
+    if (!selectedYear) return groups;
+    return groups.filter(group => group.year === selectedYear);
+  };
+
+  const getAvailableYears = () => {
+    const years = new Set(groups.map(group => group.year).filter((year): year is number => year !== undefined));
+    return Array.from(years).sort();
+  };
+
   if (loading || !user) {
-    return <div>Загрузка...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Загрузка данных...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -80,30 +131,52 @@ export function GradesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle>Фильтры</CardTitle>
           <CardDescription>
-            Выберите группу, предмет и семестр для просмотра оценок
+            Выберите курс, группу, предмет и семестр для просмотра оценок
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="space-y-2">
+              <Label htmlFor="year">Курс</Label>
+              <Select
+                value={selectedYear?.toString()}
+                onValueChange={handleYearChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите курс" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAvailableYears().map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year} курс
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="group">Группа</Label>
               <Select
                 value={selectedGroup}
                 onValueChange={handleGroupChange}
+                disabled={!selectedYear}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Выберите группу" />
                 </SelectTrigger>
                 <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
+                  <ScrollArea className="h-[200px]">
+                    {getFilteredGroups().map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
             </div>
@@ -139,11 +212,13 @@ export function GradesPage() {
                   <SelectValue placeholder="Выберите семестр" />
                 </SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((semester) => (
-                    <SelectItem key={semester} value={semester.toString()}>
-                      Семестр {semester}
-                    </SelectItem>
-                  ))}
+                  <ScrollArea className="h-[200px]">
+                    {semesters.map((semester) => (
+                      <SelectItem key={semester.id} value={semester.id}>
+                        {semester.name}
+                      </SelectItem>
+                    ))}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
             </div>
@@ -154,8 +229,7 @@ export function GradesPage() {
       {selectedGroup && selectedSubject && selectedSemesterId && (
         <>
           <div className="mt-6">
-            <GradeBook 
-              teacherId={user.uid}
+            <GradeBook
               selectedGroup={selectedGroup}
               selectedSubject={selectedSubject}
               selectedSemesterId={selectedSemesterId}
@@ -175,9 +249,7 @@ export function GradesPage() {
           <div className="mt-6">
             <GradeImport
               teacherId={user.uid}
-              onSuccess={() => {
-                // TODO: Обновить список оценок
-              }}
+              onSuccess={loadData}
             />
           </div>
         </>

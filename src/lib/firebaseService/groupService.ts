@@ -125,3 +125,18 @@ export const getGroupsByTeacher = async (teacherId: string): Promise<Group[]> =>
     ...doc.data(),
   })) as Group[];
 };
+
+const GROUPS_COLLECTION = 'groups';
+
+export async function getGroupSubjects(groupId: string): Promise<string[]> {
+  // Получаем группу
+  const groupRef = doc(db, GROUPS_COLLECTION, groupId);
+  const groupDoc = await getDoc(groupRef);
+  const groupData = groupDoc.data();
+  
+  if (!groupData?.subjectIds) {
+    return [];
+  }
+
+  return groupData.subjectIds;
+}
