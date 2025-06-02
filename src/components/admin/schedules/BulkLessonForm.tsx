@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import type { Lesson, Subject, TeacherUser } from '@/types';
+import type { Lesson, Subject, TeacherUser, Group } from '@/types';
 
 interface BulkLessonFormProps {
   open: boolean;
@@ -29,6 +29,7 @@ interface BulkLessonFormProps {
   teachers: TeacherUser[];
   groupId: string;
   semesterId: string;
+  groups: Group[];
 }
 
 const DAYS_OF_WEEK = [
@@ -58,6 +59,7 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
   teachers,
   groupId,
   semesterId,
+  groups,
 }) => {
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState('');
@@ -67,6 +69,9 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
   const [selectedType, setSelectedType] = useState<'lecture' | 'seminar' | 'lab' | 'exam'>('lecture');
   const [selectedWeekType, setSelectedWeekType] = useState<'all' | 'odd' | 'even'>('all');
   const [roomError, setRoomError] = useState<string | null>(null);
+
+  const group = groups?.find(g => g.id === groupId);
+  const groupSubjects = subjects.filter(subject => group?.subjectIds.includes(subject.id));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,8 +166,8 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
               <SelectTrigger>
                 <SelectValue placeholder="Выберите предмет" />
               </SelectTrigger>
-              <SelectContent>
-                {subjects.map(subject => (
+              <SelectContent className="max-h-60 overflow-y-auto">
+                {groupSubjects.map(subject => (
                   <SelectItem key={subject.id} value={subject.id}>
                     {subject.name}
                   </SelectItem>

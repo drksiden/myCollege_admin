@@ -32,8 +32,8 @@ const PAIRS = [
   { start: '11:25', end: '12:55', label: '3 пара' },
   { start: '13:25', end: '14:55', label: '4 пара' },
   { start: '15:05', end: '16:35', label: '5 пара' },
-  { start: '16:45', end: '18:15', label: '6 пара' },
-  { start: '18:25', end: '19:55', label: '7 пара' },
+  { start: '16:50', end: '18:20', label: '6 пара' },
+  { start: '18:30', end: '20:00', label: '7 пара' },
 ];
 
 const getLessonTypeColor = (type: Lesson['type']) => {

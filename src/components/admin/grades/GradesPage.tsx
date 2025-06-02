@@ -154,7 +154,12 @@ export function GradesPage() {
       {selectedGroup && selectedSubject && selectedSemesterId && (
         <>
           <div className="mt-6">
-            <GradeBook teacherId={user.uid} />
+            <GradeBook 
+              teacherId={user.uid}
+              selectedGroup={selectedGroup}
+              selectedSubject={selectedSubject}
+              selectedSemesterId={selectedSemesterId}
+            />
           </div>
 
           <div className="mt-6">

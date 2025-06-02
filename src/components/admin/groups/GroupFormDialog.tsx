@@ -32,20 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Check, ChevronsUpDown } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const groupFormSchema = z.object({
   name: z.string().min(1, 'Название группы обязательно'),
@@ -234,54 +220,22 @@ export function GroupFormDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Предметы</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          className={cn(
-                            'w-full justify-between',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          {field.value.length > 0
-                            ? `${field.value.length} предметов выбрано`
-                            : 'Выберите предметы'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                      <Command>
-                        <CommandInput placeholder="Поиск предметов..." />
-                        <CommandEmpty>Предметы не найдены.</CommandEmpty>
-                        <CommandGroup>
-                          {subjects.map((subject) => (
-                            <CommandItem
-                              key={subject.id}
-                              onSelect={() => {
-                                const newValue = field.value.includes(subject.id)
-                                  ? field.value.filter((id) => id !== subject.id)
-                                  : [...field.value, subject.id];
-                                field.onChange(newValue);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  'mr-2 h-4 w-4',
-                                  field.value.includes(subject.id)
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                              {subject.name}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <select
+                    multiple
+                    value={field.value}
+                    onChange={e => {
+                      const selected = Array.from(e.target.selectedOptions, option => option.value);
+                      field.onChange(selected);
+                    }}
+                    className="w-full h-40 border rounded p-2 bg-background"
+                    style={{ maxHeight: 200, overflowY: 'auto' }}
+                  >
+                    {subjects.map(subject => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </option>
+                    ))}
+                  </select>
                   <FormMessage />
                 </FormItem>
               )}

@@ -30,6 +30,9 @@ import { getAllJournals, getJournalEntries } from '@/lib/firebaseService/journal
 
 interface GradeBookProps {
   teacherId: string;
+  selectedGroup: string;
+  selectedSubject: string;
+  selectedSemesterId: string;
 }
 
 interface ExportData {
@@ -42,21 +45,14 @@ interface ExportData {
   selectedSemesterId: string;
 }
 
-export function GradeBook({ teacherId }: GradeBookProps) {
+export function GradeBook({ teacherId, selectedGroup, selectedSubject, selectedSemesterId }: GradeBookProps) {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [students, setStudents] = useState<AppUser[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [editingGrade, setEditingGrade] = useState<{ studentId: string; type: GradeType } | null>(null);
   const [gradeValue, setGradeValue] = useState<GradeValue>('5');
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const loadData = async () => {
     try {
@@ -77,25 +73,30 @@ export function GradeBook({ teacherId }: GradeBookProps) {
       // Загружаем записи журналов для каждого журнала
       const journalGrades: Grade[] = [];
       for (const journal of journalsData) {
-        const entries = await getJournalEntries(journal.id);
-        entries.forEach((entry: JournalEntry) => {
-          if (entry.grade) {
-            journalGrades.push({
-              id: `${journal.id}-${entry.date.toMillis()}-${entry.studentId}`,
-              studentId: entry.studentId,
-              subjectId: journal.subjectId,
-              lessonId: entry.lessonId,
-              value: entry.grade,
-              type: entry.gradeType || 'current',
-              semesterId: journal.semesterId,
-              date: entry.date,
-              teacherId: journal.teacherId,
-              isPublished: true,
-              createdAt: entry.createdAt,
-              updatedAt: entry.updatedAt,
-            });
-          }
-        });
+        try {
+          const entries = await getJournalEntries(journal.id);
+          entries.forEach((entry: JournalEntry) => {
+            if (entry.grade) {
+              journalGrades.push({
+                id: `${journal.id}-${entry.date.toMillis()}-${entry.studentId}`,
+                studentId: entry.studentId,
+                subjectId: journal.subjectId,
+                lessonId: entry.lessonId,
+                value: entry.grade,
+                type: entry.gradeType || 'current',
+                semesterId: journal.semesterId,
+                date: entry.date,
+                teacherId: journal.teacherId,
+                isPublished: true,
+                createdAt: entry.createdAt,
+                updatedAt: entry.updatedAt,
+              });
+            }
+          });
+        } catch (error) {
+          console.error(`Error loading entries for journal ${journal.id}:`, error);
+          // Продолжаем загрузку других журналов даже если один не удался
+        }
       }
 
       // Объединяем оценки из журналов с существующими оценками
@@ -108,8 +109,15 @@ export function GradeBook({ teacherId }: GradeBookProps) {
     }
   };
 
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const handleGradeChange = async (studentId: string, type: GradeType, value: GradeValue) => {
-    if (!selectedGroup || !selectedSubject || !selectedSemesterId) return;
+    if (!selectedGroup || !selectedSubject || !selectedSemesterId) {
+      toast.error('Выберите группу, предмет и семестр');
+      return;
+    }
 
     try {
       const gradeData = {
@@ -170,7 +178,14 @@ export function GradeBook({ teacherId }: GradeBookProps) {
   };
 
   if (loading) {
-    return <div>Загрузка...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Загрузка данных...</p>
+        </div>
+      </div>
+    );
   }
 
   const filteredStudents = students.filter(student => 
@@ -189,9 +204,9 @@ export function GradeBook({ teacherId }: GradeBookProps) {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Журнал оценок</h1>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Журнал оценок</h2>
         <div className="flex space-x-4">
           <BulkGradeInput
             students={filteredStudents}
@@ -212,194 +227,164 @@ export function GradeBook({ teacherId }: GradeBookProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите группу" />
-          </SelectTrigger>
-          <SelectContent>
-            {groups.map(group => (
-              <SelectItem key={group.id} value={group.id}>
-                {group.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите предмет" />
-          </SelectTrigger>
-          <SelectContent>
-            {subjects.map(subject => (
-              <SelectItem key={subject.id} value={subject.id}>
-                {subject.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите семестр" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1">1 семестр</SelectItem>
-            <SelectItem value="2">2 семестр</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Студент</TableHead>
-            <TableHead>Текущие</TableHead>
-            <TableHead>Рубежные</TableHead>
-            <TableHead>Экзамены</TableHead>
-            <TableHead>Итоговые</TableHead>
-            <TableHead>Средний балл</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredStudents.map(student => (
-            <TableRow key={student.uid}>
-              <TableCell>
-                {student.firstName} {student.lastName}
-              </TableCell>
-              <TableCell>
-                {editingGrade?.studentId === student.uid && editingGrade?.type === 'current' ? (
-                  <Select
-                    value={gradeValue}
-                    onValueChange={(value: GradeValue) => {
-                      handleGradeChange(student.uid, 'current', value);
-                      setEditingGrade(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="3">3</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                      <SelectItem value="н/а">н/а</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setEditingGrade({ studentId: student.uid, type: 'current' });
-                      setGradeValue(getStudentGrade(student.uid, 'current') || '5');
-                    }}
-                  >
-                    {getStudentGrade(student.uid, 'current') || '-'}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>
-                {editingGrade?.studentId === student.uid && editingGrade?.type === 'midterm' ? (
-                  <Select
-                    value={gradeValue}
-                    onValueChange={(value: GradeValue) => {
-                      handleGradeChange(student.uid, 'midterm', value);
-                      setEditingGrade(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="3">3</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                      <SelectItem value="н/а">н/а</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setEditingGrade({ studentId: student.uid, type: 'midterm' });
-                      setGradeValue(getStudentGrade(student.uid, 'midterm') || '5');
-                    }}
-                  >
-                    {getStudentGrade(student.uid, 'midterm') || '-'}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>
-                {editingGrade?.studentId === student.uid && editingGrade?.type === 'exam' ? (
-                  <Select
-                    value={gradeValue}
-                    onValueChange={(value: GradeValue) => {
-                      handleGradeChange(student.uid, 'exam', value);
-                      setEditingGrade(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="3">3</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                      <SelectItem value="н/а">н/а</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setEditingGrade({ studentId: student.uid, type: 'exam' });
-                      setGradeValue(getStudentGrade(student.uid, 'exam') || '5');
-                    }}
-                  >
-                    {getStudentGrade(student.uid, 'exam') || '-'}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>
-                {editingGrade?.studentId === student.uid && editingGrade?.type === 'final' ? (
-                  <Select
-                    value={gradeValue}
-                    onValueChange={(value: GradeValue) => {
-                      handleGradeChange(student.uid, 'final', value);
-                      setEditingGrade(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="3">3</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                      <SelectItem value="н/а">н/а</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setEditingGrade({ studentId: student.uid, type: 'final' });
-                      setGradeValue(getStudentGrade(student.uid, 'final') || '5');
-                    }}
-                  >
-                    {getStudentGrade(student.uid, 'final') || '-'}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>{calculateAverage(student.uid)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {selectedGroup && selectedSubject && selectedSemesterId ? (
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Студент</TableHead>
+                <TableHead>Текущие</TableHead>
+                <TableHead>Рубежные</TableHead>
+                <TableHead>Экзамены</TableHead>
+                <TableHead>Итоговые</TableHead>
+                <TableHead>Средний балл</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredStudents.map(student => (
+                <TableRow key={student.uid}>
+                  <TableCell>
+                    {student.firstName} {student.lastName}
+                  </TableCell>
+                  <TableCell>
+                    {editingGrade?.studentId === student.uid && editingGrade?.type === 'current' ? (
+                      <Select
+                        value={gradeValue}
+                        onValueChange={(value: GradeValue) => {
+                          handleGradeChange(student.uid, 'current', value);
+                          setEditingGrade(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="н/а">н/а</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div
+                        className="cursor-pointer hover:bg-gray-100 p-1 rounded"
+                        onClick={() => {
+                          setEditingGrade({ studentId: student.uid, type: 'current' });
+                          setGradeValue(getStudentGrade(student.uid, 'current') || '5');
+                        }}
+                      >
+                        {getStudentGrade(student.uid, 'current') || '-'}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingGrade?.studentId === student.uid && editingGrade?.type === 'midterm' ? (
+                      <Select
+                        value={gradeValue}
+                        onValueChange={(value: GradeValue) => {
+                          handleGradeChange(student.uid, 'midterm', value);
+                          setEditingGrade(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="н/а">н/а</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div
+                        className="cursor-pointer hover:bg-gray-100 p-1 rounded"
+                        onClick={() => {
+                          setEditingGrade({ studentId: student.uid, type: 'midterm' });
+                          setGradeValue(getStudentGrade(student.uid, 'midterm') || '5');
+                        }}
+                      >
+                        {getStudentGrade(student.uid, 'midterm') || '-'}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingGrade?.studentId === student.uid && editingGrade?.type === 'exam' ? (
+                      <Select
+                        value={gradeValue}
+                        onValueChange={(value: GradeValue) => {
+                          handleGradeChange(student.uid, 'exam', value);
+                          setEditingGrade(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="н/а">н/а</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div
+                        className="cursor-pointer hover:bg-gray-100 p-1 rounded"
+                        onClick={() => {
+                          setEditingGrade({ studentId: student.uid, type: 'exam' });
+                          setGradeValue(getStudentGrade(student.uid, 'exam') || '5');
+                        }}
+                      >
+                        {getStudentGrade(student.uid, 'exam') || '-'}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingGrade?.studentId === student.uid && editingGrade?.type === 'final' ? (
+                      <Select
+                        value={gradeValue}
+                        onValueChange={(value: GradeValue) => {
+                          handleGradeChange(student.uid, 'final', value);
+                          setEditingGrade(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="н/а">н/а</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div
+                        className="cursor-pointer hover:bg-gray-100 p-1 rounded"
+                        onClick={() => {
+                          setEditingGrade({ studentId: student.uid, type: 'final' });
+                          setGradeValue(getStudentGrade(student.uid, 'final') || '5');
+                        }}
+                      >
+                        {getStudentGrade(student.uid, 'final') || '-'}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>{calculateAverage(student.uid)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Выберите группу, предмет и семестр для просмотра оценок
+        </div>
+      )}
     </div>
   );
 } 

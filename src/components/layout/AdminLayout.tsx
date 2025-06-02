@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   School,
   BookOpenCheck,
+  GraduationCap,
 } from 'lucide-react'; // Иконки от lucide-react
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -65,6 +66,11 @@ const Sidebar: React.FC = () => {
           to: '/admin/manage/subjects',
           icon: <BookOpen className="h-5 w-5" />,
           label: 'Предметы',
+        },
+        {
+          to: '/admin/manage/semesters',
+          icon: <GraduationCap className="h-5 w-5" />,
+          label: 'Семестры',
         },
       ],
     },

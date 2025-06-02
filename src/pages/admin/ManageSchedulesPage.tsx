@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Plus, FileText, Trash2 } from 'lucide-react';
+import { Plus, FileText, Calendar } from 'lucide-react';
 import LessonForm from '@/components/admin/schedules/LessonForm';
 import BulkLessonForm from '@/components/admin/schedules/BulkLessonForm';
 import ScheduleTemplateForm from '@/components/admin/schedules/ScheduleTemplateForm';
 import { ScheduleTemplatesList } from '@/components/admin/schedules/ScheduleTemplatesList';
+import ScheduleCalendar from '@/components/admin/schedules/ScheduleCalendar';
 import { toast } from 'sonner';
 import { getGroupSchedule, createLesson, updateLesson, deleteLesson } from '@/lib/firebaseService/scheduleService';
 import { saveScheduleTemplate, getAllScheduleTemplates, deleteScheduleTemplate, updateScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
@@ -17,6 +15,7 @@ import { getUsers } from '@/lib/firebaseService/userService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getSemesters } from '@/lib/firebaseService/semesterService';
 import type { Lesson, Group, TeacherUser, Subject, Semester, ScheduleTemplate } from '@/types';
+import { Timestamp } from 'firebase/firestore';
 
 export default function ManageSchedulesPage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -27,7 +26,6 @@ export default function ManageSchedulesPage() {
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [selectedSemester, setSelectedSemester] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [isLessonFormOpen, setIsLessonFormOpen] = useState(false);
   const [isBulkLessonFormOpen, setIsBulkLessonFormOpen] = useState(false);
   const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
@@ -102,7 +100,11 @@ export default function ManageSchedulesPage() {
   };
 
   const handleUpdateLesson = async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (!editingLesson) return;
+    if (!editingLesson || !editingLesson.id) {
+      toast.error('Некорректный ID занятия для обновления');
+      return;
+    }
+    console.log('Обновляю занятие с id:', editingLesson.id);
     try {
       await updateLesson(editingLesson.id, lesson);
       const updatedLessons = await getGroupSchedule({ 
@@ -117,16 +119,20 @@ export default function ManageSchedulesPage() {
     }
   };
 
-  const handleDeleteLesson = async (lessonId: string) => {
+  const handleDeleteLesson = async (id: string) => {
+    if (!id) {
+      toast.error('Некорректный ID занятия для удаления');
+      return;
+    }
+    console.log('Удаляю занятие с id:', id);
     try {
-      await deleteLesson(lessonId);
-      const updatedLessons = await getGroupSchedule({ 
-        groupId: selectedGroup,
-        semesterId: selectedSemester
-      });
-      setLessons(updatedLessons);
-      toast.success('Занятие успешно удалено');
-    } catch {
+      await deleteLesson(id);
+      toast.success('Занятие удалено');
+      // Обновляем список занятий
+      const updatedLessons = await getGroupSchedule({ groupId: selectedGroup, semesterId: selectedSemester });
+      setLessons(updatedLessons || []);
+    } catch (error) {
+      console.error('Failed to delete lesson:', error);
       toast.error('Не удалось удалить занятие');
     }
   };
@@ -201,31 +207,35 @@ export default function ManageSchedulesPage() {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Управление расписанием</h1>
         <div className="flex gap-2">
-          <Button onClick={() => setIsTemplatesListOpen(true)}>
-            <FileText className="h-4 w-4 mr-2" />
+          <Button onClick={() => setIsTemplatesListOpen(true)} variant="outline">
+            <FileText className="mr-2 h-4 w-4" />
             Шаблоны
           </Button>
-          <Button onClick={() => setIsBulkLessonFormOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={() => setIsTemplateFormOpen(true)} variant="outline">
+            <Calendar className="mr-2 h-4 w-4" />
+            Сохранить шаблон
+          </Button>
+          <Button onClick={() => setIsBulkLessonFormOpen(true)} variant="outline">
+            <Plus className="mr-2 h-4 w-4" />
             Массовое добавление
           </Button>
           <Button onClick={() => setIsLessonFormOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Добавить занятие
           </Button>
         </div>
       </div>
 
-      <div className="flex gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4">
         <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger>
             <SelectValue placeholder="Выберите группу" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60 overflow-y-auto">
             {groups.map(group => (
               <SelectItem key={group.id} value={group.id}>
                 {group.name}
@@ -235,10 +245,10 @@ export default function ManageSchedulesPage() {
         </Select>
 
         <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger>
             <SelectValue placeholder="Выберите семестр" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60 overflow-y-auto">
             {semesters.map(semester => (
               <SelectItem key={semester.id} value={semester.id}>
                 {semester.name}
@@ -246,57 +256,36 @@ export default function ManageSchedulesPage() {
             ))}
           </SelectContent>
         </Select>
-
-        <Input
-          placeholder="Поиск..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-[200px]"
-        />
       </div>
 
-      <ScrollArea className="h-[calc(100vh-200px)]">
-        <div className="grid grid-cols-7 gap-4">
-          {['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'].map((day, index) => (
-            <div key={day} className="space-y-2">
-              <h3 className="font-semibold">{day}</h3>
-              {lessons
-                .filter(lesson => lesson.dayOfWeek === index + 1)
-                .map(lesson => (
-                  <div
-                    key={lesson.id}
-                    className="p-2 border rounded-lg bg-card hover:bg-accent cursor-pointer"
-                    onClick={() => {
-                      setEditingLesson(lesson);
-                      setIsLessonFormOpen(true);
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">{subjects.find(s => s.id === lesson.subjectId)?.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {teachers.find(t => t.uid === lesson.teacherId)?.lastName}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{lesson.room}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteLesson(lesson.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <Badge className="mt-2">{lesson.type}</Badge>
-                  </div>
-                ))}
-            </div>
-          ))}
+      {selectedGroup && selectedSemester && (
+        <div className="bg-card rounded-lg border shadow-sm">
+          <ScheduleCalendar
+            schedule={{
+              id: `${selectedSemester}_${selectedGroup}`,
+              semesterId: selectedSemester,
+              groupId: selectedGroup,
+              lessons,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+              semester: 1,
+              year: 2024,
+            }}
+            subjects={subjects}
+            teachers={teachers.map(teacher => ({
+              id: teacher.uid,
+              firstName: teacher.firstName || '',
+              lastName: teacher.lastName || '',
+              middleName: teacher.middleName || undefined,
+            }))}
+            onLessonClick={(lesson) => {
+              setEditingLesson(lesson);
+              setIsLessonFormOpen(true);
+            }}
+            className="p-4"
+          />
         </div>
-      </ScrollArea>
+      )}
 
       <LessonForm
         open={isLessonFormOpen}
@@ -306,7 +295,9 @@ export default function ManageSchedulesPage() {
         semesterId={selectedSemester}
         subjects={subjects}
         teachers={teachers}
+        groups={groups}
         onSubmit={editingLesson ? handleUpdateLesson : handleCreateLesson}
+        onDelete={handleDeleteLesson}
       />
 
       <BulkLessonForm
@@ -317,6 +308,7 @@ export default function ManageSchedulesPage() {
         semesterId={selectedSemester}
         subjects={subjects}
         teachers={teachers}
+        groups={groups}
       />
 
       <ScheduleTemplateForm

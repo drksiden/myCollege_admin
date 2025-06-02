@@ -232,7 +232,7 @@ const ManageJournalsPage: React.FC = () => {
       </Dialog>
 
       <Dialog open={showManageEntriesDialog} onOpenChange={setShowManageEntriesDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[900px] max-w-[95vw] overflow-x-auto">
           <DialogHeader>
             <DialogTitle>Управление записями журнала</DialogTitle>
             <DialogDescription>

@@ -33,6 +33,7 @@ const createUserSchema = z.object({
   middleName: z.string().optional(),
   iin: z.string().min(1, 'ИИН обязателен'),
   phone: z.string().optional(),
+  status: z.enum(['active', 'inactive']),
   role: z.enum(['student', 'teacher', 'admin'], {
     required_error: 'Выберите роль',
   }),
@@ -106,6 +107,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
       middleName: '',
       iin: '',
       phone: '',
+      status: 'active',
       role: 'student',
       studentDetails: {
         groupId: '',
@@ -147,8 +149,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         middleName: values.middleName,
         iin: values.iin,
         phone: values.phone,
+        status: values.status,
         role: values.role,
-        status: 'active',
         ...(values.role === 'student' ? {
           groupId: values.studentDetails?.groupId,
           studentIdNumber: values.studentDetails?.studentIdNumber,
@@ -219,264 +221,290 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" aria-describedby="create-user-form-description">
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-4 max-w-xl w-full mx-auto bg-white dark:bg-zinc-900 p-6 rounded-lg shadow max-h-[80vh] overflow-auto"
+        aria-describedby="create-user-form-description"
+      >
         <div id="create-user-form-description" className="sr-only">
           Форма создания нового пользователя
         </div>
-        
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input type="email" placeholder="Введите email" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Пароль</FormLabel>
-              <FormControl>
-                <Input type="password" placeholder="Введите пароль" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="firstName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Имя</FormLabel>
-              <FormControl>
-                <Input placeholder="Введите имя" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="lastName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Фамилия</FormLabel>
-              <FormControl>
-                <Input placeholder="Введите фамилию" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="middleName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Отчество</FormLabel>
-              <FormControl>
-                <Input placeholder="Введите отчество" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="iin"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>ИИН</FormLabel>
-              <FormControl>
-                <Input placeholder="Введите ИИН" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="phone"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Телефон</FormLabel>
-              <FormControl>
-                <Input placeholder="Введите телефон" {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="role"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Роль</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите роль" />
-                  </SelectTrigger>
+                  <Input type="email" placeholder="Введите email" {...field} disabled={isLoading} />
                 </FormControl>
-                <SelectContent>
-                  <SelectItem value="student">Студент</SelectItem>
-                  <SelectItem value="teacher">Преподаватель</SelectItem>
-                  <SelectItem value="admin">Администратор</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        {form.watch('role') === 'student' && (
-          <>
-            <FormField
-              control={form.control}
-              name="studentDetails.groupId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Группа</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Пароль</FormLabel>
+                <FormControl>
+                  <Input type="password" placeholder="Введите пароль" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="firstName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Имя</FormLabel>
+                <FormControl>
+                  <Input placeholder="Введите имя" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="lastName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Фамилия</FormLabel>
+                <FormControl>
+                  <Input placeholder="Введите фамилию" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="middleName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Отчество</FormLabel>
+                <FormControl>
+                  <Input placeholder="Введите отчество" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="iin"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>ИИН</FormLabel>
+                <FormControl>
+                  <Input placeholder="Введите ИИН" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Телефон</FormLabel>
+                <FormControl>
+                  <Input placeholder="Введите телефон" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Статус</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите статус" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="active">Активен</SelectItem>
+                    <SelectItem value="inactive">Неактивен</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="role"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Роль</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите роль" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="student">Студент</SelectItem>
+                    <SelectItem value="teacher">Преподаватель</SelectItem>
+                    <SelectItem value="admin">Администратор</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {form.watch('role') === 'student' && (
+            <>
+              <FormField
+                control={form.control}
+                name="studentDetails.groupId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Группа</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите группу" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="studentDetails.studentIdNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Номер студенческого</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите группу" />
-                      </SelectTrigger>
+                      <Input placeholder="Введите номер студенческого" {...field} disabled={isLoading} />
                     </FormControl>
-                    <SelectContent>
-                      {groups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="studentDetails.studentIdNumber"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Номер студенческого</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Введите номер студенческого" {...field} disabled={isLoading} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="studentDetails.enrollmentDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Дата зачисления</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="date" 
-                      {...field} 
-                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                      disabled={isLoading} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="studentDetails.dateOfBirth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Дата рождения</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="date" 
-                      {...field} 
-                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                      disabled={isLoading} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </>
-        )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="studentDetails.enrollmentDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Дата зачисления</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        {...field} 
+                        value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                        onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="studentDetails.dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Дата рождения</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        {...field} 
+                        value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                        onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
 
-        {form.watch('role') === 'teacher' && (
-          <>
-            <FormField
-              control={form.control}
-              name="teacherDetails.specialization"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Специализация</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Введите специализацию" {...field} disabled={isLoading} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="teacherDetails.education"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Образование</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Введите образование" {...field} disabled={isLoading} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="teacherDetails.experience"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Опыт (лет)</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="number" 
-                      min="0"
-                      placeholder="Введите опыт работы" 
-                      {...field} 
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      disabled={isLoading} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </>
-        )}
-
-        <div className="flex justify-end space-x-2">
+          {form.watch('role') === 'teacher' && (
+            <>
+              <FormField
+                control={form.control}
+                name="teacherDetails.specialization"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Специализация</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Введите специализацию" {...field} disabled={isLoading} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="teacherDetails.education"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Образование</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Введите образование" {...field} disabled={isLoading} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="teacherDetails.experience"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Опыт (лет)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        min="0"
+                        placeholder="Введите опыт работы" 
+                        {...field} 
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        disabled={isLoading} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
+        </div>
+        <div className="flex justify-end space-x-2 mt-4">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Отмена
           </Button>

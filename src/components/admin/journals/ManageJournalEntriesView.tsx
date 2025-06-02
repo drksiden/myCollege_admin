@@ -42,7 +42,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Form,
   FormControl,
@@ -52,6 +51,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Save, Loader2, Trash2 } from "lucide-react";
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Form schema for a single journal entry row
 const journalEntryRowSchema = z.object({
@@ -233,56 +233,41 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("p-4 space-y-4 w-full", className)}>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div className="flex items-center justify-between">
-            <FormField
-              control={form.control}
-              name="selectedDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Дата занятия</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      {...field}
-                      value={format(field.value, "yyyy-MM-dd")}
-                      onChange={(e) => {
-                        const date = new Date(e.target.value);
-                        field.onChange(date);
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={openDeleteConfirm}
-              disabled={isSubmitting}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Удалить записи
-            </Button>
-          </div>
-
-          <ScrollArea className="h-[400px] rounded-md border">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 w-full">
+          <FormField
+            control={form.control}
+            name="selectedDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Дата занятия</FormLabel>
+                <FormControl>
+                  <Input
+                    type="date"
+                    {...field}
+                    value={format(field.value, "yyyy-MM-dd")}
+                    onChange={(e) => field.onChange(new Date(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <ScrollArea className="h-[calc(100vh-300px)] w-full overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Студент</TableHead>
-                  <TableHead>Посещаемость</TableHead>
-                  <TableHead>Оценка</TableHead>
+                  <TableHead className="w-[200px]">Студент</TableHead>
+                  <TableHead className="w-[150px]">Посещаемость</TableHead>
+                  <TableHead className="w-[100px]">Оценка</TableHead>
                   <TableHead>Комментарий</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {fields.map((field, index) => (
                   <TableRow key={field.id}>
-                    <TableCell>{field.studentName}</TableCell>
+                    <TableCell className="truncate">{field.studentName}</TableCell>
                     <TableCell>
                       <FormField
                         control={form.control}
@@ -294,7 +279,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                               defaultValue={field.value}
                             >
                               <FormControl>
-                                <SelectTrigger>
+                                <SelectTrigger className="w-[140px]">
                                   <SelectValue placeholder="Выберите статус" />
                                 </SelectTrigger>
                               </FormControl>
@@ -302,7 +287,6 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                                 <SelectItem value="present">Присутствует</SelectItem>
                                 <SelectItem value="absent">Отсутствует</SelectItem>
                                 <SelectItem value="late">Опоздал</SelectItem>
-                                <SelectItem value="excused">Уважительная причина</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -319,13 +303,10 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                             <FormControl>
                               <Input
                                 type="number"
-                                min={0}
-                                max={100}
                                 {...field}
-                                onChange={(e) => {
-                                  const value = e.target.value === '' ? undefined : parseInt(e.target.value);
-                                  field.onChange(value);
-                                }}
+                                onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                                value={field.value || ''}
+                                className="w-[80px]"
                               />
                             </FormControl>
                             <FormMessage />
@@ -340,10 +321,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
                         render={({ field }) => (
                           <FormItem>
                             <FormControl>
-                              <Textarea
-                                {...field}
-                                placeholder="Комментарий"
-                              />
+                              <Textarea {...field} className="min-w-[200px] max-w-[300px] resize-none" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -355,17 +333,25 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
               </TableBody>
             </Table>
           </ScrollArea>
-
-          <div className="flex justify-end">
+          <div className="flex justify-between">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={openDeleteConfirm}
+              disabled={isSubmitting}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Удалить записи
+            </Button>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Сохранение...
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="mr-2 h-4 w-4" />
                   Сохранить
                 </>
               )}
@@ -375,7 +361,7 @@ const ManageJournalEntriesView: React.FC<ManageJournalEntriesViewProps> = ({
       </Form>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-5xl max-h-[90vh]">
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить записи</AlertDialogTitle>
             <AlertDialogDescription>

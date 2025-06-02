@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import type { Lesson, Subject, TeacherUser } from '@/types';
+import type { Lesson, Subject, TeacherUser, Group } from '@/types';
 import { getGroupSchedule } from '@/lib/firebaseService/scheduleService';
 import { canAddLesson } from '@/lib/utils/scheduleValidation';
 import { useWatch } from 'react-hook-form';
@@ -61,22 +61,26 @@ interface LessonFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  onDelete: (id: string) => void;
   subjects: Subject[];
   teachers: TeacherUser[];
   groupId: string;
   semesterId: string;
   lesson: Lesson | null;
+  groups: Group[];
 }
 
 const LessonForm: React.FC<LessonFormProps> = ({
   open,
   onOpenChange,
   onSubmit,
+  onDelete,
   subjects,
   teachers,
   groupId,
   semesterId,
   lesson,
+  groups,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [existingLessons, setExistingLessons] = useState<Lesson[]>([]);
@@ -86,13 +90,14 @@ const LessonForm: React.FC<LessonFormProps> = ({
     defaultValues: {
       type: 'lecture',
       dayOfWeek: 1,
-      startTime: '09:00',
-      endTime: '10:30',
+      startTime: '08:00',
+      endTime: '09:30',
       subjectId: '',
       room: '',
       duration: 90,
       weekType: 'all',
       isFloating: false,
+      teacherId: 'no_teacher',
     },
   });
 
@@ -121,13 +126,14 @@ const LessonForm: React.FC<LessonFormProps> = ({
       form.reset({
         type: 'lecture',
         dayOfWeek: 1,
-        startTime: '09:00',
-        endTime: '10:30',
+        startTime: '08:00',
+        endTime: '09:30',
         subjectId: '',
         room: '',
         duration: 90,
         weekType: 'all',
         isFloating: false,
+        teacherId: 'no_teacher',
       });
     }
   }, [lesson, form]);
@@ -183,7 +189,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
 
       const newLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
         ...data,
-        teacherId: data.teacherId || null,
+        teacherId: data.teacherId === 'no_teacher' ? null : data.teacherId,
         groupId,
         semesterId,
       };
@@ -201,6 +207,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
 
       const validationErrors = canAddLesson(newLesson as Lesson, schedule);
       if (validationErrors.length > 0) {
+        console.log('Validation errors:', validationErrors, newLesson, existingLessons);
         toast.error(`Невозможно добавить занятие: ${validationErrors[0].message}`);
         return;
       }
@@ -215,6 +222,10 @@ const LessonForm: React.FC<LessonFormProps> = ({
       setIsLoading(false);
     }
   };
+
+  // Получаем только предметы, привязанные к группе
+  const group = groups?.find(g => g.id === groupId);
+  const groupSubjects = subjects.filter(subject => group?.subjectIds.includes(subject.id));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -234,14 +245,12 @@ const LessonForm: React.FC<LessonFormProps> = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Предмет</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите предмет" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {subjects.map(subject => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите предмет" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60 overflow-y-auto">
+                      {groupSubjects.map(subject => (
                         <SelectItem key={subject.id} value={subject.id}>
                           {subject.name}
                         </SelectItem>
@@ -269,8 +278,8 @@ const LessonForm: React.FC<LessonFormProps> = ({
                         <SelectValue placeholder="Выберите преподавателя" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem value="">Нет преподавателя</SelectItem>
+                    <SelectContent className="max-h-60 overflow-y-auto">
+                      <SelectItem value="no_teacher">Нет преподавателя</SelectItem>
                       {teachers.map(teacher => (
                         <SelectItem key={teacher.uid} value={teacher.uid}>
                           {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
@@ -295,7 +304,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
                         <SelectValue placeholder="Выберите тип занятия" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent className="max-h-60 overflow-y-auto">
                       <SelectItem value="lecture">Лекция</SelectItem>
                       <SelectItem value="seminar">Семинар</SelectItem>
                       <SelectItem value="lab">Лабораторная</SelectItem>
@@ -319,7 +328,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
                         <SelectValue placeholder="Выберите день недели" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent className="max-h-60 overflow-y-auto">
                       <SelectItem value="1">Понедельник</SelectItem>
                       <SelectItem value="2">Вторник</SelectItem>
                       <SelectItem value="3">Среда</SelectItem>
@@ -397,7 +406,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
                         <SelectValue placeholder="Выберите тип недели" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent className="max-h-60 overflow-y-auto">
                       <SelectItem value="all">Каждую неделю</SelectItem>
                       <SelectItem value="odd">По нечетным</SelectItem>
                       <SelectItem value="even">По четным</SelectItem>
@@ -413,8 +422,20 @@ const LessonForm: React.FC<LessonFormProps> = ({
                 Отмена
               </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Сохранение...' : 'Добавить'}
+                {isLoading ? 'Сохранение...' : lesson ? 'Сохранить' : 'Добавить'}
               </Button>
+              {lesson && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    onDelete(lesson.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  Удалить
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </Form>
