@@ -251,8 +251,7 @@ export const getUsers = async (options: {
   const { role, status, groupId, limit: limitCount = 20, startAfterDoc } = options;
 
   let q = query(
-    collection(db, USERS_COLLECTION),
-    orderBy('createdAt', 'desc')
+    collection(db, 'users')
   );
 
   if (role) {

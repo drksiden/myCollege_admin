@@ -3,7 +3,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import type { AppUser } from '@/types';
 import type { AuthContextType } from '@/types/auth';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { getUserById } from '@/lib/firebaseService/userService';
 
 const AuthContext = createContext<AuthContextType>({
@@ -40,7 +41,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
           };
-          setUser(pendingUser);
+          
+          // Create user document in Firestore
+          try {
+            await setDoc(doc(db, 'users', firebaseUser.uid), pendingUser);
+            setUser(pendingUser);
+          } catch (error) {
+            console.error('Error creating user document:', error);
+          }
         }
       } else {
         // User is signed out

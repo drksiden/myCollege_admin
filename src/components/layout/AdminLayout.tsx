@@ -113,7 +113,7 @@ const Sidebar: React.FC = () => {
       title: 'Общение и новости',
       items: [
         {
-          to: '/admin/chat',
+          to: '/admin/chats',
           icon: <Users className="h-5 w-5" />,
           label: 'Чат',
         },

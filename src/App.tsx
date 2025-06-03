@@ -17,6 +17,7 @@ import ManageSubjectsPage from '@/pages/admin/ManageSubjectsPage';
 import ManageSemestersPage from '@/pages/admin/ManageSemestersPage';
 import ChatPage from '@/pages/admin/ChatPage';
 import NewsPage from '@/pages/admin/NewsPage';
+import ChatsPage from '@/pages/admin/ChatsPage';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -66,6 +67,7 @@ function App() {
 
           {/* Новые разделы */}
           <Route path="chat" element={<ChatPage />} />
+          <Route path="chats" element={<ChatsPage />} />
           <Route path="news" element={<NewsPage />} />
 
           <Route index element={<Navigate to="dashboard" replace />} />
