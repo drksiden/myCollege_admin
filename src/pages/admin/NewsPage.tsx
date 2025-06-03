@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+// src/pages/admin/NewsPage.tsx
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PlusCircle } from 'lucide-react';
-import NewsEditor from '@/components/admin/news/NewsEditor'; // Assuming NewsEditor is in this path
+import NewsEditor from '@/components/admin/news/NewsEditor';
 import NewsList from '@/components/admin/news/NewsList';
 import type { News } from '@/types';
-import { getNews } from '@/lib/firebaseService/newsService'; // Import service to fetch news
-import { toast } from 'sonner'; // For notifications
+import { getNews } from '@/lib/firebaseService/newsService';
+import { toast } from 'sonner';
 
-const NewsPage = () => {
+const NewsPage: React.FC = () => {
   const [selectedNews, setSelectedNews] = useState<News | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [newsItems, setNewsItems] = useState<News[]>([]);
@@ -17,7 +18,7 @@ const NewsPage = () => {
   const loadNews = async () => {
     setIsLoading(true);
     try {
-      const fetchedNews = await getNews({}); // Fetch all news
+      const fetchedNews = await getNews({});
       setNewsItems(fetchedNews);
     } catch (error) {
       console.error("Failed to load news:", error);
@@ -28,10 +29,11 @@ const NewsPage = () => {
   };
 
   useEffect(() => {
-    if (!isEditorOpen) { // Load news when editor is not open, or initially
-        loadNews();
+    if (!isEditorOpen) {
+      loadNews();
     }
   }, [isEditorOpen]);
+
   const handleCreateNews = () => {
     setSelectedNews(null);
     setIsEditorOpen(true);
@@ -45,46 +47,49 @@ const NewsPage = () => {
   const handleEditorSuccess = () => {
     setSelectedNews(null);
     setIsEditorOpen(false);
-    loadNews(); // Reload news after editor closes
+    loadNews();
+  };
+
+  const handleEditorCancel = () => {
+    setSelectedNews(null);
+    setIsEditorOpen(false);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Управление новостями</h1>
-        <Button 
-          onClick={handleCreateNews}
-          className="flex items-center gap-2"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Создать новость
-        </Button>
+        {!isEditorOpen && (
+          <Button 
+            onClick={handleCreateNews}
+            className="flex items-center gap-2"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Создать новость
+          </Button>
+        )}
       </div>
 
       <Card>
-        {isEditorOpen && (
+        {isEditorOpen ? (
           <NewsEditor 
             mode={selectedNews ? 'edit' : 'create'}
             newsId={selectedNews?.id}
             initialData={selectedNews}
             onSuccess={handleEditorSuccess}
+            onCancel={handleEditorCancel}
+          />
+        ) : (
+          <NewsList
+            news={newsItems}
+            onEditNews={handleEditNews}
+            onNewsUpdate={loadNews}
+            loading={isLoading}
           />
         )}
-        {!isEditorOpen &&
-          (isLoading ? (
-            <div className="flex justify-center items-center p-10">
-              <p>Загрузка новостей...</p> {/* Or a spinner component */}
-            </div>
-          ) : (
-            <NewsList
-              news={newsItems}
-              onEditNews={handleEditNews}
-              onNewsUpdate={loadNews}
-            />
-          ))}
       </Card>
     </div>
   );
 };
 
-export default NewsPage; 
+export default NewsPage;

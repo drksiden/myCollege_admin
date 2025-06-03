@@ -1,6 +1,5 @@
 import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc, getDoc, limit } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 import type { News } from '@/types';
 
 // News functions
@@ -11,7 +10,13 @@ export async function createNews(data: Omit<News, 'id' | 'createdAt' | 'updatedA
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
-  return addDoc(newsRef, newsData);
+  
+  const docRef = await addDoc(newsRef, newsData);
+  
+  return {
+    id: docRef.id,
+    ...newsData
+  };
 }
 
 export async function updateNews(id: string, data: Partial<Omit<News, 'id' | 'createdAt' | 'updatedAt'>>) {
@@ -23,27 +28,12 @@ export async function updateNews(id: string, data: Partial<Omit<News, 'id' | 'cr
 }
 
 export async function deleteNews(id: string) {
-  // Get news to delete images from storage
+  // Get news to check if it exists
   const newsRef = doc(db, 'news', id);
   const newsDoc = await getDoc(newsRef);
   
   if (!newsDoc.exists()) {
     throw new Error('News not found');
-  }
-  
-  const news = newsDoc.data();
-  
-  // Delete images from storage
-  if (news.images && Array.isArray(news.images)) {
-    for (const image of news.images) {
-      try {
-        const imageRef = ref(storage, image.url);
-        await deleteObject(imageRef);
-      } catch (error) {
-        console.error('Error deleting image:', error);
-        // Continue even if image deletion fails
-      }
-    }
   }
   
   // Delete news document
@@ -113,33 +103,35 @@ export async function getNewsById(id: string) {
   } as News;
 }
 
-// Image upload functions
-export async function uploadNewsImage(file: File, newsId: string, order: number) {
-  const fileExtension = file.name.split('.').pop();
-  const fileName = `${newsId}/${Date.now()}.${fileExtension}`;
-  const storageRef = ref(storage, `news/${fileName}`);
-
+// Функция для валидации URL изображений
+export function validateImageUrl(url: string): boolean {
   try {
-    const snapshot = await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(snapshot.ref);
-    
-    return {
-      url,
-      alt: file.name,
-      order,
-    };
-  } catch (error) {
-    console.error('Error uploading image:', error);
-    throw error;
+    const urlObj = new URL(url);
+    return ['http:', 'https:'].includes(urlObj.protocol);
+  } catch {
+    return false;
   }
 }
 
-export async function deleteNewsImage(imageUrl: string) {
-  try {
-    const imageRef = ref(storage, imageUrl);
-    await deleteObject(imageRef);
-  } catch (error) {
-    console.error('Error deleting image:', error);
-    throw error;
-  }
-} 
+// Функция для получения превью изображения
+export function getImagePreview(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
+// Экспорт всех функций
+export default {
+  createNews,
+  updateNews,
+  deleteNews,
+  publishNews,
+  unpublishNews,
+  getNews,
+  getNewsById,
+  validateImageUrl,
+  getImagePreview
+};

@@ -210,8 +210,6 @@ export interface Comment {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
-
-// Добавьте сюда другие типы, если они вам нужны, например, для новостей.
 export interface News {
   id: string;
   title: string;
@@ -220,8 +218,8 @@ export interface News {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   isPublished: boolean;
-  imageUrl?: string;
-  images?: { url: string; alt?: string }[]; // Для галереи изображений
+  publishedAt?: Timestamp | null; // Дата публикации
+  images?: { url: string; alt?: string; order?: number }[]; // Массив изображений
   tags?: string[]; // Теги для категоризации
 }
 
