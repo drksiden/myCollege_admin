@@ -57,7 +57,7 @@ const ManageSubjectsPage: React.FC = () => {
       setSubjects(allSubjects);
     } catch (error) {
       console.error('Error fetching subjects:', error);
-      toast.error('Failed to load subjects.');
+      toast.error('Не удалось загрузить предметы.');
     } finally {
       setIsLoading(false);
     }
@@ -95,10 +95,10 @@ const ManageSubjectsPage: React.FC = () => {
     try {
       await deleteSubjectService(subjectToDelete.id);
       fetchData();
-      toast.success('Subject deleted successfully.');
+      toast.success('Предмет успешно удален.');
     } catch (error) {
       console.error('Error deleting subject:', error);
-      toast.error('Failed to delete subject.');
+      toast.error('Не удалось удалить предмет.');
     } finally {
       setSubjectToDelete(null);
     }
@@ -120,12 +120,12 @@ const ManageSubjectsPage: React.FC = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {formMode === 'create' ? 'Create New Subject' : 'Edit Subject'}
+              {formMode === 'create' ? 'Создать новый предмет' : 'Редактировать предмет'}
             </DialogTitle>
             <DialogDescription>
               {formMode === 'create'
-                ? 'Add a new subject to the system.'
-                : 'Update the subject information.'}
+                ? 'Добавьте новый предмет в систему.'
+                : 'Обновите информацию о предмете.'}
             </DialogDescription>
           </DialogHeader>
           {showFormDialog && (
@@ -148,24 +148,24 @@ const ManageSubjectsPage: React.FC = () => {
       <AlertDialog open={!!subjectToDelete} onOpenChange={handleDeleteCancel}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the subject
-              {subjectToDelete && ` "${subjectToDelete.name}"`} and all associated data.
+              Это действие нельзя отменить. Это навсегда удалит предмет
+              {subjectToDelete && ` "${subjectToDelete.name}"`} и все связанные с ним данные.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+            <AlertDialogCancel onClick={handleDeleteCancel}>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Удалить</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Manage Subjects</h1>
+        <h1 className="text-2xl font-bold">Управление предметами</h1>
         <Button onClick={handleOpenCreateDialog}>
           <PlusCircle className="mr-2 h-4 w-4" />
-          Add Subject
+          Добавить предмет
         </Button>
       </div>
 
@@ -176,17 +176,17 @@ const ManageSubjectsPage: React.FC = () => {
       ) : subjects.length === 0 ? (
         <div className="p-10 text-center text-muted-foreground">
           <Loader2 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium">No Subjects</h3>
-          <p className="mt-1 text-sm">Add a new subject to get started.</p>
+          <h3 className="text-lg font-medium">Нет предметов</h3>
+          <p className="mt-1 text-sm">Добавьте новый предмет, чтобы начать.</p>
         </div>
       ) : (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Название</TableHead>
+                <TableHead>Описание</TableHead>
+                <TableHead>Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -202,10 +202,10 @@ const ManageSubjectsPage: React.FC = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => handleOpenEditDialog(subject)}>
                           <Edit2 className="mr-2 h-4 w-4" />
-                          Edit
+                          Редактировать
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -213,7 +213,7 @@ const ManageSubjectsPage: React.FC = () => {
                           onClick={() => handleDeleteClick(subject)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          Удалить
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

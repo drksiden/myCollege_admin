@@ -1,130 +1,106 @@
-import { collection, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { subMonths, startOfMonth as startOfMonthFn, endOfMonth as endOfMonthFn, format } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { getUsers } from './userService';
+import { getAllGroups } from './groupService';
+import { getAllSubjects } from './subjectService';
+import { getJournalEntries } from './journalService';
+import type { JournalEntry } from '@/types';
 
-interface User {
-  uid: string;
-  role: 'student' | 'teacher' | 'admin';
-  createdAt: Timestamp;
-  groupId?: string;
-  status?: 'active' | 'inactive';
-}
-
-interface Group {
-  id: string;
-  name: string;
-}
-
-interface DashboardData {
-  studentEnrollment: {
-    month: string;
-    count: number;
-  }[];
-  groupDistribution: {
-    name: string;
-    value: number;
-  }[];
+export interface DashboardStats {
   totalStudents: number;
   totalTeachers: number;
-  activeStudents: number;
-  newStudentsThisMonth: number;
-  newTeachersThisMonth: number;
-  attendanceRate: number;
+  totalGroups: number;
+  totalSubjects: number;
+  attendanceStats: {
+    groupId: string;
+    groupName: string;
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+  }[];
+  gradeDistribution: {
+    range: string;
+    count: number;
+  }[];
+  subjectActivity: {
+    subjectId: string;
+    subjectName: string;
+    entriesCount: number;
+  }[];
 }
 
-export const getDashboardData = async (): Promise<DashboardData> => {
+export const getDashboardData = async (): Promise<DashboardStats> => {
   try {
-    // Получаем данные о пользователях
-    const usersSnapshot = await getDocs(collection(db, 'users'));
-    const users = usersSnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id })) as User[];
+    // Получаем базовую статистику
+    const [{ users: allUsers }, groups, subjects] = await Promise.all([
+      getUsers(),
+      getAllGroups(),
+      getAllSubjects(),
+    ]);
 
-    // Получаем данные о группах
-    const groupsSnapshot = await getDocs(collection(db, 'groups'));
-    const groups = groupsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Group[];
+    const students = allUsers.filter(user => user.role === 'student');
+    const teachers = allUsers.filter(user => user.role === 'teacher');
 
-    // Получаем данные о посещаемости
-    const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
-    const attendances = attendanceSnapshot.docs.map(doc => doc.data());
+    // Получаем все записи журнала за последние 30 дней
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const journalEntriesCollection = collection(db, 'journalEntries');
+    const q = query(
+      journalEntriesCollection,
+      where('date', '>=', Timestamp.fromDate(thirtyDaysAgo))
+    );
+    const entriesSnapshot = await getDocs(q);
+    const entries = entriesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as JournalEntry));
 
-    // Подготавливаем данные для графика набора студентов
-    const studentEnrollment = Array.from({ length: 6 }, (_, i) => {
-      const month = subMonths(new Date(), i);
-      const startOfMonthDate = startOfMonthFn(month);
-      const endOfMonthDate = endOfMonthFn(month);
-
-      const count = users.filter(user => 
-        user.role === 'student' &&
-        user.createdAt &&
-        user.createdAt.toDate() >= startOfMonthDate &&
-        user.createdAt.toDate() <= endOfMonthDate
-      ).length;
-
+    // Статистика посещаемости по группам
+    const attendanceStats = groups.map(group => {
+      const groupEntries = entries.filter(entry => entry.groupId === group.id);
       return {
-        month: format(month, 'LLLL', { locale: ru }),
-        count
+        groupId: group.id,
+        groupName: group.name,
+        present: groupEntries.filter(entry => entry.attendanceStatus === 'present').length,
+        absent: groupEntries.filter(entry => entry.attendanceStatus === 'absent').length,
+        late: groupEntries.filter(entry => entry.attendanceStatus === 'late').length,
+        excused: groupEntries.filter(entry => entry.attendanceStatus === 'excused').length,
       };
-    }).reverse();
-
-    // Подготавливаем данные для графика распределения по группам
-    const groupCounts = new Map<string, number>();
-    
-    // Инициализируем счетчики для всех групп
-    groups.forEach(group => {
-      groupCounts.set(group.name, 0);
     });
 
-    // Подсчитываем количество студентов в каждой группе
-    users.forEach(user => {
-      if (user.role === 'student' && user.groupId) {
-        const group = groups.find(g => g.id === user.groupId);
-        if (group) {
-          groupCounts.set(group.name, (groupCounts.get(group.name) || 0) + 1);
-        }
-      }
-    });
+    // Распределение оценок
+    const gradeRanges = [
+      { min: 0, max: 20, label: '0-20' },
+      { min: 21, max: 40, label: '21-40' },
+      { min: 41, max: 60, label: '41-60' },
+      { min: 61, max: 80, label: '61-80' },
+      { min: 81, max: 100, label: '81-100' },
+    ];
 
-    const groupDistribution = Array.from(groupCounts.entries()).map(([name, value]) => ({
-      name,
-      value
+    const gradeDistribution = gradeRanges.map(range => ({
+      range: range.label,
+      count: entries.filter(entry => {
+        const grade = parseInt(entry.grade || '0');
+        return grade >= range.min && grade <= range.max;
+      }).length,
     }));
 
-    // Рассчитываем общую статистику
-    const totalStudents = users.filter(user => user.role === 'student').length;
-    const totalTeachers = users.filter(user => user.role === 'teacher').length;
-    const activeStudents = users.filter(user => user.role === 'student' && user.status === 'active').length;
-
-    // Рассчитываем статистику за текущий месяц
-    const currentMonthStart = startOfMonthFn(new Date());
-    const currentMonthEnd = endOfMonthFn(new Date());
-
-    const newStudentsThisMonth = users.filter(user => 
-      user.role === 'student' &&
-      user.createdAt &&
-      user.createdAt.toDate() >= currentMonthStart &&
-      user.createdAt.toDate() <= currentMonthEnd
-    ).length;
-
-    const newTeachersThisMonth = users.filter(user => 
-      user.role === 'teacher' &&
-      user.createdAt &&
-      user.createdAt.toDate() >= currentMonthStart &&
-      user.createdAt.toDate() <= currentMonthEnd
-    ).length;
-
-    // Рассчитываем среднюю посещаемость
-    const totalAttendance = attendances.reduce((sum, attendance) => sum + (attendance.present ? 1 : 0), 0);
-    const attendanceRate = attendances.length > 0 ? (totalAttendance / attendances.length) * 100 : 0;
+    // Активность по предметам
+    const subjectActivity = subjects.map(subject => ({
+      subjectId: subject.id,
+      subjectName: subject.name,
+      entriesCount: entries.filter(entry => entry.subjectId === subject.id).length,
+    }));
 
     return {
-      studentEnrollment,
-      groupDistribution,
-      totalStudents,
-      totalTeachers,
-      activeStudents,
-      newStudentsThisMonth,
-      newTeachersThisMonth,
-      attendanceRate
+      totalStudents: students.length,
+      totalTeachers: teachers.length,
+      totalGroups: groups.length,
+      totalSubjects: subjects.length,
+      attendanceStats,
+      gradeDistribution,
+      subjectActivity,
     };
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
