@@ -1,6 +1,7 @@
 // src/pages/admin/ManageJournalsPage.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -9,6 +10,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -35,7 +43,14 @@ import {
   Calendar,
   User,
   GraduationCap,
-  Settings
+  Settings,
+  Search,
+  Filter,
+  X,
+  SortAsc,
+  SortDesc,
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -60,19 +75,32 @@ import { Toaster } from '@/components/ui/sonner';
 import { getAllGroups } from '@/lib/firebaseService/groupService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
+import { getSemesters } from '@/lib/firebaseService/semesterService';
 import { getAllJournals, deleteJournal as deleteJournalService, getJournal } from '@/lib/firebaseService/journalService';
 import { JournalMetadataForm } from '@/components/admin/journals/JournalMetadataForm';
 import ManageJournalEntriesView from '@/components/admin/journals/ManageJournalEntriesView';
-import type { Journal, Group, Subject, TeacherUser } from '@/types';
+import type { Journal, Group, Subject, TeacherUser, Semester } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+type SortField = 'createdAt' | 'groupName' | 'subjectName' | 'teacherName';
+type SortDirection = 'asc' | 'desc';
+
+interface FilterState {
+  search: string;
+  groupId: string;
+  subjectId: string;
+  teacherId: string;
+  semesterId: string;
+}
 
 const ManageJournalsPage: React.FC = () => {
   const [journals, setJournals] = useState<Journal[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
@@ -84,20 +112,35 @@ const ManageJournalsPage: React.FC = () => {
   
   const [journalToDelete, setJournalToDelete] = useState<Journal | null>(null);
 
+  // Состояние фильтров
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    groupId: '',
+    subjectId: '',
+    teacherId: '',
+    semesterId: ''
+  });
+
+  // Состояние сортировки
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
   const fetchData = async () => {
     setIsLoading(true);
     toast.loading('Загрузка данных...', { id: 'fetch-data' });
     
     try {
-      const [allGroups, allSubjects, { users: teachers }, allJournals] = await Promise.all([
+      const [allGroups, allSubjects, { users: teachers }, allSemesters, allJournals] = await Promise.all([
         getAllGroups(),
         getAllSubjects(),
         getUsers({ role: 'teacher' }),
+        getSemesters(),
         getAllJournals(),
       ]);
       setGroups(allGroups);
       setSubjects(allSubjects);
       setTeachers(teachers as TeacherUser[]);
+      setSemesters(allSemesters);
       setJournals(allJournals);
       
       toast.success('Данные загружены', { id: 'fetch-data' });
@@ -113,13 +156,127 @@ const ManageJournalsPage: React.FC = () => {
     fetchData();
   }, []);
 
+  // Функции получения названий
   const getGroupName = (groupId: string) => groups.find(g => g.id === groupId)?.name || 'Неизвестная группа';
   const getSubjectName = (subjectId: string) => subjects.find(s => s.id === subjectId)?.name || 'Неизвестный предмет';
   const getTeacherName = (teacherId: string) => {
     const teacher = teachers.find(t => t.uid === teacherId);
     return teacher ? `${teacher.lastName} ${teacher.firstName}` : 'Неизвестный преподаватель';
   };
+  const getSemesterName = (semesterId: string) => semesters.find(s => s.id === semesterId)?.name || 'Неизвестный семестр';
 
+  // Фильтрованные и отсортированные журналы
+  const filteredAndSortedJournals = useMemo(() => {
+    const filtered = journals.filter(journal => {
+      // Поиск по тексту
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const groupName = getGroupName(journal.groupId).toLowerCase();
+        const subjectName = getSubjectName(journal.subjectId).toLowerCase();
+        const teacherName = getTeacherName(journal.teacherId).toLowerCase();
+        
+        if (!groupName.includes(searchLower) && 
+            !subjectName.includes(searchLower) && 
+            !teacherName.includes(searchLower)) {
+          return false;
+        }
+      }
+
+      // Фильтр по группе
+      if (filters.groupId && journal.groupId !== filters.groupId) {
+        return false;
+      }
+
+      // Фильтр по предмету
+      if (filters.subjectId && journal.subjectId !== filters.subjectId) {
+        return false;
+      }
+
+      // Фильтр по преподавателю
+      if (filters.teacherId && journal.teacherId !== filters.teacherId) {
+        return false;
+      }
+
+      // Фильтр по семестру
+      if (filters.semesterId && journal.semesterId !== filters.semesterId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Сортировка
+    filtered.sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+
+      switch (sortField) {
+        case 'groupName':
+          aValue = getGroupName(a.groupId);
+          bValue = getGroupName(b.groupId);
+          break;
+        case 'subjectName':
+          aValue = getSubjectName(a.subjectId);
+          bValue = getSubjectName(b.subjectId);
+          break;
+        case 'teacherName':
+          aValue = getTeacherName(a.teacherId);
+          bValue = getTeacherName(b.teacherId);
+          break;
+        case 'createdAt':
+        default:
+          aValue = a.createdAt.toMillis();
+          bValue = b.createdAt.toMillis();
+          break;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      } else {
+        return sortDirection === 'asc' 
+          ? (aValue as number) - (bValue as number)
+          : (bValue as number) - (aValue as number);
+      }
+    });
+
+    return filtered;
+  }, [journals, filters, sortField, sortDirection, groups, subjects, teachers]);
+
+  // Обработчики фильтров
+  const updateFilter = (key: keyof FilterState, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      groupId: '',
+      subjectId: '',
+      teacherId: '',
+      semesterId: ''
+    });
+  };
+
+  const hasActiveFilters = Object.values(filters).some(value => value !== '');
+
+  // Обработчики сортировки
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />;
+  };
+
+  // Остальные обработчики (без изменений)
   const handleOpenCreateJournalDialog = () => {
     setMetadataFormMode('create');
     setSelectedJournalForMetadata(null);
@@ -183,12 +340,13 @@ const ManageJournalsPage: React.FC = () => {
     await fetchData();
   };
 
-  // Статистика
+  // Статистика с учетом фильтров
   const stats = {
     totalJournals: journals.length,
-    uniqueGroups: new Set(journals.map(j => j.groupId)).size,
-    uniqueSubjects: new Set(journals.map(j => j.subjectId)).size,
-    uniqueTeachers: new Set(journals.map(j => j.teacherId)).size,
+    filteredJournals: filteredAndSortedJournals.length,
+    uniqueGroups: new Set(filteredAndSortedJournals.map(j => j.groupId)).size,
+    uniqueSubjects: new Set(filteredAndSortedJournals.map(j => j.subjectId)).size,
+    uniqueTeachers: new Set(filteredAndSortedJournals.map(j => j.teacherId)).size,
   };
 
   const pageVariants = {
@@ -218,10 +376,20 @@ const ManageJournalsPage: React.FC = () => {
             Создавайте и управляйте учебными журналами групп
           </p>
         </div>
-        <Button onClick={handleOpenCreateJournalDialog} className="gap-2">
-          <PlusCircle className="h-4 w-4" />
-          Создать журнал
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchData} disabled={isLoading} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Обновить
+          </Button>
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Экспорт
+          </Button>
+          <Button onClick={handleOpenCreateJournalDialog} className="gap-2">
+            <PlusCircle className="h-4 w-4" />
+            Создать журнал
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -233,7 +401,7 @@ const ManageJournalsPage: React.FC = () => {
             icon: BookOpen, 
             color: 'text-blue-600',
             bgColor: 'bg-blue-100 dark:bg-blue-900',
-            description: 'Активных журналов'
+            description: hasActiveFilters ? `Показано: ${stats.filteredJournals}` : 'Активных журналов'
           },
           { 
             title: 'Групп', 
@@ -241,7 +409,7 @@ const ManageJournalsPage: React.FC = () => {
             icon: Users, 
             color: 'text-green-600',
             bgColor: 'bg-green-100 dark:bg-green-900',
-            description: 'С журналами'
+            description: hasActiveFilters ? 'В выборке' : 'С журналами'
           },
           { 
             title: 'Предметов', 
@@ -249,7 +417,7 @@ const ManageJournalsPage: React.FC = () => {
             icon: GraduationCap, 
             color: 'text-purple-600',
             bgColor: 'bg-purple-100 dark:bg-purple-900',
-            description: 'В журналах'
+            description: hasActiveFilters ? 'В выборке' : 'В журналах'
           },
           { 
             title: 'Преподавателей', 
@@ -257,7 +425,7 @@ const ManageJournalsPage: React.FC = () => {
             icon: User, 
             color: 'text-orange-600',
             bgColor: 'bg-orange-100 dark:bg-orange-900',
-            description: 'Ведут журналы'
+            description: hasActiveFilters ? 'В выборке' : 'Ведут журналы'
           },
         ].map((stat, index) => (
           <motion.div
@@ -283,12 +451,153 @@ const ManageJournalsPage: React.FC = () => {
         ))}
       </div>
 
+      {/* Фильтры */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Фильтры и поиск
+            </CardTitle>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-2">
+                <X className="h-4 w-4" />
+                Очистить фильтры
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Поиск */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск по названию группы, предмета или преподавателя..."
+              value={filters.search}
+              onChange={(e) => updateFilter('search', e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Фильтры по категориям */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Семестр</label>
+              <Select value={filters.semesterId} onValueChange={(value) => updateFilter('semesterId', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Все семестры" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Все семестры</SelectItem>
+                  {semesters.map(semester => (
+                    <SelectItem key={semester.id} value={semester.id}>
+                      {semester.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Группа</label>
+              <Select value={filters.groupId} onValueChange={(value) => updateFilter('groupId', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Все группы" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Все группы</SelectItem>
+                  {groups.map(group => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Предмет</label>
+              <Select value={filters.subjectId} onValueChange={(value) => updateFilter('subjectId', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Все предметы" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Все предметы</SelectItem>
+                  {subjects.map(subject => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Преподаватель</label>
+              <Select value={filters.teacherId} onValueChange={(value) => updateFilter('teacherId', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Все преподаватели" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Все преподаватели</SelectItem>
+                  {teachers.map(teacher => (
+                    <SelectItem key={teacher.uid} value={teacher.uid}>
+                      {teacher.lastName} {teacher.firstName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Активные фильтры */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              <span className="text-sm text-muted-foreground">Активные фильтры:</span>
+              {filters.search && (
+                <Badge variant="secondary" className="gap-1">
+                  Поиск: {filters.search}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('search', '')} />
+                </Badge>
+              )}
+              {filters.semesterId && (
+                <Badge variant="secondary" className="gap-1">
+                  Семестр: {getSemesterName(filters.semesterId)}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('semesterId', '')} />
+                </Badge>
+              )}
+              {filters.groupId && (
+                <Badge variant="secondary" className="gap-1">
+                  Группа: {getGroupName(filters.groupId)}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('groupId', '')} />
+                </Badge>
+              )}
+              {filters.subjectId && (
+                <Badge variant="secondary" className="gap-1">
+                  Предмет: {getSubjectName(filters.subjectId)}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('subjectId', '')} />
+                </Badge>
+              )}
+              {filters.teacherId && (
+                <Badge variant="secondary" className="gap-1">
+                  Преподаватель: {getTeacherName(filters.teacherId)}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('teacherId', '')} />
+                </Badge>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Journals Table */}
       <Card>
         <CardHeader>
           <CardTitle>Список журналов</CardTitle>
           <CardDescription>
-            Управление учебными журналами групп
+            {hasActiveFilters 
+              ? `Найдено ${filteredAndSortedJournals.length} из ${journals.length} журналов`
+              : `Всего ${journals.length} журналов`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -296,17 +605,29 @@ const ManageJournalsPage: React.FC = () => {
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : journals.length === 0 ? (
+          ) : filteredAndSortedJournals.length === 0 ? (
             <div className="text-center py-8">
               <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium mb-2">Нет журналов</h3>
+              <h3 className="text-lg font-medium mb-2">
+                {hasActiveFilters ? 'Журналы не найдены' : 'Нет журналов'}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Создайте первый журнал для начала работы
+                {hasActiveFilters 
+                  ? 'Попробуйте изменить параметры фильтрации'
+                  : 'Создайте первый журнал для начала работы'
+                }
               </p>
-              <Button onClick={handleOpenCreateJournalDialog} className="gap-2">
-                <PlusCircle className="h-4 w-4" />
-                Создать первый журнал
-              </Button>
+              {hasActiveFilters ? (
+                <Button onClick={clearFilters} variant="outline" className="gap-2">
+                  <X className="h-4 w-4" />
+                  Очистить фильтры
+                </Button>
+              ) : (
+                <Button onClick={handleOpenCreateJournalDialog} className="gap-2">
+                  <PlusCircle className="h-4 w-4" />
+                  Создать первый журнал
+                </Button>
+              )}
             </div>
           ) : (
             <div className="rounded-md border">
@@ -314,16 +635,48 @@ const ManageJournalsPage: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Журнал</TableHead>
-                    <TableHead>Группа</TableHead>
-                    <TableHead>Предмет</TableHead>
-                    <TableHead>Преподаватель</TableHead>
-                    <TableHead>Создан</TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort('groupName')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Группа
+                        {getSortIcon('groupName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort('subjectName')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Предмет
+                        {getSortIcon('subjectName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort('teacherName')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Преподаватель
+                        {getSortIcon('teacherName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort('createdAt')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Создан
+                        {getSortIcon('createdAt')}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-right">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   <AnimatePresence>
-                    {journals.map((journal, index) => (
+                    {filteredAndSortedJournals.map((journal, index) => (
                       <motion.tr
                         key={journal.id}
                         initial={{ opacity: 0, y: 20 }}

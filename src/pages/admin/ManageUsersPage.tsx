@@ -10,13 +10,11 @@ import {
   Loader2, 
   UserPlus, 
   UserCheck, 
-  UserX, 
   MoreHorizontal,
   Bell,
   CheckCircle,
   XCircle,
   Clock,
-  Filter,
   Download,
   Mail,
   Phone,
@@ -132,7 +130,7 @@ export default function ManageUsersPage() {
   useEffect(() => {
     const filtered = allUsers.filter(user => {
       const matchesSearch = searchQuery.trim() === '' || 
-        `${user.firstName} ${user.lastName} ${user.middleName || ''} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
+        `${user.lastName} ${user.firstName} ${user.middleName || ''} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesRole = selectedRole === 'all' || user.role === selectedRole;
       const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
@@ -422,12 +420,12 @@ export default function ManageUsersPage() {
                             <Avatar>
                               <AvatarImage src={user.photoURL || undefined} />
                               <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white">
-                                {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
+                                {user.lastName?.charAt(0)}{user.firstName?.charAt(0)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
                               <div className="font-medium">
-                                {user.firstName} {user.lastName} {user.middleName}
+                                {user.lastName} {user.firstName} {user.middleName}
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 {user.email}
