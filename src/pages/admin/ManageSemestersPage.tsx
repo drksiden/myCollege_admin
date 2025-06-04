@@ -47,6 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from 'sonner';
+import { Toaster } from '@/components/ui/sonner';
 import { getSemesters, deleteSemester } from '@/lib/firebaseService/semesterService';
 import type { Semester } from '@/types';
 import SemesterFormDialog from '@/components/admin/semesters/SemesterFormDialog';
@@ -64,12 +65,14 @@ export default function ManageSemestersPage() {
 
   const fetchData = async () => {
     setIsLoading(true);
+    toast.loading('Загрузка семестров...', { id: 'fetch-semesters' });
     try {
       const allSemesters = await getSemesters();
       setSemesters(allSemesters);
+      toast.success('Семестры успешно загружены', { id: 'fetch-semesters' });
     } catch (error) {
       console.error('Error fetching semesters:', error);
-      toast.error('Не удалось загрузить семестры');
+      toast.error('Не удалось загрузить семестры', { id: 'fetch-semesters' });
     } finally {
       setIsLoading(false);
     }
@@ -94,6 +97,7 @@ export default function ManageSemestersPage() {
   const handleFormSuccess = () => {
     setShowFormDialog(false);
     setSelectedSemester(null);
+    toast.success(formMode === 'create' ? 'Семестр успешно создан' : 'Семестр успешно обновлен');
     fetchData();
   };
 
@@ -104,13 +108,15 @@ export default function ManageSemestersPage() {
   const handleDeleteConfirm = async () => {
     if (!semesterToDelete) return;
 
+    const deleteToastId = toast.loading('Удаление семестра...', { duration: Infinity });
+    
     try {
       await deleteSemester(semesterToDelete.id);
+      toast.success('Семестр успешно удален', { id: deleteToastId });
       fetchData();
-      toast.success('Семестр успешно удален');
     } catch (error) {
       console.error('Error deleting semester:', error);
-      toast.error('Не удалось удалить семестр');
+      toast.error('Не удалось удалить семестр', { id: deleteToastId });
     } finally {
       setSemesterToDelete(null);
     }
@@ -167,6 +173,8 @@ export default function ManageSemestersPage() {
       animate="animate"
       className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-6"
     >
+      <Toaster richColors position="top-right" />
+      
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

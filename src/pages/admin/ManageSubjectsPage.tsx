@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
 import {
   Table,
   TableBody,
@@ -68,12 +69,15 @@ const ManageSubjectsPage: React.FC = () => {
 
   const fetchData = async () => {
     setIsLoading(true);
+    toast.loading('Загрузка предметов...', { id: 'fetch-subjects' });
     try {
       const fetchedSubjects = await getAllSubjects();
+      console.log('Данные из Firebase:', fetchedSubjects);
       setSubjects(fetchedSubjects);
+      toast.success('Предметы успешно загружены', { id: 'fetch-subjects' });
     } catch (error) {
       console.error('Error fetching subjects:', error);
-      toast.error('Не удалось загрузить предметы');
+      toast.error('Не удалось загрузить предметы', { id: 'fetch-subjects' });
     } finally {
       setIsLoading(false);
     }
@@ -94,6 +98,10 @@ const ManageSubjectsPage: React.FC = () => {
     });
 
     setFilteredSubjects(filtered);
+    
+    // Отладочная информация
+    console.log('Загруженные предметы:', subjects);
+    console.log('Отфильтрованные предметы:', filtered);
   }, [subjects, searchQuery]);
 
   const handleOpenCreateSubjectDialog = () => {
@@ -109,6 +117,7 @@ const ManageSubjectsPage: React.FC = () => {
   const handleSubjectFormSuccess = () => {
     setShowSubjectFormDialog(false);
     setSelectedSubjectForEdit(undefined);
+    toast.success('Предмет успешно сохранен');
     fetchData(); 
   };
 
@@ -384,13 +393,15 @@ const ManageSubjectsPage: React.FC = () => {
               <AlertDialogCancel>Отмена</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={async () => {
+                  const deleteToastId = toast.loading('Удаление предмета...', { duration: Infinity });
                   try {
                     await deleteSubjectService(subjectToDelete.id);
                     setSubjectToDelete(null);
+                    toast.success('Предмет успешно удален', { id: deleteToastId });
                     fetchData();
-                    toast.success('Предмет успешно удален');
-                  } catch {
-                    toast.error('Не удалось удалить предмет');
+                  } catch (error) {
+                    console.error('Error deleting subject:', error);
+                    toast.error('Не удалось удалить предмет', { id: deleteToastId });
                   }
                 }} 
                 className="bg-red-600 hover:bg-red-700"

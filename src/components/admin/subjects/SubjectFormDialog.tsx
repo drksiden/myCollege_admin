@@ -64,6 +64,8 @@ const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
   useEffect(() => {
     if (mode === 'edit' && subjectId && open) {
       setIsLoadingData(true);
+      const loadToastId = toast.loading('Загрузка данных предмета...', { duration: Infinity });
+      
       getSubject(subjectId)
         .then((subject) => {
           if (subject) {
@@ -72,10 +74,11 @@ const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
               description: subject.description || '',
               hoursPerWeek: subject.hoursPerWeek,
             });
+            toast.success('Данные предмета загружены', { id: loadToastId });
           }
         })
         .catch(() => {
-          toast.error('Не удалось загрузить данные предмета');
+          toast.error('Не удалось загрузить данные предмета', { id: loadToastId });
         })
         .finally(() => {
           setIsLoadingData(false);
@@ -91,6 +94,8 @@ const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
 
   const onSubmit = async (data: SubjectFormValues) => {
     setIsLoading(true);
+    const submitToastId = toast.loading(mode === 'create' ? 'Создание предмета...' : 'Сохранение изменений...', { duration: Infinity });
+    
     try {
       const subjectData = {
         name: data.name,
@@ -100,16 +105,16 @@ const SubjectFormDialog: React.FC<SubjectFormDialogProps> = ({
 
       if (mode === 'create') {
         await createSubject(subjectData);
-        toast.success('Предмет успешно создан');
+        toast.success('Предмет успешно создан', { id: submitToastId });
       } else if (mode === 'edit' && subjectId) {
         await updateSubject(subjectId, subjectData);
-        toast.success('Предмет успешно обновлен');
+        toast.success('Предмет успешно обновлен', { id: submitToastId });
       }
 
       onSuccess();
     } catch (error) {
       console.error('Error saving subject:', error);
-      toast.error(`Не удалось ${mode === 'create' ? 'создать' : 'обновить'} предмет`);
+      toast.error(`Не удалось ${mode === 'create' ? 'создать' : 'обновить'} предмет`, { id: submitToastId });
     } finally {
       setIsLoading(false);
     }
