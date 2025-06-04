@@ -1,10 +1,9 @@
+// src/lib/firebaseService/dashboardService.ts
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getUsers } from './userService';
 import { getAllGroups } from './groupService';
 import { getAllSubjects } from './subjectService';
-import { getJournalEntries } from './journalService';
-import type { JournalEntry } from '@/types';
 
 export interface DashboardStats {
   totalStudents: number;
@@ -30,6 +29,32 @@ export interface DashboardStats {
   }[];
 }
 
+interface JournalEntry {
+  id: string;
+  journalId: string;
+  lessonId: string;
+  studentId: string;
+  date: Timestamp;
+  present: boolean;
+  attendanceStatus: 'present' | 'absent' | 'late' | 'excused';
+  grade?: string;
+  gradeType?: string;
+  comment?: string;
+  topicCovered?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+interface Journal {
+  id: string;
+  groupId: string;
+  subjectId: string;
+  teacherId: string;
+  semesterId: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export const getDashboardData = async (): Promise<DashboardStats> => {
   try {
     // Получаем базовую статистику
@@ -42,12 +67,13 @@ export const getDashboardData = async (): Promise<DashboardStats> => {
     const students = allUsers.filter(user => user.role === 'student');
     const teachers = allUsers.filter(user => user.role === 'teacher');
 
-    // Получаем все записи журнала за последние 30 дней
+    // Получаем записи журнала за последние 30 дней
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const journalEntriesCollection = collection(db, 'journalEntries');
+    
+    const journalEntriesRef = collection(db, 'journalEntries');
     const q = query(
-      journalEntriesCollection,
+      journalEntriesRef,
       where('date', '>=', Timestamp.fromDate(thirtyDaysAgo))
     );
     const entriesSnapshot = await getDocs(q);
@@ -56,18 +82,67 @@ export const getDashboardData = async (): Promise<DashboardStats> => {
       ...doc.data(),
     } as JournalEntry));
 
+    // Получаем журналы для связи с группами и предметами
+    const journalsRef = collection(db, 'journals');
+    const journalsSnapshot = await getDocs(journalsRef);
+    const journals = journalsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as Journal));
+
+    // Создаем карту журналов для быстрого поиска
+    const journalMap = new Map<string, Journal>();
+    journals.forEach(journal => {
+      journalMap.set(journal.id, journal);
+    });
+
     // Статистика посещаемости по группам
-    const attendanceStats = groups.map(group => {
-      const groupEntries = entries.filter(entry => entry.groupId === group.id);
-      return {
+    const attendanceByGroup = new Map<string, {
+      groupId: string;
+      groupName: string;
+      present: number;
+      absent: number;
+      late: number;
+      excused: number;
+    }>();
+
+    // Инициализируем статистику для всех групп
+    groups.forEach(group => {
+      attendanceByGroup.set(group.id, {
         groupId: group.id,
         groupName: group.name,
-        present: groupEntries.filter(entry => entry.attendanceStatus === 'present').length,
-        absent: groupEntries.filter(entry => entry.attendanceStatus === 'absent').length,
-        late: groupEntries.filter(entry => entry.attendanceStatus === 'late').length,
-        excused: groupEntries.filter(entry => entry.attendanceStatus === 'excused').length,
-      };
+        present: 0,
+        absent: 0,
+        late: 0,
+        excused: 0,
+      });
     });
+
+    // Подсчитываем посещаемость
+    entries.forEach(entry => {
+      const journal = journalMap.get(entry.journalId);
+      if (journal) {
+        const groupStats = attendanceByGroup.get(journal.groupId);
+        if (groupStats) {
+          switch (entry.attendanceStatus) {
+            case 'present':
+              groupStats.present++;
+              break;
+            case 'absent':
+              groupStats.absent++;
+              break;
+            case 'late':
+              groupStats.late++;
+              break;
+            case 'excused':
+              groupStats.excused++;
+              break;
+          }
+        }
+      }
+    });
+
+    const attendanceStats = Array.from(attendanceByGroup.values());
 
     // Распределение оценок
     const gradeRanges = [
@@ -81,17 +156,35 @@ export const getDashboardData = async (): Promise<DashboardStats> => {
     const gradeDistribution = gradeRanges.map(range => ({
       range: range.label,
       count: entries.filter(entry => {
-        const grade = parseInt(entry.grade || '0');
+        if (!entry.grade) return false;
+        const grade = parseInt(entry.grade);
+        if (isNaN(grade)) return false;
         return grade >= range.min && grade <= range.max;
       }).length,
     }));
 
     // Активность по предметам
+    const subjectActivityMap = new Map<string, number>();
+    
+    // Инициализируем все предметы
+    subjects.forEach(subject => {
+      subjectActivityMap.set(subject.id, 0);
+    });
+
+    // Подсчитываем записи по предметам
+    entries.forEach(entry => {
+      const journal = journalMap.get(entry.journalId);
+      if (journal) {
+        const currentCount = subjectActivityMap.get(journal.subjectId) || 0;
+        subjectActivityMap.set(journal.subjectId, currentCount + 1);
+      }
+    });
+
     const subjectActivity = subjects.map(subject => ({
       subjectId: subject.id,
       subjectName: subject.name,
-      entriesCount: entries.filter(entry => entry.subjectId === subject.id).length,
-    }));
+      entriesCount: subjectActivityMap.get(subject.id) || 0,
+    })).filter(activity => activity.entriesCount > 0); // Показываем только предметы с активностью
 
     return {
       totalStudents: students.length,
@@ -106,4 +199,4 @@ export const getDashboardData = async (): Promise<DashboardStats> => {
     console.error('Error fetching dashboard data:', error);
     throw error;
   }
-}; 
+};

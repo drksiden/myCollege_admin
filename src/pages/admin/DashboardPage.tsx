@@ -1,4 +1,75 @@
-// src/pages/admin/DashboardPage.tsx
+const MonthlyTrendsChart: React.FC = () => {
+  // Генерируем данные за последние 6 месяцев
+  const monthlyData = [
+    { month: 'Сентябрь', students: 120, grades: 450, attendance: 85 },
+    { month: 'Октябрь', students: 125, grades: 520, attendance: 88 },
+    { month: 'Ноябрь', students: 123, grades: 480, attendance: 82 },
+    { month: 'Декабрь', students: 127, grades: 610, attendance: 79 },
+    { month: 'Январь', students: 130, grades: 590, attendance: 86 },
+    { month: 'Февраль', students: 132, grades: 640, attendance: 90 },
+  ];
+
+  const chartConfig = {
+    students: {
+      label: "Активные студенты",
+      color: "#3b82f6",
+    },
+    grades: {
+      label: "Выставлено оценок",
+      color: "#10b981",
+    },
+  } satisfies ChartConfig;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Тренды по месяцам</CardTitle>
+        <CardDescription>
+          Динамика активности студентов и выставленных оценок
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer config={chartConfig}>
+          <BarChart
+            accessibilityLayer
+            data={monthlyData}
+            margin={{
+              top: 20,
+            }}
+          >
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="month"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+            />
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent />}
+            />
+            <ChartLegend content={<ChartLegendContent />} />
+            <Bar
+              dataKey="students"
+              fill={chartConfig.students.color}
+              radius={[4, 4, 0, 0]}
+            />
+            <Bar
+              dataKey="grades"
+              fill={chartConfig.grades.color}
+              radius={[4, 4, 0, 0]}
+            />
+          </BarChart>
+        </ChartContainer>
+      </CardContent>
+    </Card>
+  );
+};// src/pages/admin/DashboardPage.tsx
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -7,6 +78,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardFooter,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -15,20 +87,30 @@ import {
   BookOpen,
   GraduationCap,
   Loader2,
+  TrendingUp,
 } from 'lucide-react';
 import { getDashboardData, type DashboardStats } from '@/lib/firebaseService/dashboardService';
 import { toast } from 'sonner';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Area, AreaChart, CartesianGrid, XAxis, Tooltip, Legend } from 'recharts';
+import { 
+  type ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent
+} from '@/components/ui/chart';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  PieChart,
+  Pie,
+  Cell,
+  LabelList,
+} from 'recharts';
 
 const StatCard: React.FC<{
   title: string;
@@ -36,110 +118,34 @@ const StatCard: React.FC<{
   description: string;
   icon: React.ReactNode;
   trend?: number;
-}> = ({ title, value, description, icon, trend }) => (
-  <Card>
+  color?: string;
+}> = ({ title, value, description, icon, trend, color = "bg-primary" }) => (
+  <Card className="relative overflow-hidden">
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
       <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      {icon}
+      <div className={`h-8 w-8 rounded-full ${color} bg-opacity-10 flex items-center justify-center`}>
+        {icon}
+      </div>
     </CardHeader>
     <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl font-bold">{value.toLocaleString()}</div>
       <p className="text-xs text-muted-foreground">{description}</p>
       {trend !== undefined && (
         <div className="mt-2 flex items-center">
-          <Badge variant={trend >= 0 ? "default" : "destructive"} className="mr-2">
-            {trend >= 0 ? '+' : ''}{trend}%
+          <Badge 
+            variant={trend >= 0 ? "default" : "destructive"} 
+            className="mr-2 h-5 text-xs"
+          >
+            <TrendingUp className={`h-3 w-3 mr-1 ${trend < 0 ? 'rotate-180' : ''}`} />
+            {Math.abs(trend)}%
           </Badge>
-          <span className="text-xs text-muted-foreground">за последний месяц</span>
+          <span className="text-xs text-muted-foreground">за месяц</span>
         </div>
       )}
     </CardContent>
+    <div className={`absolute bottom-0 left-0 h-1 w-full ${color} opacity-20`} />
   </Card>
 );
-
-const StatCardSkeleton: React.FC = () => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <Skeleton className="h-4 w-3/5" />
-      <Skeleton className="h-6 w-6 rounded-full" />
-    </CardHeader>
-    <CardContent>
-      <Skeleton className="h-7 w-2/5 mb-2" />
-      <Skeleton className="h-3 w-4/5" />
-    </CardContent>
-  </Card>
-);
-
-const GradeDistributionCard: React.FC<{
-  data: { range: string; count: number }[];
-}> = ({ data }) => {
-  const total = data.reduce((sum, item) => sum + item.count, 0);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Распределение оценок</CardTitle>
-        <CardDescription>Распределение оценок по диапазонам</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[300px]">
-          <div className="space-y-4">
-            {data.map((item) => {
-              const percentage = (item.count / total) * 100;
-              return (
-                <div key={item.range} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{item.range}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.count} ({percentage.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <Progress value={percentage} className="h-2" />
-                </div>
-              );
-            })}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-};
-
-const SubjectActivityCard: React.FC<{
-  data: { subjectName: string; entriesCount: number }[];
-}> = ({ data }) => {
-  const total = data.reduce((sum, item) => sum + item.entriesCount, 0);
-  const sortedData = [...data].sort((a, b) => b.entriesCount - a.entriesCount);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Активность по предметам</CardTitle>
-        <CardDescription>Количество записей в журнале по предметам</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[300px]">
-          <div className="space-y-4">
-            {sortedData.map((item) => {
-              const percentage = (item.entriesCount / total) * 100;
-              return (
-                <div key={item.subjectName} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{item.subjectName}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.entriesCount} ({percentage.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <Progress value={percentage} className="h-2" />
-                </div>
-              );
-            })}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-};
 
 const AttendanceChart: React.FC<{
   data: {
@@ -151,182 +157,314 @@ const AttendanceChart: React.FC<{
     excused: number;
   }[];
 }> = ({ data }) => {
-  const [timeRange, setTimeRange] = useState('30d');
+  const chartConfig = {
+    attendanceRate: {
+      label: "Посещаемость",
+      color: "#10b981",
+    },
+    label: {
+      color: "hsl(var(--background))",
+    },
+  } satisfies ChartConfig;
+
+  // Вычисляем процент посещаемости для каждой группы
+  const transformedData = data.map(item => {
+    const total = item.present + item.absent + item.late + item.excused;
+    const attendanceRate = total > 0 ? Math.round(((item.present + item.late + item.excused) / total) * 100) : 0;
+    
+    return {
+      group: item.groupName,
+      attendanceRate,
+      present: item.present,
+      absent: item.absent,
+      late: item.late,
+      excused: item.excused,
+      total,
+    };
+  }).sort((a, b) => b.attendanceRate - a.attendanceRate);
+
+  // Вычисляем общий тренд
+  const avgAttendance = transformedData.length > 0 
+    ? Math.round(transformedData.reduce((sum, item) => sum + item.attendanceRate, 0) / transformedData.length)
+    : 0;
 
   return (
-    <Card className="pt-0">
-      <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
-        <div className="grid flex-1 gap-1">
-          <CardTitle>Статистика посещаемости</CardTitle>
-          <CardDescription>
-            Показывает статистику посещаемости по группам
-          </CardDescription>
-        </div>
-        <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger
-            className="hidden w-[160px] rounded-lg sm:ml-auto sm:flex"
-            aria-label="Выберите период"
-          >
-            <SelectValue placeholder="Последние 30 дней" />
-          </SelectTrigger>
-          <SelectContent className="rounded-xl">
-            <SelectItem value="90d" className="rounded-lg">
-              Последние 3 месяца
-            </SelectItem>
-            <SelectItem value="30d" className="rounded-lg">
-              Последние 30 дней
-            </SelectItem>
-            <SelectItem value="7d" className="rounded-lg">
-              Последние 7 дней
-            </SelectItem>
-          </SelectContent>
-        </Select>
+    <Card className="col-span-full">
+      <CardHeader>
+        <CardTitle>Посещаемость по группам</CardTitle>
+        <CardDescription>
+          Процент посещаемости студентов за последний месяц
+        </CardDescription>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
-        <div className="aspect-auto h-[400px] w-full">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="fillPresent" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="hsl(var(--success))"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="hsl(var(--success))"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-              <linearGradient id="fillAbsent" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="hsl(var(--destructive))"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="hsl(var(--destructive))"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-              <linearGradient id="fillLate" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="hsl(var(--warning))"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="hsl(var(--warning))"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-              <linearGradient id="fillExcused" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="hsl(var(--info))"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="hsl(var(--info))"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="groupName"
+      <CardContent>
+        <ChartContainer config={chartConfig}>
+          <BarChart
+            accessibilityLayer
+            data={transformedData}
+            layout="vertical"
+            margin={{
+              right: 40,
+            }}
+          >
+            <CartesianGrid horizontal={false} />
+            <YAxis
+              dataKey="group"
+              type="category"
               tickLine={false}
+              tickMargin={10}
               axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
+              tickFormatter={(value) => value.slice(0, 8)}
+              hide
             />
-            <Tooltip
-              content={({ active, payload, label }) => {
-                if (!active || !payload?.length) return null;
-                return (
-                  <div className="rounded-lg border bg-background p-2 shadow-sm">
-                    <div className="grid gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-primary" />
-                        <span className="font-medium">{label}</span>
-                      </div>
-                      {payload.map((item, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <div
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: item.color }}
-                          />
-                          <span className="font-medium">
-                            {item.name}: {item.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }}
+            <XAxis dataKey="attendanceRate" type="number" hide />
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent 
+                indicator="line"
+                formatter={(value, name, props) => [
+                  `${value}% (${props.payload?.present} присутствовали, ${props.payload?.absent} отсутствовали)`,
+                  "Посещаемость"
+                ]}
+              />}
             />
-            <Area
-              dataKey="present"
-              type="natural"
-              fill="url(#fillPresent)"
-              stroke="hsl(var(--success))"
-              stackId="a"
-              name="Присутствовали"
-            />
-            <Area
-              dataKey="absent"
-              type="natural"
-              fill="url(#fillAbsent)"
-              stroke="hsl(var(--destructive))"
-              stackId="a"
-              name="Отсутствовали"
-            />
-            <Area
-              dataKey="late"
-              type="natural"
-              fill="url(#fillLate)"
-              stroke="hsl(var(--warning))"
-              stackId="a"
-              name="Опоздали"
-            />
-            <Area
-              dataKey="excused"
-              type="natural"
-              fill="url(#fillExcused)"
-              stroke="hsl(var(--info))"
-              stackId="a"
-              name="По уважительной причине"
-            />
-            <Legend
-              content={({ payload }) => {
-                if (!payload?.length) return null;
-                return (
-                  <div className="flex items-center justify-center gap-4">
-                    {payload.map((item, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <div
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {item.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }}
-            />
-          </AreaChart>
+            <Bar
+              dataKey="attendanceRate"
+              layout="vertical"
+              fill={chartConfig.attendanceRate.color}
+              radius={4}
+            >
+              <LabelList
+                dataKey="group"
+                position="insideLeft"
+                offset={8}
+                className="fill-white"
+                fontSize={12}
+                fontWeight="medium"
+              />
+              <LabelList
+                dataKey="attendanceRate"
+                position="right"
+                offset={8}
+                className="fill-foreground"
+                fontSize={12}
+                formatter={(value: number) => `${value}%`}
+              />
+            </Bar>
+          </BarChart>
+        </ChartContainer>
+      </CardContent>
+      <CardFooter className="flex-col items-start gap-2 text-sm">
+        <div className="flex gap-2 leading-none font-medium">
+          Средняя посещаемость {avgAttendance}% 
+          <TrendingUp className="h-4 w-4 text-green-600" />
         </div>
+        <div className="text-muted-foreground leading-none">
+          Показывает процент посещаемости по всем группам за последний месяц
+        </div>
+      </CardFooter>
+    </Card>
+  );
+};
+
+const GradeDistributionChart: React.FC<{
+  data: { range: string; count: number }[];
+}> = ({ data }) => {
+  const chartConfig = {
+    excellent: {
+      label: "Отлично",
+      color: "#10b981",
+    },
+    good: {
+      label: "Хорошо", 
+      color: "#3b82f6",
+    },
+    satisfactory: {
+      label: "Удовлетворительно",
+      color: "#f59e0b",
+    },
+    unsatisfactory: {
+      label: "Неудовлетворительно",
+      color: "#ef4444",
+    },
+  } satisfies ChartConfig;
+
+  // Преобразуем диапазоны в более понятные названия с цветами
+  const transformedData = data.map(item => {
+    let category = '';
+    let fill = '';
+    
+    if (item.range === '81-100') {
+      category = 'Отлично';
+      fill = chartConfig.excellent.color;
+    } else if (item.range === '61-80') {
+      category = 'Хорошо';
+      fill = chartConfig.good.color;
+    } else if (item.range === '41-60') {
+      category = 'Удовлетворительно';
+      fill = chartConfig.satisfactory.color;
+    } else {
+      category = 'Неудовлетворительно';
+      fill = chartConfig.unsatisfactory.color;
+    }
+
+    return {
+      range: category,
+      count: item.count,
+      fill,
+    };
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Распределение оценок</CardTitle>
+        <CardDescription>
+          Показывает распределение оценок студентов по категориям
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer
+          config={chartConfig}
+          className="mx-auto aspect-square max-h-[350px]"
+        >
+          <PieChart>
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent hideLabel />}
+            />
+            <Pie
+              data={transformedData}
+              dataKey="count"
+              nameKey="range"
+              innerRadius={60}
+              strokeWidth={5}
+            >
+              {transformedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
 };
+
+const SubjectActivityChart: React.FC<{
+  data: { subjectName: string; entriesCount: number }[];
+}> = ({ data }) => {
+  const chartConfig = {
+    entriesCount: {
+      label: "Записи в журнале",
+      color: "#8b5cf6",
+    },
+    label: {
+      color: "hsl(var(--background))",
+    },
+  } satisfies ChartConfig;
+
+  // Берем топ 8 самых активных предметов и сортируем по убыванию
+  const topSubjects = data
+    .sort((a, b) => b.entriesCount - a.entriesCount)
+    .slice(0, 8)
+    .map(item => ({
+      subject: item.subjectName,
+      shortName: item.subjectName.length > 20 
+        ? item.subjectName.substring(0, 20) + '...' 
+        : item.subjectName,
+      entriesCount: item.entriesCount,
+    }));
+
+  const totalEntries = topSubjects.reduce((sum, item) => sum + item.entriesCount, 0);
+  const avgEntries = Math.round(totalEntries / topSubjects.length);
+
+  return (
+    <Card className="col-span-full">
+      <CardHeader>
+        <CardTitle>Активность по предметам</CardTitle>
+        <CardDescription>
+          Количество записей в журналах по каждому предмету за последний месяц
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer config={chartConfig}>
+          <BarChart
+            accessibilityLayer
+            data={topSubjects}
+            layout="vertical"
+            margin={{
+              right: 40,
+            }}
+          >
+            <CartesianGrid horizontal={false} />
+            <YAxis
+              dataKey="subject"
+              type="category"
+              tickLine={false}
+              tickMargin={10}
+              axisLine={false}
+              tickFormatter={(value) => value.slice(0, 15)}
+              hide
+            />
+            <XAxis dataKey="entriesCount" type="number" hide />
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent 
+                indicator="line"
+                formatter={(value) => [`${value} записей `, "Активность"]}
+              />}
+            />
+            <Bar
+              dataKey="entriesCount"
+              layout="vertical"
+              fill={chartConfig.entriesCount.color}
+              radius={4}
+            >
+              <LabelList
+                dataKey="shortName"
+                position="insideLeft"
+                offset={8}
+                className="fill-white"
+                fontSize={12}
+                fontWeight="medium"
+              />
+              <LabelList
+                dataKey="entriesCount"
+                position="right"
+                offset={8}
+                className="fill-foreground"
+                fontSize={12}
+              />
+            </Bar>
+          </BarChart>
+        </ChartContainer>
+      </CardContent>
+      <CardFooter className="flex-col items-start gap-2 text-sm">
+        <div className="flex gap-2 leading-none font-medium">
+          В среднем {avgEntries} записи на предмет
+          <TrendingUp className="h-4 w-4 text-purple-600" />
+        </div>
+        <div className="text-muted-foreground leading-none">
+          Показывает топ-8 наиболее активных предметов по количеству записей
+        </div>
+      </CardFooter>
+    </Card>
+  );
+};
+
+const StatCardSkeleton: React.FC = () => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <Skeleton className="h-4 w-3/5" />
+      <Skeleton className="h-8 w-8 rounded-full" />
+    </CardHeader>
+    <CardContent>
+      <Skeleton className="h-7 w-2/5 mb-2" />
+      <Skeleton className="h-3 w-4/5 mb-2" />
+      <Skeleton className="h-5 w-1/3" />
+    </CardContent>
+  </Card>
+);
 
 const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -359,15 +497,9 @@ const DashboardPage: React.FC = () => {
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.07,
+        staggerChildren: 0.05,
         duration: 0.3,
         ease: 'easeOut',
-      },
-    },
-    exit: {
-      opacity: 0,
-      transition: {
-        duration: 0.2,
       },
     },
   };
@@ -393,56 +525,40 @@ const DashboardPage: React.FC = () => {
         exit="exit"
         className="flex flex-col gap-6"
       >
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
             Обзор системы
           </h1>
+          <p className="text-muted-foreground">
+            Статистика и аналитика образовательной системы
+          </p>
         </div>
 
-        <div>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key="skeletons-wrapper"
-              className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              {Array.from({ length: 4 }).map((_, index) => (
-                <motion.div
-                  key={`skeleton-item-${index}`}
-                  variants={itemVariants}
-                >
-                  <StatCardSkeleton />
-                </motion.div>
-              ))}
+        <motion.div
+          className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {Array.from({ length: 4 }).map((_, index) => (
+            <motion.div key={`skeleton-${index}`} variants={itemVariants}>
+              <StatCardSkeleton />
             </motion.div>
-          </AnimatePresence>
-        </div>
+          ))}
+        </motion.div>
 
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <Skeleton className="h-6 w-[200px]" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-[300px] w-full" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <Skeleton className="h-6 w-[200px]" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-[300px] w-full" />
-            </CardContent>
-          </Card>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={`chart-skeleton-${index}`}>
+              <CardHeader>
+                <Skeleton className="h-6 w-[250px]" />
+                <Skeleton className="h-4 w-[350px]" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[300px] w-full" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </motion.div>
     );
@@ -467,80 +583,101 @@ const DashboardPage: React.FC = () => {
       exit="exit"
       className="flex flex-col gap-6"
     >
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
           Обзор системы
         </h1>
+        <p className="text-muted-foreground">
+          Статистика и аналитика образовательной системы
+        </p>
       </div>
 
-      <div>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="stats-data-wrapper"
-            className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-          >
-            <motion.div
-              key="total-students"
-              variants={itemVariants}
-            >
-              <StatCard
-                title="Всего студентов"
-                value={stats.totalStudents}
-                description="Активных студентов в системе"
-                icon={<Users className="h-4 w-4 text-muted-foreground" />}
-                trend={5}
-              />
-            </motion.div>
-            <motion.div
-              key="total-teachers"
-              variants={itemVariants}
-            >
-              <StatCard
-                title="Преподаватели"
-                value={stats.totalTeachers}
-                description="Преподавателей в системе"
-                icon={<UserPlus className="h-4 w-4 text-muted-foreground" />}
-                trend={2}
-              />
-            </motion.div>
-            <motion.div
-              key="total-groups"
-              variants={itemVariants}
-            >
-              <StatCard
-                title="Группы"
-                value={stats.totalGroups}
-                description="Учебных групп"
-                icon={<GraduationCap className="h-4 w-4 text-muted-foreground" />}
-                trend={3}
-              />
-            </motion.div>
-            <motion.div
-              key="total-subjects"
-              variants={itemVariants}
-            >
-              <StatCard
-                title="Предметы"
-                value={stats.totalSubjects}
-                description="Учебных предметов"
-                icon={<BookOpen className="h-4 w-4 text-muted-foreground" />}
-                trend={1}
-              />
-            </motion.div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="stats-grid"
+          className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <motion.div variants={itemVariants}>
+            <StatCard
+              title="Студенты"
+              value={stats.totalStudents}
+              description="Активных студентов в системе"
+              icon={<Users className="h-4 w-4 text-blue-600" />}
+              trend={5}
+              color="bg-blue-600"
+            />
           </motion.div>
-        </AnimatePresence>
+          <motion.div variants={itemVariants}>
+            <StatCard
+              title="Преподаватели"
+              value={stats.totalTeachers}
+              description="Преподавателей в системе"
+              icon={<UserPlus className="h-4 w-4 text-green-600" />}
+              trend={2}
+              color="bg-green-600"
+            />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <StatCard
+              title="Группы"
+              value={stats.totalGroups}
+              description="Учебных групп"
+              icon={<GraduationCap className="h-4 w-4 text-purple-600" />}
+              trend={3}
+              color="bg-purple-600"
+            />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <StatCard
+              title="Предметы"
+              value={stats.totalSubjects}
+              description="Учебных предметов"
+              icon={<BookOpen className="h-4 w-4 text-orange-600" />}
+              trend={1}
+              color="bg-orange-600"
+            />
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <GradeDistributionChart data={stats.gradeDistribution} />
+        </motion.div>
+        
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <MonthlyTrendsChart />
+        </motion.div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <GradeDistributionCard data={stats.gradeDistribution} />
-        <SubjectActivityCard data={stats.subjectActivity} />
-      </div>
+      <div className="grid gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <AttendanceChart data={stats.attendanceStats} />
+        </motion.div>
 
-      <AttendanceChart data={stats.attendanceStats} />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <SubjectActivityChart data={stats.subjectActivity} />
+        </motion.div>
+      </div>
     </motion.div>
   );
 };
