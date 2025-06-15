@@ -400,7 +400,7 @@ export async function cleanupDuplicateSchedules(): Promise<void> {
   let batchCount = 0;
   const BATCH_LIMIT = 500;
   
-  for (const [key, scheduleGroup] of scheduleMap) {
+  for (const [, scheduleGroup] of scheduleMap) {
     if (scheduleGroup.length > 1) {
       // Оставляем первое расписание, удаляем остальные
       scheduleGroup.slice(1).forEach(schedule => {

@@ -11,13 +11,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { createChat, deleteChat, sendMessage, subscribeToChatMessages, subscribeToUserChats, createGroupChat, sendMassMessage } from '@/lib/firebaseService/chatService';
-import { getUsers, getUserById } from '@/lib/firebaseService/userService';
+import { getUserById } from '@/lib/firebaseService/userService';
 import type { Chat, Message, AppUser } from '@/types';
 import { toast } from 'sonner';
-import { format, isToday, isYesterday } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { format } from 'date-fns';
 import { useAuth } from '@/lib/auth';
-import { Trash2, Send, Users, MessageSquare, Megaphone, User, Circle } from 'lucide-react';
+import { Trash2, Send, Users, MessageSquare, Megaphone, Circle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { notificationService } from '@/lib/firebaseService/notificationService';
@@ -47,8 +46,8 @@ export default function ChatPage() {
       const unsubscribe = subscribeToUserChats(user.uid, (updatedChats) => {
         // Сортируем чаты по времени последнего сообщения
         const sortedChats = [...updatedChats].sort((a, b) => {
-          if (!a.lastMessageTime || !b.lastMessageTime) return 0;
-          return b.lastMessageTime.toDate().getTime() - a.lastMessageTime.toDate().getTime();
+          if (!a.lastMessageText || !b.lastMessageText) return 0;
+          return b.updatedAt.toDate().getTime() - a.updatedAt.toDate().getTime();
         });
         setChats(sortedChats);
       });
@@ -110,13 +109,11 @@ export default function ChatPage() {
 
   const loadUsers = async () => {
     try {
-      // Прямой запрос к коллекции users
       const snapshot = await getDocs(collection(db, 'users'));
       const allUsers = snapshot.docs.map(doc => ({
         uid: doc.id,
         ...doc.data(),
-      }));
-      console.log('Все пользователи из Firestore:', allUsers);
+      })) as AppUser[];
 
       // Проверка структуры
       allUsers.forEach(u => {
@@ -208,15 +205,9 @@ export default function ChatPage() {
     return participantId ? chatParticipants.get(participantId) : null;
   };
 
-  const formatLastMessageTime = (date: Date | undefined) => {
+  const formatLastMessageTime = (date?: Date) => {
     if (!date) return '';
-    if (isToday(date)) {
-      return format(date, 'HH:mm');
-    }
-    if (isYesterday(date)) {
-      return 'Вчера';
-    }
-    return format(date, 'dd.MM.yyyy');
+    return format(date, 'HH:mm');
   };
 
   const getInitials = (firstName: string, lastName: string) => {
@@ -361,7 +352,7 @@ export default function ChatPage() {
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex gap-3 flex-1 min-w-0">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={participant?.photoURL} />
+                        <AvatarImage src={(participant as any)?.photoURL} />
                         <AvatarFallback>
                           {chat.type === 'group' ? (
                             <Users className="h-4 w-4" />
@@ -380,7 +371,7 @@ export default function ChatPage() {
                           ) : (
                             <span className="flex items-center">
                               {participant?.firstName} {participant?.lastName}
-                              {participant?.isOnline && (
+                              {(participant as any)?.isOnline && (
                                 <Circle className="w-2 h-2 ml-2 text-green-500 fill-current" />
                               )}
                             </span>
@@ -393,11 +384,11 @@ export default function ChatPage() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-xs text-muted-foreground">
-                        {formatLastMessageTime(chat.lastMessageTime?.toDate())}
+                        {formatLastMessageTime(chat.updatedAt?.toDate())}
                       </div>
-                      {chat.unreadCount > 0 && (
+                      {(chat as any).unreadCount > 0 && (
                         <Badge variant="secondary" className="h-5">
-                          {chat.unreadCount}
+                          {(chat as any).unreadCount}
                         </Badge>
                       )}
                       <Button
@@ -425,14 +416,14 @@ export default function ChatPage() {
               <div className="p-4 border-b">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={getChatParticipant(selectedChat)?.photoURL} />
+                    <AvatarImage src={(getChatParticipant(selectedChat) as any)?.photoURL} />
                     <AvatarFallback>
                       {selectedChat.type === 'group' ? (
                         <Users className="h-4 w-4" />
                       ) : (
                         getInitials(
-                          getChatParticipant(selectedChat)?.firstName || '',
-                          getChatParticipant(selectedChat)?.lastName || ''
+                          (getChatParticipant(selectedChat) as any)?.firstName || '',
+                          (getChatParticipant(selectedChat) as any)?.lastName || ''
                         )
                       )}
                     </AvatarFallback>
@@ -446,8 +437,8 @@ export default function ChatPage() {
                         </span>
                       ) : (
                         <span className="flex items-center">
-                          {getChatParticipant(selectedChat)?.firstName} {getChatParticipant(selectedChat)?.lastName}
-                          {getChatParticipant(selectedChat)?.isOnline && (
+                          {(getChatParticipant(selectedChat) as any)?.firstName} {(getChatParticipant(selectedChat) as any)?.lastName}
+                          {(getChatParticipant(selectedChat) as any)?.isOnline && (
                             <Circle className="w-2 h-2 ml-2 text-green-500 fill-current" />
                           )}
                         </span>
@@ -455,8 +446,8 @@ export default function ChatPage() {
                     </div>
                     {selectedChat.type === 'private' && (
                       <div className="text-sm text-muted-foreground">
-                        {getChatParticipant(selectedChat)?.role === 'student' ? 'Студент' : 
-                         getChatParticipant(selectedChat)?.role === 'teacher' ? 'Преподаватель' : 'Администратор'}
+                        {(getChatParticipant(selectedChat) as any)?.role === 'student' ? 'Студент' :
+                         (getChatParticipant(selectedChat) as any)?.role === 'teacher' ? 'Преподаватель' : 'Администратор'}
                       </div>
                     )}
                   </div>
@@ -478,11 +469,11 @@ export default function ChatPage() {
                       >
                         {!isCurrentUser && showAvatar && (
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={chatParticipants.get(message.senderId)?.photoURL} />
+                            <AvatarImage src={(chatParticipants.get(message.senderId) as any)?.photoURL} />
                             <AvatarFallback>
                               {getInitials(
-                                chatParticipants.get(message.senderId)?.firstName || '',
-                                chatParticipants.get(message.senderId)?.lastName || ''
+                                (chatParticipants.get(message.senderId) as any)?.firstName || '',
+                                (chatParticipants.get(message.senderId) as any)?.lastName || ''
                               )}
                             </AvatarFallback>
                           </Avatar>
@@ -493,7 +484,7 @@ export default function ChatPage() {
                         )}>
                           {!isCurrentUser && showAvatar && (
                             <div className="text-sm font-medium">
-                              {chatParticipants.get(message.senderId)?.firstName} {chatParticipants.get(message.senderId)?.lastName}
+                              {(chatParticipants.get(message.senderId) as any)?.firstName} {(chatParticipants.get(message.senderId) as any)?.lastName}
                             </div>
                           )}
                           <div

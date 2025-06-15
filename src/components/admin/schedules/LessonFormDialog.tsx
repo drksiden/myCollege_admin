@@ -5,7 +5,7 @@ import { getSubjectsByGroup } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { createLesson } from '@/lib/firebaseService/scheduleService';
 import { toast } from 'sonner';
-import type { Subject, TeacherUser, Lesson } from '@/types';
+import type { Subject, TeacherUser, Lesson, Group } from '@/types';
 
 interface LessonFormDialogProps {
   open: boolean;
@@ -13,6 +13,7 @@ interface LessonFormDialogProps {
   groupId: string;
   semesterId: string;
   onSuccess?: () => void;
+  groups: Group[];
 }
 
 export const LessonFormDialog: React.FC<LessonFormDialogProps> = ({
@@ -21,6 +22,7 @@ export const LessonFormDialog: React.FC<LessonFormDialogProps> = ({
   groupId,
   semesterId,
   onSuccess,
+  groups,
 }) => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
@@ -61,6 +63,11 @@ export const LessonFormDialog: React.FC<LessonFormDialogProps> = ({
     }
   };
 
+  const handleDelete = () => {
+    // Since this is a create dialog, we don't need to implement delete functionality
+    console.log('Delete not implemented for create dialog');
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -71,11 +78,13 @@ export const LessonFormDialog: React.FC<LessonFormDialogProps> = ({
           open={open}
           onOpenChange={onOpenChange}
           onSubmit={handleSubmit}
+          onDelete={handleDelete}
           subjects={subjects}
           teachers={teachers}
           groupId={groupId}
           semesterId={semesterId}
           lesson={null}
+          groups={groups}
         />
       </DialogContent>
     </Dialog>

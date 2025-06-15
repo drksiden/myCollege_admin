@@ -1,127 +1,115 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import type { Grade, AppUser, Subject, Group } from '@/types';
-import { Timestamp } from 'firebase/firestore';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import type { Grade, AppUser, Subject, GradeType } from '@/types';
 
-interface ExportData {
-  grades: Grade[];
-  students: AppUser[];
-  subjects: Subject[];
-  groups: Group[];
-  selectedGroup?: string;
-  selectedSubject?: string;
-  selectedSemesterId?: string;
+interface GradeReportData {
+  studentName: string;
+  subjectName: string;
+  gradeType: GradeType;
+  grade: string;
+  date: string;
+  present: boolean;
+  attendanceStatus: string;
+  topicCovered: boolean;
 }
 
-// Функция для преобразования GradeValue в числовое значение
-const gradeValueToNumber = (value: string): number => {
-  switch (value) {
-    case '5': return 5;
-    case '4': return 4;
-    case '3': return 3;
-    case '2': return 2;
-    case 'зачет': return 4;
-    case 'незачет': return 2;
-    case 'н/а': return 0;
-    default: return 0;
-  }
-};
+interface AutoTableOptions {
+  head: string[][];
+  body: string[][];
+  startY: number;
+  theme: string;
+  styles: {
+    fontSize: number;
+    cellPadding: number;
+  };
+  headStyles: {
+    fillColor: number[];
+    textColor: number;
+    fontSize: number;
+    fontStyle: string;
+  };
+}
 
-// Функция для проверки, является ли оценка числовой
-const isNumericGrade = (value: string): boolean => {
-  return ['5', '4', '3', '2'].includes(value);
-};
-
-export function exportGradesToPDF(data: ExportData) {
-  const { grades, students, subjects, groups, selectedGroup, selectedSubject, selectedSemesterId } = data;
-  const doc = new jsPDF();
-
-  // Add title
-  doc.setFontSize(20);
-  doc.text('Отчет по оценкам', 14, 20);
-
-  // Add filters info
-  doc.setFontSize(12);
-  const group = groups.find(g => g.id === selectedGroup);
-  const subject = subjects.find(s => s.id === selectedSubject);
-  doc.text(`Группа: ${group?.name || 'Все'}`, 14, 30);
-  doc.text(`Предмет: ${subject?.name || 'Все'}`, 14, 35);
-  doc.text(`Семестр: ${selectedSemesterId || 'Все'}`, 14, 40);
-
-  // Filter grades
-  const filteredGrades = grades.filter(grade => {
-    if (selectedGroup) {
-      const student = students.find(s => s.uid === grade.studentId);
-      if (!student || (student as AppUser & { groupId: string }).role !== 'student' || 
-          (student as AppUser & { groupId: string }).groupId !== selectedGroup) {
-        return false;
-      }
-    }
-    if (selectedSubject && grade.subjectId !== selectedSubject) return false;
-    if (selectedSemesterId && grade.semesterId !== selectedSemesterId) return false;
-    return true;
-  });
-
-  // Prepare data for the table
-  const tableData = filteredGrades.map(grade => {
+export function generateGradeReport(
+  grades: Grade[],
+  students: AppUser[],
+  subjects: Subject[]
+): GradeReportData[] {
+  return grades.map(grade => {
     const student = students.find(s => s.uid === grade.studentId);
-    const subject = subjects.find(s => s.id === grade.subjectId);
-    const studentGroup = student && (student as AppUser & { groupId: string }).role === 'student' 
-      ? groups.find(g => g.id === (student as AppUser & { groupId: string }).groupId)
-      : null;
-
-    return [
-      student ? `${student.lastName} ${student.firstName} ${student.middleName || ''}`.trim() : grade.studentId,
-      subject?.name || grade.subjectId,
-      studentGroup?.name || '',
-      grade.type === 'current' ? 'Текущая' :
-      grade.type === 'midterm' ? 'Рубежная' :
-      grade.type === 'exam' ? 'Экзамен' : 'Итоговая',
-      grade.value,
-      grade.date instanceof Timestamp ? grade.date.toDate().toLocaleDateString() : '',
-      grade.comment || '',
-    ];
-  });
-
-  // Add grades table
-  autoTable(doc, {
-    startY: 50,
-    head: [['Студент', 'Предмет', 'Группа', 'Тип', 'Оценка', 'Дата', 'Комментарий']],
-    body: tableData,
-    theme: 'grid',
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [66, 139, 202] },
-  });
-
-  // Add statistics
-  const statsY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20;
-  doc.setFontSize(16);
-  doc.text('Статистика', 14, statsY);
-
-  // Calculate and add average grades by type
-  const averageByType = ['current', 'midterm', 'exam', 'final'].map(type => {
-    const typeGrades = filteredGrades.filter(g => g.type === type && isNumericGrade(g.value));
-    const average = typeGrades.length > 0
-      ? typeGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / typeGrades.length
-      : 0;
+    const subject = subjects.find(s => s.id === grade.journalId);
+    
     return {
-      type: type === 'current' ? 'Текущие' :
-            type === 'midterm' ? 'Рубежные' :
-            type === 'exam' ? 'Экзамены' : 'Итоговые',
-      average: Number(average.toFixed(2)),
+      studentName: student ? `${student.lastName} ${student.firstName}` : 'Неизвестный студент',
+      subjectName: subject ? subject.name : 'Неизвестный предмет',
+      gradeType: grade.gradeType as GradeType,
+      grade: grade.grade,
+      date: grade.date.toDate().toLocaleDateString(),
+      present: Boolean(grade.present),
+      attendanceStatus: grade.attendanceStatus ?? 'Не указан',
+      topicCovered: Boolean(grade.topicCovered)
     };
   });
+}
 
-  // Add statistics table
-  autoTable(doc, {
-    startY: statsY + 10,
-    head: [['Тип', 'Средний балл']],
-    body: averageByType.map(({ type, average }) => [type, average.toString()]),
+export function calculateAverageGrade(grades: Grade[], gradeType: GradeType): number {
+  const numericGrades = grades
+    .filter(g => g.gradeType === gradeType && !isNaN(Number(g.grade)))
+    .map(g => Number(g.grade));
+  
+  if (numericGrades.length === 0) return 0;
+  return numericGrades.reduce((a, b) => a + b, 0) / numericGrades.length;
+}
+
+export function exportGradesToPDF(
+  grades: Grade[],
+  students: AppUser[],
+  subjects: Subject[]
+): void {
+  const doc = new jsPDF();
+  const reportData = generateGradeReport(grades, students, subjects);
+
+  doc.setFontSize(16);
+  doc.text('Отчет по оценкам', 14, 15);
+
+  const tableColumn = [
+    'Студент',
+    'Предмет',
+    'Тип оценки',
+    'Оценка',
+    'Дата',
+    'Присутствие',
+    'Статус',
+    'Тема пройдена'
+  ];
+
+  const tableRows = reportData.map(data => [
+    data.studentName,
+    data.subjectName,
+    data.gradeType,
+    data.grade,
+    data.date,
+    data.present ? 'Да' : 'Нет',
+    data.attendanceStatus,
+    data.topicCovered ? 'Да' : 'Нет'
+  ]);
+
+  (doc as jsPDF & { autoTable: (options: AutoTableOptions) => void }).autoTable({
+    head: [tableColumn],
+    body: tableRows,
+    startY: 25,
     theme: 'grid',
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [66, 139, 202] },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2
+    },
+    headStyles: {
+      fillColor: [41, 128, 185],
+      textColor: 255,
+      fontSize: 10,
+      fontStyle: 'bold'
+    }
   });
 
-  // Save the PDF
   doc.save('grades_report.pdf');
 } 

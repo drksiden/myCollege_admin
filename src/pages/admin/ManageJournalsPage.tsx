@@ -115,10 +115,10 @@ const ManageJournalsPage: React.FC = () => {
   // Состояние фильтров
   const [filters, setFilters] = useState<FilterState>({
     search: '',
-    groupId: '',
-    subjectId: '',
-    teacherId: '',
-    semesterId: ''
+    groupId: 'all',
+    subjectId: 'all',
+    teacherId: 'all',
+    semesterId: 'all'
   });
 
   // Состояние сортировки
@@ -167,82 +167,34 @@ const ManageJournalsPage: React.FC = () => {
 
   // Фильтрованные и отсортированные журналы
   const filteredAndSortedJournals = useMemo(() => {
-    const filtered = journals.filter(journal => {
-      // Поиск по тексту
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        const groupName = getGroupName(journal.groupId).toLowerCase();
-        const subjectName = getSubjectName(journal.subjectId).toLowerCase();
-        const teacherName = getTeacherName(journal.teacherId).toLowerCase();
-        
-        if (!groupName.includes(searchLower) && 
-            !subjectName.includes(searchLower) && 
-            !teacherName.includes(searchLower)) {
-          return false;
-        }
-      }
+    return journals.filter(journal => {
+      const matchesSearch = filters.search === '' || 
+        getGroupName(journal.groupId).toLowerCase().includes(filters.search.toLowerCase()) ||
+        getSubjectName(journal.subjectId).toLowerCase().includes(filters.search.toLowerCase()) ||
+        getTeacherName(journal.teacherId).toLowerCase().includes(filters.search.toLowerCase());
 
-      // Фильтр по группе
-      if (filters.groupId && journal.groupId !== filters.groupId) {
-        return false;
-      }
+      const matchesGroup = filters.groupId === 'all' || journal.groupId === filters.groupId;
+      const matchesSubject = filters.subjectId === 'all' || journal.subjectId === filters.subjectId;
+      const matchesTeacher = filters.teacherId === 'all' || journal.teacherId === filters.teacherId;
+      const matchesSemester = filters.semesterId === 'all' || journal.semesterId === filters.semesterId;
 
-      // Фильтр по предмету
-      if (filters.subjectId && journal.subjectId !== filters.subjectId) {
-        return false;
-      }
-
-      // Фильтр по преподавателю
-      if (filters.teacherId && journal.teacherId !== filters.teacherId) {
-        return false;
-      }
-
-      // Фильтр по семестру
-      if (filters.semesterId && journal.semesterId !== filters.semesterId) {
-        return false;
-      }
-
-      return true;
-    });
-
-    // Сортировка
-    filtered.sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
-
+      return matchesSearch && matchesGroup && matchesSubject && matchesTeacher && matchesSemester;
+    }).sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
       switch (sortField) {
         case 'groupName':
-          aValue = getGroupName(a.groupId);
-          bValue = getGroupName(b.groupId);
-          break;
+          return direction * getGroupName(a.groupId).localeCompare(getGroupName(b.groupId));
         case 'subjectName':
-          aValue = getSubjectName(a.subjectId);
-          bValue = getSubjectName(b.subjectId);
-          break;
+          return direction * getSubjectName(a.subjectId).localeCompare(getSubjectName(b.subjectId));
         case 'teacherName':
-          aValue = getTeacherName(a.teacherId);
-          bValue = getTeacherName(b.teacherId);
-          break;
+          return direction * getTeacherName(a.teacherId).localeCompare(getTeacherName(b.teacherId));
         case 'createdAt':
+          return direction * (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0);
         default:
-          aValue = a.createdAt.toMillis();
-          bValue = b.createdAt.toMillis();
-          break;
-      }
-
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortDirection === 'asc' 
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      } else {
-        return sortDirection === 'asc' 
-          ? (aValue as number) - (bValue as number)
-          : (bValue as number) - (aValue as number);
+          return 0;
       }
     });
-
-    return filtered;
-  }, [journals, filters, sortField, sortDirection, groups, subjects, teachers]);
+  }, [journals, filters, sortField, sortDirection]);
 
   // Обработчики фильтров
   const updateFilter = (key: keyof FilterState, value: string) => {
@@ -252,10 +204,10 @@ const ManageJournalsPage: React.FC = () => {
   const clearFilters = () => {
     setFilters({
       search: '',
-      groupId: '',
-      subjectId: '',
-      teacherId: '',
-      semesterId: ''
+      groupId: 'all',
+      subjectId: 'all',
+      teacherId: 'all',
+      semesterId: 'all'
     });
   };
 
@@ -488,7 +440,7 @@ const ManageJournalsPage: React.FC = () => {
                   <SelectValue placeholder="Все семестры" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Все семестры</SelectItem>
+                  <SelectItem value="all">Все семестры</SelectItem>
                   {semesters.map(semester => (
                     <SelectItem key={semester.id} value={semester.id}>
                       {semester.name}
@@ -505,7 +457,7 @@ const ManageJournalsPage: React.FC = () => {
                   <SelectValue placeholder="Все группы" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Все группы</SelectItem>
+                  <SelectItem value="all">Все группы</SelectItem>
                   {groups.map(group => (
                     <SelectItem key={group.id} value={group.id}>
                       {group.name}
@@ -522,7 +474,7 @@ const ManageJournalsPage: React.FC = () => {
                   <SelectValue placeholder="Все предметы" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Все предметы</SelectItem>
+                  <SelectItem value="all">Все предметы</SelectItem>
                   {subjects.map(subject => (
                     <SelectItem key={subject.id} value={subject.id}>
                       {subject.name}
@@ -539,7 +491,7 @@ const ManageJournalsPage: React.FC = () => {
                   <SelectValue placeholder="Все преподаватели" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Все преподаватели</SelectItem>
+                  <SelectItem value="all">Все преподаватели</SelectItem>
                   {teachers.map(teacher => (
                     <SelectItem key={teacher.uid} value={teacher.uid}>
                       {teacher.lastName} {teacher.firstName}
@@ -560,28 +512,28 @@ const ManageJournalsPage: React.FC = () => {
                   <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('search', '')} />
                 </Badge>
               )}
-              {filters.semesterId && (
+              {filters.semesterId !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
                   Семестр: {getSemesterName(filters.semesterId)}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('semesterId', '')} />
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('semesterId', 'all')} />
                 </Badge>
               )}
-              {filters.groupId && (
+              {filters.groupId !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
                   Группа: {getGroupName(filters.groupId)}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('groupId', '')} />
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('groupId', 'all')} />
                 </Badge>
               )}
-              {filters.subjectId && (
+              {filters.subjectId !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
                   Предмет: {getSubjectName(filters.subjectId)}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('subjectId', '')} />
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('subjectId', 'all')} />
                 </Badge>
               )}
-              {filters.teacherId && (
+              {filters.teacherId !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
                   Преподаватель: {getTeacherName(filters.teacherId)}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('teacherId', '')} />
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => updateFilter('teacherId', 'all')} />
                 </Badge>
               )}
             </div>

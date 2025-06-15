@@ -227,15 +227,17 @@ export interface News {
 export interface Grade {
   id: string;
   studentId: string;    // uid студента
-  subjectId: string;    // ID предмета
-  lessonId?: string;    // ID конкретного занятия (если оценка за занятие)
-  value: GradeValue;    // Оценка (строго типизированное значение)
-  type: GradeType;      // Тип оценки (текущая, рубежная, экзамен, итоговая)
+  journalId: string;    // ID журнала
+  lessonId?: string;    // ID конкретного занятия
+  grade: string;        // Оценка
+  gradeType: string;    // Тип оценки (текущая, рубежная, экзамен, итоговая)
   date: Timestamp;      // Дата выставления
   teacherId: string;    // uid преподавателя
   comment?: string;     // Комментарий преподавателя
-  semesterId: string;   // ID семестра (для группировки оценок)
-  isPublished: boolean; // Опубликована ли оценка (видна ли студенту)
+  semesterId: string;   // ID семестра
+  attendanceStatus?: string; // Статус посещаемости
+  present?: boolean;    // Присутствовал ли студент
+  topicCovered?: string; // Тема занятия
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

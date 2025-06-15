@@ -221,7 +221,7 @@ const AttendanceChart: React.FC<{
               cursor={false}
               content={<ChartTooltipContent 
                 indicator="line"
-                formatter={(value, name, props) => [
+                formatter={(value, _, props) => [
                   `${value}% (${props.payload?.present} присутствовали, ${props.payload?.absent} отсутствовали)`,
                   "Посещаемость"
                 ]}

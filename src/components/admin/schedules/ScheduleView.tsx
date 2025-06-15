@@ -5,7 +5,9 @@ import { LessonFormDialog } from './LessonFormDialog';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { getGroupSchedule } from '@/lib/firebaseService/scheduleService';
+import { getGroups } from '@/lib/firebaseService/groupService';
 import { toast } from 'sonner';
+import type { Group } from '@/types';
 
 interface ScheduleViewProps {
   groupId: string;
@@ -19,17 +21,19 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({ groupId, semesterId }) => {
   // const [teachers, setTeachers] = useState<TeacherUser[]>([]);
   const [isLessonFormOpen, setIsLessonFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [groups, setGroups] = useState<Group[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        await Promise.all([
+        const [groupsData] = await Promise.all([
+          getGroups(),
           getGroupSchedule({ groupId, semesterId }),
           getAllSubjects(),
           getUsers({ role: 'teacher' })
         ]);
-        // TODO: Set the loaded data to state when schedule display is implemented
+        setGroups(groupsData);
         toast.success("Данные загружены");
       } catch (error) {
         console.error('Error loading schedule data:', error);
@@ -79,6 +83,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({ groupId, semesterId }) => {
         groupId={groupId}
         semesterId={semesterId}
         onSuccess={handleLessonSaved}
+        groups={groups}
       />
     </Card>
   );

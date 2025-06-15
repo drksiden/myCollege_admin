@@ -11,21 +11,21 @@ import {
 import { getGrades } from '@/lib/firebaseService/gradeService';
 import { getUsers } from '@/lib/firebaseService/userService';
 import { getAllSubjects } from '@/lib/firebaseService/subjectService';
-import type { Grade, AppUser, Subject } from '@/types';
+import type { Grade, AppUser } from '@/types';
 import { Download, BarChart2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  Tooltip
 } from 'recharts';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
@@ -39,8 +39,8 @@ interface GradeBookProps {
 export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }: GradeBookProps) {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [students, setStudents] = useState<AppUser[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -50,106 +50,126 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersData, subjectsData] = await Promise.all([
+      const [usersData] = await Promise.all([
         getUsers({ groupId: selectedGroup, role: 'student' }),
         getAllSubjects(),
       ]);
       setStudents(usersData.users);
-      setSubjects(subjectsData);
       // Получаем оценки только для студентов этой группы
       const studentIds = usersData.users.map((u) => u.uid);
       const gradesData = await getGrades({
         studentIds,
-        subjectId: selectedSubject,
+        journalId: selectedSubject,
         semesterId: selectedSemesterId,
       });
       setGrades(gradesData);
     } catch {
       setGrades([]);
       setStudents([]);
-      setSubjects([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Фильтруем оценки по выбранному предмету и семестру (на всякий случай)
-  const filteredGrades = grades.filter(g =>
-    (!selectedSubject || g.subjectId === selectedSubject) &&
-    (!selectedSemesterId || g.semesterId === selectedSemesterId)
-  );
-
   const getStudentGrades = (studentId: string) => {
-    return filteredGrades.filter(g => g.studentId === studentId);
+    return grades.filter(g => g.studentId === studentId);
   };
 
   const getGradeStats = (studentId: string) => {
     const studentGrades = getStudentGrades(studentId);
     const total = studentGrades.length;
-    const excellent = studentGrades.filter(g => Number(g.value) >= 5).length;
-    const good = studentGrades.filter(g => Number(g.value) === 4).length;
-    const satisfactory = studentGrades.filter(g => Number(g.value) === 3).length;
-    const unsatisfactory = studentGrades.filter(g => Number(g.value) < 3).length;
+    const excellent = studentGrades.filter(g => Number(g.grade) >= 5).length;
+    const good = studentGrades.filter(g => Number(g.grade) === 4).length;
+    const satisfactory = studentGrades.filter(g => Number(g.grade) === 3).length;
+    const unsatisfactory = studentGrades.filter(g => Number(g.grade) < 3).length;
+
     return {
       total,
       excellent,
       good,
       satisfactory,
       unsatisfactory,
-      average: total ? (studentGrades.reduce((sum, g) => sum + Number(g.value), 0) / total).toFixed(2) : '0'
+      average: total ? (studentGrades.reduce((sum, g) => sum + Number(g.grade), 0) / total).toFixed(2) : '0'
     };
   };
 
-  // Групповая статистика только по выбранному предмету и семестру
   const getGroupStats = () => {
     const stats = {
       totalStudents: students.length,
-      totalGrades: filteredGrades.length,
+      totalGrades: grades.length,
       averageGrade: 0,
       gradeDistribution: {
-        excellent: 0,
-        good: 0,
-        satisfactory: 0,
-        unsatisfactory: 0
+        distribution: {
+          excellent: 0,
+          good: 0,
+          satisfactory: 0,
+          unsatisfactory: 0
+        }
       },
       subjectStats: new Map<string, {
         average: number,
         total: number,
-        distribution: { [key: string]: number }
+        distribution: {
+          excellent: number,
+          good: number,
+          satisfactory: number,
+          unsatisfactory: number
+        }
       }>()
     };
+
     students.forEach(student => {
       const studentGrades = getStudentGrades(student.uid);
       studentGrades.forEach(grade => {
-        const value = Number(grade.value);
+        const value = Number(grade.grade);
         stats.averageGrade += value;
-        if (value >= 5) stats.gradeDistribution.excellent++;
-        else if (value === 4) stats.gradeDistribution.good++;
-        else if (value === 3) stats.gradeDistribution.satisfactory++;
-        else stats.gradeDistribution.unsatisfactory++;
-        if (!stats.subjectStats.has(grade.subjectId)) {
-          stats.subjectStats.set(grade.subjectId, {
-            average: 0,
+
+        if (value >= 5) stats.gradeDistribution.distribution.excellent++;
+        else if (value === 4) stats.gradeDistribution.distribution.good++;
+        else if (value === 3) stats.gradeDistribution.distribution.satisfactory++;
+        else stats.gradeDistribution.distribution.unsatisfactory++;
+
+        if (!stats.subjectStats.has(grade.journalId)) {
+          stats.subjectStats.set(grade.journalId, {
             total: 0,
-            distribution: { excellent: 0, good: 0, satisfactory: 0, unsatisfactory: 0 }
+            average: 0,
+            distribution: {
+              excellent: 0,
+              good: 0,
+              satisfactory: 0,
+              unsatisfactory: 0
+            }
           });
         }
-        const subjectStat = stats.subjectStats.get(grade.subjectId)!;
+
+        const subjectStat = stats.subjectStats.get(grade.journalId)!;
         subjectStat.average += value;
         subjectStat.total++;
+
         if (value >= 5) subjectStat.distribution.excellent++;
         else if (value === 4) subjectStat.distribution.good++;
         else if (value === 3) subjectStat.distribution.satisfactory++;
         else subjectStat.distribution.unsatisfactory++;
       });
     });
+
     if (stats.totalGrades > 0) {
       stats.averageGrade = Number((stats.averageGrade / stats.totalGrades).toFixed(2));
       stats.subjectStats.forEach(stat => {
         stat.average = Number((stat.average / stat.total).toFixed(2));
       });
     }
+
     return stats;
+  };
+
+  const getGradeDistributionData = (distribution: { [key: string]: number }) => {
+    return [
+      { name: 'Отлично', value: distribution.excellent },
+      { name: 'Хорошо', value: distribution.good },
+      { name: 'Удовлетворительно', value: distribution.satisfactory },
+      { name: 'Неудовлетворительно', value: distribution.unsatisfactory }
+    ];
   };
 
   const exportToExcel = () => {
@@ -164,7 +184,7 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
         'Хорошо': stats.good,
         'Удовлетворительно': stats.satisfactory,
         'Неудовлетворительно': stats.unsatisfactory,
-        'Оценки': studentGrades.map(g => g.value).join(', '),
+        'Оценки': studentGrades.map(g => g.grade).join(', '),
         'Даты': studentGrades.map(g => {
           if (g.date && typeof g.date.toDate === 'function') return g.date.toDate().toLocaleDateString();
           if (g.date instanceof Date) return g.date.toLocaleDateString();
@@ -179,26 +199,6 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
     XLSX.writeFile(wb, 'Оценки.xlsx');
   };
 
-  const getGradeDistributionData = (distribution: { [key: string]: number }) => {
-    return [
-      { name: 'Отлично', value: distribution.excellent },
-      { name: 'Хорошо', value: distribution.good },
-      { name: 'Удовлетворительно', value: distribution.satisfactory },
-      { name: 'Неудовлетворительно', value: distribution.unsatisfactory }
-    ];
-  };
-
-  const getSubjectStatsData = (stats: ReturnType<typeof getGroupStats>) => {
-    return Array.from(stats.subjectStats.entries()).map(([subjectId, stat]) => {
-      const subject = subjects.find(s => s.id === subjectId);
-      return {
-        name: subject?.name || 'Неизвестный предмет',
-        average: stat.average,
-        total: stat.total
-      };
-    });
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -210,11 +210,18 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
     );
   }
 
+  const stats = getGroupStats();
+  const gradeDistributionData = getGradeDistributionData(stats.gradeDistribution.distribution);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Журнал оценок</h2>
         <div className="flex space-x-4">
+          <Button onClick={() => setIsStatsOpen(true)}>
+            <BarChart2 className="w-4 h-4 mr-2" />
+            Статистика
+          </Button>
           <Button onClick={exportToExcel}>
             <Download className="w-4 h-4 mr-2" />
             Экспорт в Excel
@@ -240,7 +247,7 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
                   </TableCell>
                   <TableCell>{stats.average}</TableCell>
                   <TableCell>
-                    {getStudentGrades(student.uid).map(g => g.value).join(', ')}
+                    {getStudentGrades(student.uid).map(g => g.grade).join(', ')}
                   </TableCell>
                 </TableRow>
               );
@@ -248,6 +255,50 @@ export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={isStatsOpen} onOpenChange={setIsStatsOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Статистика оценок</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">Общая статистика</h3>
+                <div className="space-y-2">
+                  <div>Всего студентов: {stats.totalStudents}</div>
+                  <div>Всего оценок: {stats.totalGrades}</div>
+                  <div>Средний балл по группе: {stats.averageGrade}</div>
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">Распределение оценок</h3>
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={gradeDistributionData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {gradeDistributionData.map((_, index) => (
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

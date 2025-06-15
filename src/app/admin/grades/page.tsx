@@ -133,7 +133,7 @@ export default function GradesPage() {
           const studentIds = students.map(student => student.uid);
           const groupGrades = await getGrades({
             studentIds,
-            subjectId: selectedSubjectId,
+            journalId: selectedSubjectId,
             semesterId: selectedSemesterId
           });
           setGrades(groupGrades);
@@ -170,10 +170,10 @@ export default function GradesPage() {
   const getGradeStats = (studentId: string) => {
     const studentGrades = getStudentGrades(studentId);
     const total = studentGrades.length;
-    const excellent = studentGrades.filter(g => Number(g.value) >= 5).length;
-    const good = studentGrades.filter(g => Number(g.value) === 4).length;
-    const satisfactory = studentGrades.filter(g => Number(g.value) === 3).length;
-    const unsatisfactory = studentGrades.filter(g => Number(g.value) < 3).length;
+    const excellent = studentGrades.filter(g => Number(g.grade) >= 5).length;
+    const good = studentGrades.filter(g => Number(g.grade) === 4).length;
+    const satisfactory = studentGrades.filter(g => Number(g.grade) === 3).length;
+    const unsatisfactory = studentGrades.filter(g => Number(g.grade) < 3).length;
 
     return {
       total,
@@ -181,7 +181,7 @@ export default function GradesPage() {
       good,
       satisfactory,
       unsatisfactory,
-      average: total ? (studentGrades.reduce((sum, g) => sum + Number(g.value), 0) / total).toFixed(2) : '0'
+      average: total ? (studentGrades.reduce((sum, g) => sum + Number(g.grade), 0) / total).toFixed(2) : '0'
     };
   };
 
@@ -191,38 +191,50 @@ export default function GradesPage() {
       totalGrades: grades.length,
       averageGrade: 0,
       gradeDistribution: {
-        excellent: 0,
-        good: 0,
-        satisfactory: 0,
-        unsatisfactory: 0
+        distribution: {
+          excellent: 0,
+          good: 0,
+          satisfactory: 0,
+          unsatisfactory: 0
+        }
       },
       subjectStats: new Map<string, {
         average: number,
         total: number,
-        distribution: { [key: string]: number }
+        distribution: {
+          excellent: number,
+          good: number,
+          satisfactory: number,
+          unsatisfactory: number
+        }
       }>()
     };
 
     students.forEach(student => {
       const studentGrades = getStudentGrades(student.uid);
       studentGrades.forEach(grade => {
-        const value = Number(grade.value);
+        const value = Number(grade.grade);
         stats.averageGrade += value;
 
-        if (value >= 5) stats.gradeDistribution.excellent++;
-        else if (value === 4) stats.gradeDistribution.good++;
-        else if (value === 3) stats.gradeDistribution.satisfactory++;
-        else stats.gradeDistribution.unsatisfactory++;
+        if (value >= 5) stats.gradeDistribution.distribution.excellent++;
+        else if (value === 4) stats.gradeDistribution.distribution.good++;
+        else if (value === 3) stats.gradeDistribution.distribution.satisfactory++;
+        else stats.gradeDistribution.distribution.unsatisfactory++;
 
-        if (!stats.subjectStats.has(grade.subjectId)) {
-          stats.subjectStats.set(grade.subjectId, {
-            average: 0,
+        if (!stats.subjectStats.has(grade.journalId)) {
+          stats.subjectStats.set(grade.journalId, {
             total: 0,
-            distribution: { excellent: 0, good: 0, satisfactory: 0, unsatisfactory: 0 }
+            average: 0,
+            distribution: {
+              excellent: 0,
+              good: 0,
+              satisfactory: 0,
+              unsatisfactory: 0
+            }
           });
         }
 
-        const subjectStat = stats.subjectStats.get(grade.subjectId)!;
+        const subjectStat = stats.subjectStats.get(grade.journalId)!;
         subjectStat.average += value;
         subjectStat.total++;
 
@@ -262,7 +274,7 @@ export default function GradesPage() {
         'Хорошо': stats.good,
         'Удовлетворительно': stats.satisfactory,
         'Неудовлетворительно': stats.unsatisfactory,
-        'Оценки': studentGrades.map(g => g.value).join(', '),
+        'Оценки': studentGrades.map(g => g.grade).join(', '),
         'Даты': studentGrades.map(g => format(g.date.toDate(), 'dd.MM.yyyy')).join(', '),
         'Комментарии': studentGrades.map(g => g.comment).join('; ')
       };
@@ -441,13 +453,13 @@ export default function GradesPage() {
                     </div>
                     <Badge
                       variant={
-                        Number(grade.value) >= 5 ? "default" :
-                        Number(grade.value) === 4 ? "default" :
-                        Number(grade.value) === 3 ? "default" :
+                        Number(grade.grade) >= 5 ? "default" :
+                        Number(grade.grade) === 4 ? "default" :
+                        Number(grade.grade) === 3 ? "default" :
                         "destructive"
                       }
                     >
-                      {grade.value}
+                      {grade.grade}
                     </Badge>
                   </div>
                 ))}
@@ -467,7 +479,7 @@ export default function GradesPage() {
               <div className="space-y-6">
                 {(() => {
                   const stats = getGroupStats();
-                  const gradeDistributionData = getGradeDistributionData(stats.gradeDistribution);
+                  const gradeDistributionData = getGradeDistributionData(stats.gradeDistribution.distribution);
                   const subjectStatsData = getSubjectStatsData(stats);
 
                   return (
@@ -496,8 +508,8 @@ export default function GradesPage() {
                                   fill="#8884d8"
                                   dataKey="value"
                                 >
-                                  {gradeDistributionData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                  {gradeDistributionData.map((_, index) => (
+                                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
                                   ))}
                                 </Pie>
                                 <Tooltip />

@@ -198,6 +198,7 @@ const LessonForm: React.FC<LessonFormProps> = ({
         id: `${semesterId}_${groupId}`,
         semesterId,
         groupId,
+        groupName: group?.name || 'Unknown Group',
         lessons: existingLessons,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),

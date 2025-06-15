@@ -1,143 +1,93 @@
 import * as XLSX from 'xlsx';
-import type { Grade, AppUser, Subject, Group } from '@/types';
-import { getUsers } from './firebaseService/userService';
-import { getGrades } from './firebaseService/gradeService';
-import { getGroups } from './firebaseService/groupService';
-import { getAllSubjects } from './firebaseService/subjectService';
-import { Timestamp } from 'firebase/firestore';
+import type { Grade, AppUser, Subject } from '@/types';
 
-interface ExportData {
-  grades: Grade[];
-  students: AppUser[];
-  subjects: Subject[];
-  groups: Group[];
+function gradeValueToNumber(grade: string): number {
+  const gradeMap: { [key: string]: number } = {
+    '5': 5,
+    '4': 4,
+    '3': 3,
+    '2': 2,
+    'н/а': 0,
+    'зачет': 1,
+    'незачет': 0
+  };
+  return gradeMap[grade.toLowerCase()] || 0;
 }
 
-// Функция для преобразования GradeValue в числовое значение
-const gradeValueToNumber = (value: string): number => {
-  switch (value) {
-    case '5': return 5;
-    case '4': return 4;
-    case '3': return 3;
-    case '2': return 2;
-    case 'зачет': return 4;
-    case 'незачет': return 2;
-    case 'н/а': return 0;
-    default: return 0;
-  }
-};
-
-// Функция для проверки, является ли оценка числовой
-const isNumericGrade = (value: string): boolean => {
-  return ['5', '4', '3', '2'].includes(value);
-};
-
-export async function exportGradesToExcel(data?: ExportData) {
-  try {
-    let grades: Grade[];
-    let students: AppUser[];
-    let groups: Group[];
-    let subjects: Subject[];
-
-    if (data) {
-      ({ grades, students, groups, subjects } = data);
-    } else {
-      // Получаем все необходимые данные
-      const [gradesData, studentsData, groupsData, subjectsData] = await Promise.all([
-        getGrades(),
-        getUsers({ role: 'student' }),
-        getGroups(),
-        getAllSubjects(),
-      ]);
-      grades = gradesData;
-      students = studentsData.users;
-      groups = groupsData;
-      subjects = subjectsData;
-    }
-
-    // Преобразуем данные для экспорта
-    const exportData = grades.map(grade => {
-      const student = students.find(s => s.uid === grade.studentId);
-      const studentGroup = student && (student as AppUser & { groupId: string }).role === 'student' 
-        ? groups.find(g => g.id === (student as AppUser & { groupId: string }).groupId)
-        : null;
-      const subject = subjects.find(s => s.id === grade.subjectId);
-
-      return {
-        'ID студента': grade.studentId,
-        'ФИО студента': student ? `${student.lastName} ${student.firstName} ${student.middleName || ''}`.trim() : '',
-        'Группа': studentGroup?.name || '',
-        'Предмет': subject?.name || '',
-        'Тип оценки': grade.type,
-        'Оценка': grade.value,
-        'Дата': grade.date instanceof Timestamp ? grade.date.toDate().toLocaleDateString() : '',
-        'Комментарий': grade.comment || '',
-        'Семестр': grade.semesterId,
-        'Опубликовано': grade.isPublished ? 'Да' : 'Нет'
-      };
-    });
-
-    // Создаем рабочую книгу Excel
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    XLSX.utils.book_append_sheet(wb, ws, 'Grades');
-
-    // Добавляем лист со статистикой
-    const statistics = calculateStatistics(grades, students, subjects);
-    const statsWs = XLSX.utils.json_to_sheet(statistics);
-    XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
-
-    // Генерируем файл
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    return new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  } catch (error) {
-    console.error('Error exporting grades:', error);
-    throw error;
-  }
+function isNumericGrade(grade: string): boolean {
+  return !isNaN(Number(grade)) && Number(grade) >= 2 && Number(grade) <= 5;
 }
 
-function calculateStatistics(
+export async function exportGradesToExcel(
   grades: Grade[],
   students: AppUser[],
   subjects: Subject[]
-) {
-  const statistics = [];
-
-  // Статистика по студентам
-  for (const student of students) {
-    const studentGrades = grades.filter(g => g.studentId === student.uid);
-    const numericGrades = studentGrades.filter(g => isNumericGrade(g.value));
-    
-    const average = numericGrades.length > 0
-      ? numericGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / numericGrades.length
-      : 0;
-
-    statistics.push({
-      'Category': 'Student',
-      'Name': `${student.lastName} ${student.firstName} ${student.middleName || ''}`.trim(),
-      'Average Grade': average.toFixed(2),
-      'Total Grades': studentGrades.length,
-      'Numeric Grades': numericGrades.length
+): Promise<void> {
+  try {
+    const data = grades.map(grade => {
+      const student = students.find(s => s.uid === grade.studentId);
+      const subject = subjects.find(s => s.id === grade.journalId);
+      return {
+        'ФИО студента': student ? `${student.lastName} ${student.firstName}` : 'Неизвестный студент',
+        'Предмет': subject ? subject.name : 'Неизвестный предмет',
+        'Тип оценки': grade.gradeType,
+        'Оценка': grade.grade,
+        'Дата': grade.date.toDate().toLocaleDateString(),
+        'Присутствие': grade.present ? 'Присутствовал' : 'Отсутствовал',
+        'Статус': grade.attendanceStatus,
+        'Тема пройдена': grade.topicCovered ? 'Да' : 'Нет'
+      };
     });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Оценки');
+    XLSX.writeFile(wb, 'grades.xlsx');
+  } catch (error) {
+    console.error('Error exporting grades:', error);
+    throw new Error('Failed to export grades to Excel');
   }
+}
 
-  // Статистика по предметам
-  for (const subject of subjects) {
-    const subjectGrades = grades.filter(g => g.subjectId === subject.id);
-    const numericGrades = subjectGrades.filter(g => isNumericGrade(g.value));
-    
-    const average = numericGrades.length > 0
-      ? numericGrades.reduce((acc, g) => acc + gradeValueToNumber(g.value), 0) / numericGrades.length
-      : 0;
+export async function exportStudentGradesToExcel(
+  studentId: string,
+  grades: Grade[],
+  subjects: Subject[]
+): Promise<void> {
+  try {
+    const studentGrades = grades.filter(g => g.studentId === studentId);
+    const subjectGrades = new Map<string, Grade[]>();
 
-    statistics.push({
-      'Category': 'Subject',
-      'Name': subject.name,
-      'Average Grade': average.toFixed(2),
-      'Total Grades': subjectGrades.length,
-      'Numeric Grades': numericGrades.length
+    studentGrades.forEach(grade => {
+      const subjectGradesList = subjectGrades.get(grade.journalId) || [];
+      subjectGradesList.push(grade);
+      subjectGrades.set(grade.journalId, subjectGradesList);
     });
-  }
 
-  return statistics;
+    const data = Array.from(subjectGrades.entries()).map(([subjectId, grades]) => {
+      const subject = subjects.find(s => s.id === subjectId);
+      const numericGrades = grades
+        .filter(g => isNumericGrade(g.grade))
+        .map(g => gradeValueToNumber(g.grade));
+      
+      const averageGrade = numericGrades.length > 0
+        ? numericGrades.reduce((a, b) => a + b, 0) / numericGrades.length
+        : 0;
+
+      return {
+        'Предмет': subject ? subject.name : 'Неизвестный предмет',
+        'Средний балл': averageGrade.toFixed(2),
+        'Количество оценок': grades.length,
+        'Оценки': grades.map(g => g.grade).join(', ')
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Оценки студента');
+    XLSX.writeFile(wb, `student_grades_${studentId}.xlsx`);
+  } catch (error) {
+    console.error('Error exporting student grades:', error);
+    throw new Error('Failed to export student grades to Excel');
+  }
 } 

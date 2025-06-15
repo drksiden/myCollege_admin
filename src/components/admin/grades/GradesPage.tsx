@@ -14,13 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getGroups, getGroupSubjects } from '@/lib/firebaseService/groupService';
-import { getAllSubjects, getSubjectsByIds } from '@/lib/firebaseService/subjectService';
+import { getSubjectsByIds } from '@/lib/firebaseService/subjectService';
 import { getSemesters } from '@/lib/firebaseService/semesterService';
 import type { Group, Subject, Semester } from '@/types';
 import { toast } from 'sonner';
 import { GradeBook } from './GradeBook';
 import GradeStatistics from './GradeStatistics';
-import GradeImport from './GradeImport';
 import { useAuth } from '@/contexts/AuthContext';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -243,13 +242,6 @@ export function GradesPage() {
               selectedGroup={selectedGroup}
               selectedSubject={selectedSubject}
               selectedSemesterId={selectedSemesterId}
-            />
-          </div>
-
-          <div className="mt-6">
-            <GradeImport
-              teacherId={user.uid}
-              onSuccess={loadData}
             />
           </div>
         </>

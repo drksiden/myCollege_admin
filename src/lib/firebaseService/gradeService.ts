@@ -1,30 +1,15 @@
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  serverTimestamp,
-  and,
-} from 'firebase/firestore';
 import type { Grade } from '@/types';
-import { getSubject } from './subjectService';
 import { getUsers } from './userService';
+import { sendChatNotification } from './notificationService';
 
-const GRADES_COLLECTION = 'grades';
-const NOTIFICATIONS_COLLECTION = 'notifications';
+const GRADES_COLLECTION = 'journalEntries';
 
-interface GetGradesOptions {
+export interface GetGradesOptions {
   studentIds?: string[];
-  subjectId?: string;
+  journalId?: string;
   semesterId?: string;
-  type?: string;
 }
 
 class GradeServiceError extends Error {
@@ -45,41 +30,40 @@ function checkDatabaseInitialized() {
   }
 }
 
-export async function getGrades(options: GetGradesOptions = {}) {
+export async function getGrades(options: GetGradesOptions = {}): Promise<Grade[]> {
   try {
-    checkDatabaseInitialized();
+    const { studentIds, journalId, semesterId } = options;
     const gradesRef = collection(db, GRADES_COLLECTION);
-    
-    // Создаем массив условий для фильтрации
     const conditions = [];
-    if (options.studentIds?.length) {
-      conditions.push(where('studentId', 'in', options.studentIds));
-    }
-    if (options.subjectId) {
-      conditions.push(where('subjectId', '==', options.subjectId));
-    }
-    if (options.semesterId) {
-      conditions.push(where('semesterId', '==', options.semesterId));
-    }
-    if (options.type) {
-      conditions.push(where('type', '==', options.type));
-    }
 
-    // Создаем запрос с условиями
-    const q = conditions.length > 0 
-      ? query(gradesRef, and(...conditions))
-      : query(gradesRef);
+    if (studentIds && studentIds.length > 0) {
+      conditions.push(where('studentId', 'in', studentIds));
+    }
+    if (journalId) {
+      conditions.push(where('journalId', '==', journalId));
+    }
+    if (semesterId) {
+      conditions.push(where('semesterId', '==', semesterId));
+    }
+    // Добавляем условие для фильтрации только записей с оценками
+    conditions.push(where('grade', '!=', null));
 
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
+    const q = query(gradesRef, ...conditions);
+    const querySnapshot = await getDocs(q);
+    
+    console.log('Query conditions:', conditions);
+    const grades = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     })) as Grade[];
+    
+    console.log('Found grades:', grades);
+    return grades;
   } catch (error) {
     if (error instanceof GradeServiceError) {
       throw error;
     }
-    console.error('Error getting grades:', { error, options });
+    console.error('Error getting grades:', error);
     throw new GradeServiceError('Failed to get grades', 'GET_GRADES_ERROR', { options });
   }
 }
@@ -130,7 +114,7 @@ export async function getGradesBySubject(subjectId: string) {
   try {
     checkDatabaseInitialized();
     const gradesRef = collection(db, GRADES_COLLECTION);
-    const q = query(gradesRef, where('subjectId', '==', subjectId));
+    const q = query(gradesRef, where('journalId', '==', subjectId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({
       id: doc.id,
@@ -164,80 +148,74 @@ export async function getGradesByGroup(groupId: string) {
   }
 }
 
-export const addGrade = async (data: Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+export async function createGrade(data: Omit<Grade, "id" | "createdAt" | "updatedAt">): Promise<Grade> {
   try {
-    checkDatabaseInitialized();
-    const gradesRef = collection(db, GRADES_COLLECTION);
     const gradeData = {
       ...data,
       createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
     };
 
-    const docRef = await addDoc(gradesRef, gradeData);
+    const docRef = await addDoc(collection(db, GRADES_COLLECTION), gradeData);
+    const newGrade = { id: docRef.id, ...gradeData } as Grade;
 
-    // Get subject and student data for notifications
-    const subject = await getSubject(data.subjectId);
-    const { users } = await getUsers({ role: 'student' });
-    const student = users.find(u => u.uid === data.studentId);
+    // Отправляем уведомление студенту
+    const { users: students } = await getUsers({ role: 'student' });
+    const student = students.find(s => s.uid === data.studentId);
+    if (student) {
+      await sendChatNotification({
+        userId: data.studentId,
+        title: 'Новая оценка',
+        message: `Вам выставлена оценка ${data.grade} по предмету ${data.journalId}`,
+        chatId: 'grades',
+        senderId: data.teacherId,
+        senderName: 'Система'
+      });
+    }
 
-    // Create notification for the student
-    const notificationsRef = collection(db, NOTIFICATIONS_COLLECTION);
-    const notificationData = {
-      recipientId: data.studentId,
-      type: 'new_grade',
-      title: 'Новая оценка',
-      body: `Вам выставлена оценка ${data.value} по предмету ${subject?.name || 'Неизвестный предмет'}`,
-      link: `/grades/${data.studentId}`,
-      isRead: false,
-      createdAt: Timestamp.now(),
-    };
-    await addDoc(notificationsRef, notificationData);
+    // Отправляем уведомление преподавателю
+    const { users: teachers } = await getUsers({ role: 'teacher' });
+    const teacher = teachers.find(t => t.uid === data.teacherId);
+    if (teacher) {
+      await sendChatNotification({
+        userId: data.teacherId,
+        title: 'Оценка выставлена',
+        message: `Вы выставили оценку ${data.grade} студенту ${student?.firstName} ${student?.lastName}`,
+        chatId: 'grades',
+        senderId: 'system',
+        senderName: 'Система'
+      });
+    }
 
-    // Create notification for the teacher
-    const teacherNotificationData = {
-      recipientId: data.teacherId,
-      type: 'grade_added',
-      title: 'Оценка добавлена',
-      body: `Вы выставили оценку ${data.value} студенту ${student?.firstName} ${student?.lastName}`,
-      link: `/grades/${data.studentId}`,
-      isRead: false,
-      createdAt: Timestamp.now(),
-    };
-    await addDoc(notificationsRef, teacherNotificationData);
-
-    return docRef.id;
+    return newGrade;
   } catch (error) {
     if (error instanceof GradeServiceError) {
       throw error;
     }
-    console.error('Error adding grade:', { error, gradeData: data });
-    throw new GradeServiceError('Failed to add grade', 'ADD_GRADE_ERROR', { gradeData: data });
+    console.error('Error creating grade:', error);
+    throw new GradeServiceError('Failed to create grade', 'CREATE_GRADE_ERROR', { gradeData: data });
   }
-};
+}
 
-export async function updateGrade(id: string, data: Partial<Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>>) {
+export async function updateGrade(id: string, data: Partial<Grade>): Promise<void> {
   try {
-    checkDatabaseInitialized();
     const gradeRef = doc(db, GRADES_COLLECTION, id);
     await updateDoc(gradeRef, {
       ...data,
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.now()
     });
   } catch (error) {
     if (error instanceof GradeServiceError) {
       throw error;
     }
-    console.error('Error updating grade:', { error, gradeId: id, updateData: data });
+    console.error('Error updating grade:', error);
     throw new GradeServiceError('Failed to update grade', 'UPDATE_GRADE_ERROR', { gradeId: id, updateData: data });
   }
 }
 
-export async function deleteGrade(id: string) {
+export async function deleteGrade(id: string): Promise<void> {
   try {
-    checkDatabaseInitialized();
-    const gradeRef = doc(db, GRADES_COLLECTION, id);
-    await deleteDoc(gradeRef);
+    await deleteDoc(doc(db, GRADES_COLLECTION, id));
   } catch (error) {
     if (error instanceof GradeServiceError) {
       throw error;
@@ -245,7 +223,4 @@ export async function deleteGrade(id: string) {
     console.error('Error deleting grade:', { error, gradeId: id });
     throw new GradeServiceError('Failed to delete grade', 'DELETE_GRADE_ERROR', { gradeId: id });
   }
-}
-
-// Export alias for backward compatibility
-export const createGrade = addGrade; 
+} 
