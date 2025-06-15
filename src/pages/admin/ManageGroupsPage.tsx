@@ -28,7 +28,9 @@ import {
   Calendar,
   UserCheck,
   Loader2,
-  Plus
+  Plus,
+  RefreshCw,
+  X as XIcon
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -52,16 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteDialog } from '@/components/ui/delete-dialog';
 import { GroupFormDialog } from '@/components/admin/groups/GroupFormDialog';
 import { toast } from 'sonner';
 import { getAllGroups, deleteGroup } from '@/lib/firebaseService/groupService';
@@ -80,7 +73,7 @@ const ManageGroupsPage: React.FC = () => {
   const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<Group | undefined>();
   const [showGroupFormDialog, setShowGroupFormDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,15 +84,26 @@ const ManageGroupsPage: React.FC = () => {
   const uniqueYears = [...new Set(groups.map(g => g.year?.toString()).filter(Boolean))].sort();
   const uniqueSpecializations = [...new Set(groups.map(g => g.specialization).filter(Boolean))].sort();
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async (showToast = false) => {
+    const isRefresh = showToast;
+    if (isRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    if (showToast) {
+      toast.loading('Обновление списка групп...', { id: 'refresh-groups' });
+    }
+
     try {
-      const fetchedGroups = await getAllGroups();
+      const [fetchedGroups, { users }] = await Promise.all([
+        getAllGroups(),
+        getUsers({ role: 'student' })
+      ]);
+      
       setGroups(fetchedGroups);
 
-      // Получаем всех студентов одним запросом
-      const { users } = await getUsers({ role: 'student' });
-      
       // Считаем количество студентов для каждой группы
       const counts: Record<string, number> = {};
       users.forEach(user => {
@@ -109,11 +113,24 @@ const ManageGroupsPage: React.FC = () => {
       });
       
       setStudentCounts(counts);
+
+      if (showToast) {
+        toast.success(`Загружено ${fetchedGroups.length} групп`, { id: 'refresh-groups' });
+      }
     } catch (error) {
       console.error('Error fetching groups:', error);
-      toast.error('Не удалось загрузить группы');
+      const errorMessage = 'Не удалось загрузить группы';
+      if (showToast) {
+        toast.error(errorMessage, { id: 'refresh-groups' });
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
-      setIsLoading(false);
+      if (isRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -150,29 +167,37 @@ const ManageGroupsPage: React.FC = () => {
   const handleGroupFormSuccess = () => {
     setShowGroupFormDialog(false);
     setSelectedGroupForEdit(undefined);
-    fetchData(); 
+    fetchData(true);
+    toast.success(selectedGroupForEdit ? 'Группа успешно обновлена' : 'Группа успешно создана');
   };
 
-  const handleDeleteInitiate = (group: Group) => {
-    setGroupToDelete(group);
+  const handleDeleteGroup = async (group: Group) => {
+    const deleteToastId = toast.loading('Удаление группы...', { duration: Infinity });
+    
+    try {
+      await deleteGroup(group.id);
+      await fetchData(true);
+      toast.success(`Группа "${group.name}" успешно удалена`, { id: deleteToastId });
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      toast.error('Не удалось удалить группу', { id: deleteToastId });
+      throw error;
+    }
   };
 
   const handleDeleteSelectedGroups = async () => {
     if (!selectedGroups.length) return;
     
-    if (!confirm(`Вы уверены, что хотите удалить ${selectedGroups.length} групп?`)) return;
+    const deleteToastId = toast.loading(`Удаление ${selectedGroups.length} групп...`, { duration: Infinity });
     
     try {
-      setIsLoading(true);
       await Promise.all(selectedGroups.map(groupId => deleteGroup(groupId)));
-      toast.success(`Успешно удалено ${selectedGroups.length} групп`);
       setSelectedGroups([]);
-      fetchData();
+      await fetchData(true);
+      toast.success(`Успешно удалено ${selectedGroups.length} групп`, { id: deleteToastId });
     } catch (error) {
       console.error('Error deleting groups:', error);
-      toast.error('Не удалось удалить группы');
-    } finally {
-      setIsLoading(false);
+      toast.error('Не удалось удалить группы', { id: deleteToastId });
     }
   };
 
@@ -190,6 +215,46 @@ const ManageGroupsPage: React.FC = () => {
         ? [] 
         : filteredGroups.map(group => group.id)
     );
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
+  };
+
+  // Функция для сброса фильтров
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedYear('all');
+    setSelectedSpecialization('all');
+  };
+
+  // Проверяем, активны ли фильтры
+  const hasActiveFilters = searchQuery !== '' || selectedYear !== 'all' || selectedSpecialization !== 'all';
+
+  const createDeleteDescription = (group: Group) => {
+    const studentCount = studentCounts[group.id] || 0;
+    let description = `Вы уверены, что хотите удалить группу "${group.name}"?`;
+    
+    if (studentCount > 0) {
+      description += `\n\nВ группе ${studentCount} студент(ов). Все студенты будут откреплены от группы.`;
+    }
+    
+    description += '\n\nЭто действие нельзя отменить.';
+    
+    return description;
+  };
+
+  const createBulkDeleteDescription = () => {
+    const totalStudents = selectedGroups.reduce((sum, groupId) => sum + (studentCounts[groupId] || 0), 0);
+    let description = `Вы уверены, что хотите удалить ${selectedGroups.length} групп?`;
+    
+    if (totalStudents > 0) {
+      description += `\n\nВ выбранных группах ${totalStudents} студент(ов). Все студенты будут откреплены от групп.`;
+    }
+    
+    description += '\n\nЭто действие нельзя отменить.';
+    
+    return description;
   };
 
   const getYearColor = (year?: number) => {
@@ -220,7 +285,7 @@ const ManageGroupsPage: React.FC = () => {
       animate="animate"
       className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-6"
     >
-      <Toaster richColors position="top-right" />
+      <Toaster position="top-right" />
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -232,16 +297,26 @@ const ManageGroupsPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           {selectedGroups.length > 0 && (
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteSelectedGroups}
-              disabled={isLoading}
-              className="gap-2"
+            <DeleteDialog
+              title="Массовое удаление групп"
+              description={createBulkDeleteDescription()}
+              onConfirm={handleDeleteSelectedGroups}
             >
-              <Trash2 className="h-4 w-4" />
-              Удалить ({selectedGroups.length})
-            </Button>
+              <Button variant="destructive" className="gap-2">
+                <Trash2 className="h-4 w-4" />
+                Удалить ({selectedGroups.length})
+              </Button>
+            </DeleteDialog>
           )}
+          <Button 
+            variant="outline" 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Обновить
+          </Button>
           <Button variant="outline" className="gap-2">
             <Download className="h-4 w-4" />
             Экспорт
@@ -309,7 +384,15 @@ const ManageGroupsPage: React.FC = () => {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Фильтры и поиск</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Фильтры и поиск</CardTitle>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={resetFilters} className="gap-2">
+                <XIcon className="h-4 w-4" />
+                Сбросить фильтры
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4">
@@ -357,7 +440,10 @@ const ManageGroupsPage: React.FC = () => {
         <CardHeader>
           <CardTitle>Список групп</CardTitle>
           <CardDescription>
-            Найдено {filteredGroups.length} групп
+            {hasActiveFilters 
+              ? `Найдено ${filteredGroups.length} из ${groups.length} групп`
+              : `Всего ${groups.length} групп`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -375,10 +461,15 @@ const ManageGroupsPage: React.FC = () => {
                   : 'Попробуйте изменить параметры поиска'
                 }
               </p>
-              {groups.length === 0 && (
+              {groups.length === 0 ? (
                 <Button onClick={handleOpenCreateGroupDialog} className="gap-2">
                   <Plus className="h-4 w-4" />
                   Создать первую группу
+                </Button>
+              ) : (
+                <Button onClick={resetFilters} variant="outline" className="gap-2">
+                  <XIcon className="h-4 w-4" />
+                  Сбросить фильтры
                 </Button>
               )}
             </div>
@@ -493,13 +584,18 @@ const ManageGroupsPage: React.FC = () => {
                                 Редактировать
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-red-600"
-                                onClick={() => handleDeleteInitiate(group)} 
+                              
+                              {/* Диалог удаления */}
+                              <DeleteDialog
+                                title="Удаление группы"
+                                description={createDeleteDescription(group)}
+                                onConfirm={() => handleDeleteGroup(group)}
                               >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Удалить
-                              </DropdownMenuItem>
+                                <div className="flex items-center px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer rounded w-full">
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Удалить
+                                </div>
+                              </DeleteDialog>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -512,34 +608,6 @@ const ManageGroupsPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
-
-      {/* Delete Confirmation Dialog */}
-      {groupToDelete && (
-        <AlertDialog open={!!groupToDelete} onOpenChange={() => setGroupToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Подтверждение удаления</AlertDialogTitle>
-              <AlertDialogDescription>
-                Это действие навсегда удалит группу <span className="font-semibold">"{groupToDelete.name}"</span>.
-                Студенты в этой группе будут откреплены. Это действие нельзя отменить.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={() => {
-                  deleteGroup(groupToDelete.id);
-                  setGroupToDelete(null);
-                  fetchData();
-                }} 
-                className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-              >
-                Удалить группу
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
 
       {/* Group Form Dialog */}
       <GroupFormDialog

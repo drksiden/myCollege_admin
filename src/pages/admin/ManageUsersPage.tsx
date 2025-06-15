@@ -1,4 +1,4 @@
-// src/pages/admin/ManageUsersPage.tsx
+// Обновленная версия ManageUsersPage.tsx с простым диалогом
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,14 +11,17 @@ import {
   UserPlus, 
   UserCheck, 
   MoreHorizontal,
-  Bell,
   CheckCircle,
   XCircle,
   Clock,
   Download,
   Mail,
   Phone,
-  Calendar
+  Calendar,
+  RefreshCw,
+  AlertCircle,
+  Trash2,
+  Edit
 } from 'lucide-react';
 import {
   Dialog,
@@ -61,6 +64,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert';
+import { DeleteDialog } from '@/components/ui/delete-dialog';
 import CreateUserForm from '@/components/admin/users/CreateUserForm';
 import EditUserDialog from '@/components/admin/users/EditUserDialog';
 import ApproveUserDialog from '@/components/admin/users/ApproveUserDialog';
@@ -68,78 +72,86 @@ import { toast } from 'sonner';
 import { getUsers, deleteUser } from '@/lib/firebaseService/userService';
 import type { AppUser, UserRole, UserStatus } from '@/types/index';
 import { Toaster } from '@/components/ui/sonner';
-import type { DocumentSnapshot } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 export default function ManageUsersPage() {
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<AppUser[]>([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<UserStatus | 'all'>('all');
-  const [hasMore, setHasMore] = useState(true);
-  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | undefined>(undefined);
 
-  // Пользователи, ожидающие подтверждения
-  const pendingUsers = allUsers.filter(user => user.status === 'pending_approval');
-
-  const loadUsers = useCallback(async (reset = false) => {
-    let loadedUsers: AppUser[] = [];
-    try {
+  // Загружаем ВСЕ пользователи без пагинации
+  const loadUsers = useCallback(async (showToast = false) => {
+    const isRefresh = showToast;
+    if (isRefresh) {
+      setIsRefreshing(true);
+    } else {
       setIsLoading(true);
-      if (reset) {
-        setHasMore(true);
-        setLastDoc(undefined);
-      }
+    }
 
-      if (!hasMore && !reset) {
-        setIsLoading(false);
-        return;
-      }
+    if (showToast) {
+      toast.loading('Обновление списка пользователей...', { id: 'refresh-users' });
+    }
 
+    try {
       const result = await getUsers({
-        role: selectedRole === 'all' ? undefined : selectedRole,
-        status: selectedStatus === 'all' ? undefined : selectedStatus,
-        limit: 20,
-        startAfterDoc: reset ? undefined : lastDoc,
+        limit: 1000,
       });
-      loadedUsers = result.users;
-      setAllUsers(prev => reset ? loadedUsers : [...prev, ...loadedUsers]);
-      setLastDoc(result.lastDoc || undefined);
-      setHasMore(loadedUsers.length === 20);
+      
+      const sortedUsers = result.users.sort((a, b) => {
+        if (a.status === 'pending_approval' && b.status !== 'pending_approval') return -1;
+        if (a.status !== 'pending_approval' && b.status === 'pending_approval') return 1;
+        
+        const aTime = a.createdAt?.toMillis() || 0;
+        const bTime = b.createdAt?.toMillis() || 0;
+        return bTime - aTime;
+      });
+
+      setAllUsers(sortedUsers);
+      
+      if (showToast) {
+        toast.success(`Загружено ${sortedUsers.length} пользователей`, { id: 'refresh-users' });
+      }
     } catch (error) {
       console.error('Error loading users:', error);
-      toast.error('Не удалось загрузить список пользователей');
+      const errorMessage = 'Не удалось загрузить список пользователей';
+      if (showToast) {
+        toast.error(errorMessage, { id: 'refresh-users' });
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
-      setIsLoading(false);
+      if (isRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
     }
-  }, [selectedRole, selectedStatus, lastDoc, hasMore]);
+  }, []);
 
   useEffect(() => {
-    loadUsers(true);
+    loadUsers(false);
   }, [loadUsers]);
 
-  // Фильтрация пользователей при изменении поискового запроса или фильтров
-  useEffect(() => {
-    const filtered = allUsers.filter(user => {
-      const matchesSearch = searchQuery.trim() === '' || 
-        `${user.lastName} ${user.firstName} ${user.middleName || ''} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesRole = selectedRole === 'all' || user.role === selectedRole;
-      const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
-      
-      return matchesSearch && matchesRole && matchesStatus;
-    });
+  const pendingUsers = allUsers.filter(user => user.status === 'pending_approval');
 
-    setFilteredUsers(filtered);
-  }, [allUsers, searchQuery, selectedRole, selectedStatus]);
+  const filteredUsers = allUsers.filter(user => {
+    const matchesSearch = searchQuery.trim() === '' || 
+      `${user.lastName} ${user.firstName} ${user.middleName || ''} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesRole = selectedRole === 'all' || user.role === selectedRole;
+    const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
+    
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   const handleCreateSuccess = () => {
     setIsCreateDialogOpen(false);
@@ -171,19 +183,17 @@ export default function ManageUsersPage() {
     toast.success('Пользователь успешно одобрен');
   };
 
-  const handleDelete = async (user: AppUser) => {
-    if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
-      return;
-    }
-
-    try {
-      await deleteUser(user.uid);
-      loadUsers(true);
-      toast.success('Пользователь успешно удален');
-    } catch {
-      toast.error('Не удалось удалить пользователя');
-    }
+  const handleRefresh = () => {
+    loadUsers(true);
   };
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedRole('all');
+    setSelectedStatus('all');
+  };
+
+  const hasActiveFilters = searchQuery !== '' || selectedRole !== 'all' || selectedStatus !== 'all';
 
   const getRoleColor = (role: UserRole) => {
     switch (role) {
@@ -193,6 +203,25 @@ export default function ManageUsersPage() {
       case 'pending_approval': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
+  };
+
+  const getUsersWord = (count: number) => {
+    const lastDigit = count % 10;
+    const lastTwoDigits = count % 100;
+
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 19) {
+      return 'пользователей';
+    }
+
+    if (lastDigit === 1) {
+      return 'пользователь';
+    }
+
+    if (lastDigit >= 2 && lastDigit <= 4) {
+      return 'пользователя';
+    }
+
+    return 'пользователей';
   };
 
   const getStatusIcon = (status: UserStatus) => {
@@ -223,6 +252,32 @@ export default function ManageUsersPage() {
     }
   };
 
+  const createDeleteDescription = (user: AppUser) => {
+    const roleName = getRoleName(user.role);
+    let additionalInfo = '';
+    
+    if (user.role === 'student') {
+      additionalInfo = '\n\nВсе связанные данные студента (оценки, посещаемость) также будут удалены.';
+    } else if (user.role === 'teacher') {
+      additionalInfo = '\n\nВсе связанные данные преподавателя (журналы, расписание) могут быть затронуты.';
+    }
+    
+    return `Вы уверены, что хотите удалить ${roleName.toLowerCase()} "${user.lastName} ${user.firstName}"?${additionalInfo}\n\nЭто действие нельзя отменить.`;
+  };
+
+  const handleDeleteUser = async (user: AppUser) => {
+    const deleteToastId = toast.loading('Удаление пользователя...', { duration: Infinity });
+    try {
+      await deleteUser(user.uid);
+      await loadUsers(true);
+      toast.success(`Пользователь ${user.firstName} ${user.lastName} успешно удален`, { id: deleteToastId });
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error('Не удалось удалить пользователя', { id: deleteToastId });
+      throw error;
+    }
+  };
+
   const pageVariants = {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -240,7 +295,7 @@ export default function ManageUsersPage() {
       animate="animate"
       className="container mx-auto py-6 space-y-6"
     >
-      <Toaster richColors position="top-right" />
+      <Toaster position="top-right" />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -251,6 +306,15 @@ export default function ManageUsersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Обновить
+          </Button>
           <Button variant="outline" className="gap-2">
             <Download className="h-4 w-4" />
             Экспорт
@@ -272,12 +336,12 @@ export default function ManageUsersPage() {
             transition={{ duration: 0.3 }}
           >
             <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/50">
-              <Bell className="h-4 w-4 text-amber-600" />
+              <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-800 dark:text-amber-200">
-                Пользователи ожидают подтверждения
+                {pendingUsers.length} {getUsersWord(pendingUsers.length)} ожидают подтверждения
               </AlertTitle>
               <AlertDescription className="text-amber-700 dark:text-amber-300">
-                {pendingUsers.length} пользователь(ей) ожидают одобрения их учетных записей.
+                Новые пользователи регистрируются и отображаются в начале списка.
                 <div className="mt-2 flex flex-wrap gap-2">
                   {pendingUsers.slice(0, 3).map(user => (
                     <Button
@@ -285,10 +349,10 @@ export default function ManageUsersPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleApprove(user)}
-                      className="h-8 text-xs"
+                      className="h-8 text-xs border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900"
                     >
                       <UserCheck className="h-3 w-3 mr-1" />
-                      {user.firstName} {user.lastName}
+                      {user.lastName} {user.firstName}
                     </Button>
                   ))}
                   {pendingUsers.length > 3 && (
@@ -334,7 +398,15 @@ export default function ManageUsersPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Фильтры и поиск</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Фильтры и поиск</CardTitle>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={resetFilters} className="gap-2">
+                <XCircle className="h-4 w-4" />
+                Сбросить фильтры
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4">
@@ -383,13 +455,29 @@ export default function ManageUsersPage() {
         <CardHeader>
           <CardTitle>Список пользователей</CardTitle>
           <CardDescription>
-            Найдено {filteredUsers.length} пользователей
+            {hasActiveFilters 
+              ? `Найдено ${filteredUsers.length} из ${allUsers.length} пользователей`
+              : `Всего ${allUsers.length} пользователей`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && allUsers.length === 0 ? (
+          {isLoading ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-8">
+              <UserPlus className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium mb-2">
+                {hasActiveFilters ? 'Пользователи не найдены' : 'Нет пользователей'}
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                {hasActiveFilters 
+                  ? 'Попробуйте изменить параметры поиска или сбросить фильтры'
+                  : 'Создайте первого пользователя для начала работы'
+                }
+              </p>
             </div>
           ) : (
             <div className="rounded-md border">
@@ -413,7 +501,9 @@ export default function ManageUsersPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
                         transition={{ delay: index * 0.05 }}
-                        className="hover:bg-muted/50"
+                        className={`hover:bg-muted/50 ${
+                          user.status === 'pending_approval' ? 'bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-yellow-400' : ''
+                        }`}
                       >
                         <TableCell>
                           <div className="flex items-center space-x-3">
@@ -424,8 +514,13 @@ export default function ManageUsersPage() {
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <div className="font-medium">
+                              <div className="font-medium flex items-center gap-2">
                                 {user.lastName} {user.firstName} {user.middleName}
+                                {user.status === 'pending_approval' && (
+                                  <Badge variant="outline" className="text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                                    НОВЫЙ
+                                  </Badge>
+                                )}
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 {user.email}
@@ -463,7 +558,7 @@ export default function ManageUsersPage() {
                         <TableCell>
                           <div className="flex items-center text-sm text-muted-foreground">
                             <Calendar className="h-3 w-3 mr-1" />
-                            {user.createdAt && format(user.createdAt.toDate(), 'dd MMM yyyy', { locale: ru })}
+                            {user.createdAt ? format(user.createdAt.toDate(), 'dd MMM yyyy', { locale: ru }) : 'Не указано'}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -476,20 +571,28 @@ export default function ManageUsersPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Действия</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                <Edit className="mr-2 h-4 w-4" />
                                 Редактировать
                               </DropdownMenuItem>
                               {user.status === 'pending_approval' && (
                                 <DropdownMenuItem onClick={() => handleApprove(user)}>
+                                  <UserCheck className="mr-2 h-4 w-4" />
                                   Одобрить
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                onClick={() => handleDelete(user)}
-                                className="text-red-600"
+                              
+                              {/* Диалог удаления */}
+                              <DeleteDialog
+                                title="Удаление пользователя"
+                                description={createDeleteDescription(user)}
+                                onConfirm={() => handleDeleteUser(user)}
                               >
-                                Удалить
-                              </DropdownMenuItem>
+                                <div className="flex items-center px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer rounded w-full">
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Удалить
+                                </div>
+                              </DeleteDialog>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

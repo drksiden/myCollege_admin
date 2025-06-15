@@ -173,7 +173,7 @@ export default function ManageSemestersPage() {
       animate="animate"
       className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-6"
     >
-      <Toaster richColors position="top-right" />
+      <Toaster position="top-right" />
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

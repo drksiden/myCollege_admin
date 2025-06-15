@@ -214,13 +214,15 @@ const ApproveUserDialog: React.FC<ApproveUserDialogProps> = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Группа</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Выберите группу" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={isLoading}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Выберите группу" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
                           {groups.map((group) => (
                             <SelectItem key={group.id} value={group.id}>
                               {group.name}

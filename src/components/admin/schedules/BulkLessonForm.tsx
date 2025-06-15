@@ -151,7 +151,7 @@ const BulkLessonForm: React.FC<BulkLessonFormProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Массовое добавление занятий</DialogTitle>
           <DialogDescription>

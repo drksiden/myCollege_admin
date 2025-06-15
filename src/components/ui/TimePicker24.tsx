@@ -1,4 +1,11 @@
 import React from 'react';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem
+} from '@/components/ui/select';
 
 interface TimePicker24Props {
   value: string;
@@ -26,21 +33,20 @@ function generateTimeOptions(min = '08:00', max = '21:00', step = 5) {
   return options;
 }
 
-const TimePicker24 = React.forwardRef<HTMLSelectElement, TimePicker24Props>(
+const TimePicker24 = React.forwardRef<HTMLButtonElement, TimePicker24Props>(
   ({ value, onChange, min = '08:00', max = '21:00', step = 5, disabled, className }, ref) => {
     const options = generateTimeOptions(min, max, step);
     return (
-      <select
-        ref={ref}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={disabled}
-        className={className + ' rounded border px-2 py-1 bg-background'}
-      >
-        {options.map(opt => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger ref={ref} className={className}>
+          <SelectValue placeholder="Выберите время" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(opt => (
+            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     );
   }
 );

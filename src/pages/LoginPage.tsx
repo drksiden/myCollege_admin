@@ -43,12 +43,10 @@ const LoginPage: React.FC = () => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      // Проверяем роль пользователя
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       const userData = userDoc.data();
       
       if (!userData || userData.role !== 'admin') {
-        // Если пользователь не админ, выходим из системы
         await auth.signOut();
         setError('У вас нет прав доступа к административной панели');
         return;
