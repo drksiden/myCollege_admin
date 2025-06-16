@@ -1,360 +1,425 @@
-import {
-  Firestore,
-  doc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  collection,
-  addDoc,
-  getDocs,
-  serverTimestamp,
-  Timestamp,
-  query,
-  where,
-} from 'firebase/firestore';
-import type { Schedule, Lesson } from '@/types';
-
-// Re-export types for convenience
-export type { Schedule, Lesson };
-
-// Define ScheduleEntry type locally since it's only used in this file
-interface ScheduleEntry {
-  id: string;
-  date: Timestamp;
-  type: 'class' | 'exam' | 'test';
-  description: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// Extend Schedule type for this file
-interface ScheduleWithEntries extends Schedule {
-  entries?: ScheduleEntry[];
-}
+import { collection, doc, getDoc, getDocs, query, where, addDoc, updateDoc, deleteDoc, Timestamp, writeBatch } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Lesson, Schedule } from '@/types';
 
 const SCHEDULES_COLLECTION = 'schedules';
 
 /**
- * Создает новое расписание для группы
- * @param db Firestore instance
- * @param scheduleData Данные расписания
+ * Получает расписание группы
+ * @param params Объект с параметрами { groupId: string, semesterId: string }
+ * @returns Promise<Lesson[]>
+ */
+export async function getGroupSchedule({ groupId, semesterId }: { groupId: string; semesterId: string }): Promise<Lesson[]> {
+  try {
+    // Получаем расписание
+    const scheduleQuery = query(
+      collection(db, SCHEDULES_COLLECTION),
+      where('groupId', '==', groupId),
+      where('semesterId', '==', semesterId)
+    );
+    
+    const scheduleSnapshot = await getDocs(scheduleQuery);
+    
+    if (!scheduleSnapshot.empty) {
+      const schedule = scheduleSnapshot.docs[0].data() as Schedule;
+      return schedule.lessons || [];
+    }
+
+    // Если расписание не найдено, создаем новое
+    await addDoc(collection(db, SCHEDULES_COLLECTION), {
+      groupId,
+      semesterId,
+      groupName: '', // Будет обновлено позже
+      semester: 1, // TODO: получить из семестра
+      year: new Date().getFullYear(),
+      lessons: [],
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    return [];
+  } catch (error) {
+    console.error('Error in getGroupSchedule:', error);
+    // В случае ошибки BloomFilter, пробуем получить данные напрямую
+    if (error instanceof Error && error.name === 'BloomFilterError') {
+      try {
+        const scheduleQuery = query(
+          collection(db, SCHEDULES_COLLECTION),
+          where('groupId', '==', groupId),
+          where('semesterId', '==', semesterId)
+        );
+        
+        const scheduleSnapshot = await getDocs(scheduleQuery);
+        if (!scheduleSnapshot.empty) {
+          const schedule = scheduleSnapshot.docs[0].data() as Schedule;
+          return schedule.lessons || [];
+        }
+      } catch (retryError) {
+        console.error('Retry failed:', retryError);
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Создает новое занятие
+ * @param data Данные занятия без id и временных меток
+ * @returns Promise<Lesson>
+ */
+export const createLesson = async (data: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lesson> => {
+  try {
+    const lesson: Lesson = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+
+    // Получаем расписание
+    const scheduleQuery = query(
+      collection(db, SCHEDULES_COLLECTION),
+      where('groupId', '==', data.groupId),
+      where('semesterId', '==', data.semesterId)
+    );
+    
+    const scheduleSnapshot = await getDocs(scheduleQuery);
+    
+    if (!scheduleSnapshot.empty) {
+      const scheduleDoc = scheduleSnapshot.docs[0];
+      const schedule = scheduleDoc.data() as Schedule;
+      const lessons = [...(schedule.lessons || []), lesson];
+      
+      await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleDoc.id), {
+        lessons,
+        updatedAt: Timestamp.now()
+      });
+    } else {
+      // Если расписание не существует, создаем новое
+      await addDoc(collection(db, SCHEDULES_COLLECTION), {
+        groupId: data.groupId,
+        semesterId: data.semesterId,
+        groupName: '', // Будет обновлено позже
+        semester: 1, // TODO: получить из семестра
+        year: new Date().getFullYear(),
+        lessons: [lesson],
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+    }
+
+    return lesson;
+  } catch (error) {
+    console.error('Error in createLesson:', error);
+    throw error;
+  }
+};
+
+/**
+ * Обновляет занятие
+ * @param id ID занятия
+ * @param data Данные для обновления
+ * @returns Promise<Lesson>
+ */
+export const updateLesson = async (id: string, data: Partial<Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Lesson> => {
+  try {
+    // Получаем расписание
+    const scheduleQuery = query(
+      collection(db, SCHEDULES_COLLECTION),
+      where('groupId', '==', data.groupId),
+      where('semesterId', '==', data.semesterId)
+    );
+    
+    const scheduleSnapshot = await getDocs(scheduleQuery);
+    
+    if (!scheduleSnapshot.empty) {
+      const scheduleDoc = scheduleSnapshot.docs[0];
+      const schedule = scheduleDoc.data() as Schedule;
+      const lessons = schedule.lessons || [];
+      const lessonIndex = lessons.findIndex(l => l.id === id);
+      
+      if (lessonIndex !== -1) {
+        const updatedLesson = {
+          ...lessons[lessonIndex],
+          ...data,
+          updatedAt: Timestamp.now()
+        };
+        
+        lessons[lessonIndex] = updatedLesson;
+        
+        await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleDoc.id), {
+          lessons,
+          updatedAt: Timestamp.now()
+        });
+        
+        return updatedLesson;
+      }
+    }
+    
+    throw new Error('Lesson not found');
+  } catch (error) {
+    console.error('Error in updateLesson:', error);
+    throw error;
+  }
+};
+
+/**
+ * Получает занятие по ID
+ * @param id ID занятия
+ * @returns Promise<Lesson | null>
+ */
+export const getLesson = async (id: string): Promise<Lesson | null> => {
+  const lessonDoc = await getDoc(doc(db, SCHEDULES_COLLECTION, id));
+  if (!lessonDoc.exists()) return null;
+  return { id: lessonDoc.id, ...lessonDoc.data() } as Lesson;
+};
+
+/**
+ * Получает занятия группы на семестр
+ * @param groupId ID группы
+ * @param semesterId ID семестра
+ * @returns Promise<Lesson[]>
+ */
+export const getGroupLessons = async (groupId: string, semesterId: string): Promise<Lesson[]> => {
+  const q = query(
+    collection(db, SCHEDULES_COLLECTION),
+    where('groupId', '==', groupId),
+    where('semesterId', '==', semesterId)
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lesson));
+};
+
+/**
+ * Получает расписание преподавателя на семестр
+ * @param teacherId ID преподавателя
+ * @param semesterId ID семестра
+ * @returns Promise<Lesson[]>
+ */
+export const getTeacherSchedule = async (teacherId: string, semesterId: string): Promise<Lesson[]> => {
+  const q = query(
+    collection(db, SCHEDULES_COLLECTION),
+    where('teacherId', '==', teacherId),
+    where('semesterId', '==', semesterId)
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lesson));
+};
+
+/**
+ * Удаляет занятие
+ * @param id ID занятия
+ * @returns Promise<void>
+ */
+export const deleteLesson = async (id: string): Promise<void> => {
+  try {
+    // Получаем все расписания
+    const schedulesSnapshot = await getDocs(collection(db, SCHEDULES_COLLECTION));
+    
+    for (const doc of schedulesSnapshot.docs) {
+      const schedule = doc.data() as Schedule;
+      const lessons = schedule.lessons || [];
+      const lessonIndex = lessons.findIndex(l => l.id === id);
+      
+      if (lessonIndex !== -1) {
+        lessons.splice(lessonIndex, 1);
+        await updateDoc(doc.ref, {
+          lessons,
+          updatedAt: Timestamp.now()
+        });
+        return;
+      }
+    }
+    
+    throw new Error('Lesson not found');
+  } catch (error) {
+    console.error('Error in deleteLesson:', error);
+    throw error;
+  }
+};
+
+/**
+ * Создает новое расписание
+ * @param data Данные расписания без id и временных меток
  * @returns Promise<Schedule>
  */
-export const createSchedule = async (
-  db: Firestore,
-  scheduleData: Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<Schedule> => {
-  const schedulesCollection = collection(db, SCHEDULES_COLLECTION);
-  const newSchedule = {
-    ...scheduleData,
-    createdAt: serverTimestamp() as Timestamp,
-    updatedAt: serverTimestamp() as Timestamp,
-  };
-  const docRef = await addDoc(schedulesCollection, newSchedule);
-  return {
-    id: docRef.id,
-    ...newSchedule,
-  } as Schedule;
+export const createSchedule = async (data: Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>): Promise<Schedule> => {
+  const scheduleRef = await addDoc(collection(db, SCHEDULES_COLLECTION), {
+    ...data,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now()
+  });
+
+  const scheduleDoc = await getDoc(scheduleRef);
+  return { id: scheduleRef.id, ...scheduleDoc.data() } as Schedule;
 };
 
 /**
- * Обновляет существующее расписание
- * @param db Firestore instance
- * @param scheduleId ID расписания
- * @param updates Обновленные данные
- * @returns Promise<void>
+ * Обновляет расписание
+ * @param id ID расписания
+ * @param data Данные для обновления
+ * @returns Promise<Schedule>
  */
-export const updateSchedule = async (
-  db: Firestore,
-  scheduleId: string,
-  updates: Partial<Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>>
-): Promise<void> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  const dataWithTimestamp = {
-    ...updates,
-    updatedAt: serverTimestamp() as Timestamp,
-  };
-  return updateDoc(scheduleRef, dataWithTimestamp);
-};
+export const updateSchedule = async (id: string, data: Partial<Omit<Schedule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Schedule> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, id);
+  await updateDoc(scheduleRef, {
+    ...data,
+    updatedAt: Timestamp.now()
+  });
 
-/**
- * Удаляет расписание
- * @param db Firestore instance
- * @param scheduleId ID расписания
- * @returns Promise<void>
- */
-export const deleteSchedule = async (
-  db: Firestore,
-  scheduleId: string
-): Promise<void> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  return deleteDoc(scheduleRef);
+  const scheduleDoc = await getDoc(scheduleRef);
+  return { id: scheduleRef.id, ...scheduleDoc.data() } as Schedule;
 };
 
 /**
  * Получает расписание по ID
- * @param db Firestore instance
- * @param scheduleId ID расписания
+ * @param id ID расписания
  * @returns Promise<Schedule | null>
  */
-export const getSchedule = async (
-  db: Firestore,
-  scheduleId: string
-): Promise<Schedule | null> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  const scheduleDoc = await getDoc(scheduleRef);
-  if (!scheduleDoc.exists()) {
-    return null;
-  }
-  return {
-    id: scheduleDoc.id,
-    ...scheduleDoc.data(),
-  } as Schedule;
+export const getSchedule = async (id: string): Promise<Schedule | null> => {
+  const scheduleDoc = await getDoc(doc(db, SCHEDULES_COLLECTION, id));
+  if (!scheduleDoc.exists()) return null;
+  return { id: scheduleDoc.id, ...scheduleDoc.data() } as Schedule;
 };
 
 /**
- * Получает расписание группы
- * @param db Firestore instance
- * @param groupId ID группы
- * @param semester Семестр
- * @param year Учебный год
- * @returns Promise<Schedule | null>
- */
-export const getGroupSchedule = async (
-  db: Firestore,
-  groupId: string,
-  semester: number,
-  year: number
-): Promise<Schedule | null> => {
-  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
-  const q = query(
-    schedulesRef,
-    where('groupId', '==', groupId),
-    where('semester', '==', semester),
-    where('year', '==', year)
-  );
-  const querySnapshot = await getDocs(q);
-  if (querySnapshot.empty) {
-    return null;
-  }
-  const doc = querySnapshot.docs[0];
-  return {
-    id: doc.id,
-    ...doc.data(),
-  } as Schedule;
-};
-
-/**
- * Добавляет урок в расписание
- * @param db Firestore instance
- * @param scheduleId ID расписания
- * @param lesson Данные урока
+ * Удаляет расписание
+ * @param id ID расписания
  * @returns Promise<void>
  */
-export const addLesson = async (
-  db: Firestore,
-  scheduleId: string,
-  lesson: Omit<Lesson, 'id'>
-): Promise<void> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  const scheduleDoc = await getDoc(scheduleRef);
-  if (!scheduleDoc.exists()) {
-    throw new Error('Schedule not found');
-  }
-  
-  const schedule = scheduleDoc.data() as Schedule;
-  const newLesson = {
-    ...lesson,
-    id: doc(collection(db, 'lessons')).id,
-  };
-  
-  const updatedLessons = [...(schedule.lessons || []), newLesson];
-  
-  await updateDoc(scheduleRef, {
-    lessons: updatedLessons,
-    updatedAt: serverTimestamp() as Timestamp,
-  });
+export const deleteSchedule = async (id: string): Promise<void> => {
+  const scheduleRef = doc(db, SCHEDULES_COLLECTION, id);
+  await deleteDoc(scheduleRef);
 };
 
 /**
- * Обновляет урок в расписании
- * @param db Firestore instance
- * @param scheduleId ID расписания
- * @param lessonId ID урока
- * @param updates Обновленные данные урока
+ * Мигрирует существующие данные расписания в новую структуру
  * @returns Promise<void>
  */
-export const updateLesson = async (
-  db: Firestore,
-  scheduleId: string,
-  lessonId: string,
-  updates: Partial<Omit<Lesson, 'id'>>
-): Promise<void> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  const scheduleDoc = await getDoc(scheduleRef);
-  if (!scheduleDoc.exists()) {
-    throw new Error('Schedule not found');
-  }
-  const schedule = scheduleDoc.data() as Schedule;
-  const updatedLessons = schedule.lessons.map(lesson =>
-    lesson.id === lessonId ? { ...lesson, ...updates } : lesson
-  );
+export async function migrateSchedules(): Promise<void> {
+  console.log('Starting schedule migration...');
   
-  await updateDoc(scheduleRef, {
-    lessons: updatedLessons,
-    updatedAt: serverTimestamp() as Timestamp,
-  });
-};
-
-/**
- * Удаляет урок из расписания
- * @param db Firestore instance
- * @param scheduleId ID расписания
- * @param lessonId ID урока
- * @returns Promise<void>
- */
-export const deleteLesson = async (
-  db: Firestore,
-  scheduleId: string,
-  lessonId: string
-): Promise<void> => {
-  const scheduleRef = doc(db, SCHEDULES_COLLECTION, scheduleId);
-  const scheduleDoc = await getDoc(scheduleRef);
-  if (!scheduleDoc.exists()) {
-    throw new Error('Schedule not found');
-  }
-  const schedule = scheduleDoc.data() as Schedule;
-  const updatedLessons = schedule.lessons.filter(lesson => lesson.id !== lessonId);
+  // Получаем все занятия
+  const lessonsSnapshot = await getDocs(collection(db, SCHEDULES_COLLECTION));
+  const lessons = lessonsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lesson));
   
-  await updateDoc(scheduleRef, {
-    lessons: updatedLessons,
-    updatedAt: serverTimestamp() as Timestamp,
-  });
-};
-
-/**
- * Fetches all schedules from Firestore, ordered by year, semester, then groupId.
- * @param db Firestore instance.
- * @returns Promise<Schedule[]> An array of schedules.
- */
-export const getAllSchedules = async (db: Firestore): Promise<Schedule[]> => {
-  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
-  const querySnapshot = await getDocs(schedulesRef);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Schedule[];
-};
-
-// Get schedule by group ID
-export const getScheduleByGroupId = async (
-  db: Firestore,
-  groupId: string
-): Promise<Schedule | null> => {
-  const schedulesRef = collection(db, SCHEDULES_COLLECTION);
-  const q = query(schedulesRef, where('groupId', '==', groupId));
-  const querySnapshot = await getDocs(q);
-  if (querySnapshot.empty) {
-    return null;
-  }
-  const doc = querySnapshot.docs[0];
-  return {
-    id: doc.id,
-    ...doc.data(),
-  } as Schedule;
-};
-
-/**
- * Добавляет запись в расписание
- */
-export const addScheduleEntry = async (
-  db: Firestore,
-  scheduleId: string,
-  entry: Omit<ScheduleEntry, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<ScheduleWithEntries> => {
-  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
-  if (!schedule) {
-    throw new Error('Schedule not found');
-  }
-
-  const newEntry: ScheduleEntry = {
-    id: doc(collection(db, 'entries')).id,
-    ...entry,
-    createdAt: serverTimestamp() as Timestamp,
-    updatedAt: serverTimestamp() as Timestamp,
-  };
-
-  const updatedEntries = [...(schedule.entries || []), newEntry];
+  // Группируем занятия по groupId и semesterId
+  const scheduleMap = new Map<string, Lesson[]>();
   
-  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
-    entries: updatedEntries,
-    updatedAt: serverTimestamp() as Timestamp,
+  lessons.forEach(lesson => {
+    const key = `${lesson.groupId}_${lesson.semesterId}`;
+    if (!scheduleMap.has(key)) {
+      scheduleMap.set(key, []);
+    }
+    scheduleMap.get(key)?.push(lesson);
   });
-
-  return {
-    ...schedule,
-    entries: updatedEntries,
-  };
-};
+  
+  // Создаем или обновляем расписания
+  const batch = writeBatch(db);
+  let batchCount = 0;
+  const BATCH_LIMIT = 500; // Ограничение Firestore на количество операций в одном batch
+  
+  for (const [key, scheduleLessons] of scheduleMap) {
+    const [groupId, semesterId] = key.split('_');
+    
+    // Проверяем существование расписания
+    const scheduleQuery = query(
+      collection(db, SCHEDULES_COLLECTION),
+      where('groupId', '==', groupId),
+      where('semesterId', '==', semesterId)
+    );
+    
+    const scheduleSnapshot = await getDocs(scheduleQuery);
+    
+    if (scheduleSnapshot.empty) {
+      // Создаем новое расписание
+      const scheduleRef = doc(collection(db, SCHEDULES_COLLECTION));
+      batch.set(scheduleRef, {
+        groupId,
+        semesterId,
+        groupName: '', // Будет обновлено позже
+        semester: 1, // TODO: получить из семестра
+        year: new Date().getFullYear(),
+        lessons: scheduleLessons,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+    } else {
+      // Обновляем существующее расписание
+      const scheduleDoc = scheduleSnapshot.docs[0];
+      batch.update(doc(db, SCHEDULES_COLLECTION, scheduleDoc.id), {
+        lessons: scheduleLessons,
+        updatedAt: Timestamp.now()
+      });
+    }
+    
+    batchCount++;
+    
+    // Если достигли лимита, выполняем batch и создаем новый
+    if (batchCount >= BATCH_LIMIT) {
+      await batch.commit();
+      batchCount = 0;
+      console.log(`Committed batch of ${BATCH_LIMIT} operations`);
+    }
+  }
+  
+  // Выполняем оставшиеся операции
+  if (batchCount > 0) {
+    await batch.commit();
+    console.log(`Committed final batch of ${batchCount} operations`);
+  }
+  
+  console.log('Schedule migration completed successfully');
+}
 
 /**
- * Обновляет запись в расписании
+ * Очищает дублирующиеся расписания, оставляя только одно для каждой комбинации groupId и semesterId
  */
-export const updateScheduleEntry = async (
-  db: Firestore,
-  scheduleId: string,
-  entryId: string,
-  updates: Partial<Omit<ScheduleEntry, 'id' | 'createdAt' | 'updatedAt'>>
-): Promise<ScheduleWithEntries> => {
-  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
-  if (!schedule) {
-    throw new Error('Schedule not found');
-  }
-
-  const updatedEntries = (schedule.entries || []).map((entry: ScheduleEntry) =>
-    entry.id === entryId
-      ? {
-          ...entry,
-          ...updates,
-          updatedAt: serverTimestamp() as Timestamp,
-        }
-      : entry
-  );
-
-  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
-    entries: updatedEntries,
-    updatedAt: serverTimestamp() as Timestamp,
+export async function cleanupDuplicateSchedules(): Promise<void> {
+  console.log('Starting cleanup of duplicate schedules...');
+  
+  // Получаем все расписания
+  const schedulesSnapshot = await getDocs(collection(db, SCHEDULES_COLLECTION));
+  const schedules = schedulesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Schedule));
+  
+  // Группируем расписания по groupId и semesterId
+  const scheduleMap = new Map<string, Schedule[]>();
+  
+  schedules.forEach(schedule => {
+    const key = `${schedule.groupId}_${schedule.semesterId}`;
+    if (!scheduleMap.has(key)) {
+      scheduleMap.set(key, []);
+    }
+    scheduleMap.get(key)?.push(schedule);
   });
-
-  return {
-    ...schedule,
-    entries: updatedEntries,
-  };
-};
-
-/**
- * Удаляет запись из расписания
- */
-export const deleteScheduleEntry = async (
-  db: Firestore,
-  scheduleId: string,
-  entryId: string
-): Promise<ScheduleWithEntries> => {
-  const schedule = await getSchedule(db, scheduleId) as ScheduleWithEntries;
-  if (!schedule) {
-    throw new Error('Schedule not found');
+  
+  // Удаляем дубликаты, оставляя только одно расписание для каждой группы
+  const batch = writeBatch(db);
+  let batchCount = 0;
+  const BATCH_LIMIT = 500;
+  
+  for (const [, scheduleGroup] of scheduleMap) {
+    if (scheduleGroup.length > 1) {
+      // Оставляем первое расписание, удаляем остальные
+      scheduleGroup.slice(1).forEach(schedule => {
+        batch.delete(doc(db, SCHEDULES_COLLECTION, schedule.id));
+        batchCount++;
+      });
+      
+      if (batchCount >= BATCH_LIMIT) {
+        await batch.commit();
+        batchCount = 0;
+        console.log(`Committed batch of ${BATCH_LIMIT} operations`);
+      }
+    }
   }
-
-  const updatedEntries = (schedule.entries || []).filter((entry: ScheduleEntry) => entry.id !== entryId);
-
-  await updateDoc(doc(db, SCHEDULES_COLLECTION, scheduleId), {
-    entries: updatedEntries,
-    updatedAt: serverTimestamp() as Timestamp,
-  });
-
-  return {
-    ...schedule,
-    entries: updatedEntries,
-  };
-};
+  
+  if (batchCount > 0) {
+    await batch.commit();
+    console.log(`Committed final batch of ${batchCount} operations`);
+  }
+  
+  console.log('Cleanup of duplicate schedules completed');
+} 

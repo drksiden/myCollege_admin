@@ -27,7 +27,7 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
       setComments(data);
     } catch (error) {
       console.error('Error loading comments:', error);
-      toast.error('Failed to load comments');
+      toast.error('Не удалось загрузить комментарии');
     }
   }, [gradeId]);
 
@@ -41,16 +41,17 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
     try {
       setLoading(true);
       await createComment({
-        gradeId,
-        userId: user.uid,
-        content: newComment.trim(),
+        parentId: gradeId,
+        parentType: 'grade',
+        authorId: user.uid,
+        text: newComment.trim(),
       });
       setNewComment('');
       await loadComments();
-      toast.success('Comment added successfully');
+      toast.success('Комментарий успешно добавлен');
     } catch (error) {
       console.error('Error adding comment:', error);
-      toast.error('Failed to add comment');
+      toast.error('Не удалось добавить комментарий');
     } finally {
       setLoading(false);
     }
@@ -60,10 +61,10 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
     try {
       await deleteComment(commentId);
       await loadComments();
-      toast.success('Comment deleted successfully');
+      toast.success('Комментарий успешно удален');
     } catch (error) {
       console.error('Error deleting comment:', error);
-      toast.error('Failed to delete comment');
+      toast.error('Не удалось удалить комментарий');
     }
   };
 
@@ -71,20 +72,22 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
     const comment = comments.find(c => c.id === commentId);
     if (comment) {
       setEditingCommentId(commentId);
-      setEditingContent(comment.content);
+      setEditingContent(comment.text);
     }
   };
 
   const handleSaveEdit = async (commentId: string) => {
     try {
-      await updateComment(commentId, { content: editingContent.trim() });
+      await updateComment(commentId, { 
+        text: editingContent.trim()
+      });
       await loadComments();
       setEditingCommentId(null);
       setEditingContent('');
-      toast.success('Comment updated successfully');
+      toast.success('Комментарий успешно обновлен');
     } catch (error) {
       console.error('Error updating comment:', error);
-      toast.error('Failed to update comment');
+      toast.error('Не удалось обновить комментарий');
     }
   };
 
@@ -99,12 +102,12 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
     <div className="space-y-4">
       <div className="flex items-center space-x-2">
         <MessageSquare className="h-5 w-5" />
-        <h3 className="font-medium">Comments</h3>
+        <h3 className="font-medium">Комментарии</h3>
       </div>
 
       <div className="space-y-2">
         <Textarea
-          placeholder="Add a comment..."
+          placeholder="Добавить комментарий..."
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           disabled={loading}
@@ -113,14 +116,14 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
           onClick={handleAddComment}
           disabled={!newComment.trim() || loading}
         >
-          Add Comment
+          Добавить комментарий
         </Button>
       </div>
 
       <ScrollArea className="h-[200px]">
         {comments.length === 0 ? (
           <div className="text-center text-muted-foreground py-4">
-            No comments yet
+            Пока нет комментариев
           </div>
         ) : (
           <div className="space-y-4">
@@ -144,7 +147,7 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
                           disabled={!editingContent.trim()}
                         >
                           <Check className="h-4 w-4 mr-1" />
-                          Save
+                          Сохранить
                         </Button>
                         <Button
                           size="sm"
@@ -152,14 +155,14 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
                           onClick={handleCancelEdit}
                         >
                           <X className="h-4 w-4 mr-1" />
-                          Cancel
+                          Отмена
                         </Button>
                       </div>
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm">{comment.content}</p>
-                      {user?.uid === comment.userId && (
+                      <p className="text-sm">{comment.text}</p>
+                      {user?.uid === comment.authorId && (
                         <div className="flex space-x-2">
                           <Button
                             variant="ghost"
@@ -181,9 +184,9 @@ export default function GradeComments({ gradeId }: GradeCommentsProps) {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {format(comment.createdAt.toDate(), 'MMM dd, yyyy HH:mm')}
+                  {format(comment.createdAt.toDate(), 'dd.MM.yyyy HH:mm')}
                   {comment.updatedAt && comment.updatedAt.toDate() > comment.createdAt.toDate() && (
-                    <span className="ml-2">(edited)</span>
+                    <span className="ml-2">(изменено)</span>
                   )}
                 </div>
               </div>

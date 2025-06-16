@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from './firebase';
-import type { User } from '@/types';
+import type { AppUser } from '@/types';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   firebaseUser: FirebaseUser | null;
   loading: boolean;
 }
@@ -23,7 +23,7 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-export const getUserById = async (uid: string): Promise<User | null> => {
+export const getUserById = async (uid: string): Promise<AppUser | null> => {
   const userRef = doc(db, 'users', uid);
   const userSnap = await getDoc(userRef);
   
@@ -69,5 +69,5 @@ export const getUserById = async (uid: string): Promise<User | null> => {
   return {
     uid: userSnap.id,
     ...userSnap.data(),
-  } as User;
+  } as AppUser;
 }; 

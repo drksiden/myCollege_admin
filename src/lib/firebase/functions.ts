@@ -1,20 +1,12 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
-import type { Group, User, Lesson } from "@/types";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  doc,
-  getDocs,
-  deleteDoc,
-  writeBatch,
-} from "firebase/firestore";
+import type { Group, AppUser } from "@/types";
 
 const functions = getFunctions();
 
 export const getTeachers = async () => {
   const getTeachersFn = httpsCallable(functions, "getTeachers");
   const result = await getTeachersFn({ data: {} });
-  return (result.data as { teachers: User[] }).teachers;
+  return (result.data as { teachers: AppUser[] }).teachers;
 };
 
 export const getGroups = async () => {
@@ -61,7 +53,7 @@ export const deleteGroup = async (groupId: string) => {
 export const getGroupStudents = async (groupId: string) => {
   const getGroupStudentsFn = httpsCallable(functions, "getGroupStudents");
   const result = await getGroupStudentsFn({ data: { groupId } });
-  return (result.data as { students: User[] }).students;
+  return (result.data as { students: AppUser[] }).students;
 };
 
 export const addStudentToGroup = async (data: {
@@ -81,37 +73,4 @@ export const removeStudentFromGroup = async (groupId: string, studentId: string)
   const removeStudentFromGroupFn = httpsCallable(functions, "removeStudentFromGroup");
   const result = await removeStudentFromGroupFn({ data: { groupId, studentId } });
   return result.data;
-};
-
-// Получить расписание группы
-export const getGroupSchedule = async (groupId: string) => {
-  const scheduleRef = collection(db, `groups/${groupId}/schedule`);
-  const snapshot = await getDocs(scheduleRef);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-};
-
-// Сохранить расписание группы (batch write)
-export const saveGroupSchedule = async (groupId: string, schedule: Lesson[]) => {
-  const batch = writeBatch(db);
-  const scheduleRef = collection(db, `groups/${groupId}/schedule`);
-
-  // Удаляем все существующие документы (можно оптимизировать под diff)
-  const existing = await getDocs(scheduleRef);
-  existing.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-
-  // Добавляем новые
-  schedule.forEach((entry) => {
-    const entryRef = doc(scheduleRef, entry.id);
-    batch.set(entryRef, entry);
-  });
-
-  await batch.commit();
-};
-
-// Удалить отдельное занятие
-export const deleteScheduleEntry = async (groupId: string, entryId: string) => {
-  const entryRef = doc(db, `groups/${groupId}/schedule/${entryId}`);
-  await deleteDoc(entryRef);
 }; 

@@ -32,20 +32,22 @@ const PAIRS = [
   { start: '11:25', end: '12:55', label: '3 пара' },
   { start: '13:25', end: '14:55', label: '4 пара' },
   { start: '15:05', end: '16:35', label: '5 пара' },
-  { start: '16:45', end: '18:15', label: '6 пара' },
-  { start: '18:25', end: '19:55', label: '7 пара' },
+  { start: '16:50', end: '18:20', label: '6 пара' },
+  { start: '18:30', end: '20:00', label: '7 пара' },
 ];
 
 const getLessonTypeColor = (type: Lesson['type']) => {
   switch (type) {
     case 'lecture':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'practice':
-      return 'bg-green-100 text-green-800 border-green-200';
-    case 'laboratory':
-      return 'bg-purple-100 text-purple-800 border-purple-200';
+      return 'bg-blue-100 text-blue-800';
+    case 'seminar':
+      return 'bg-green-100 text-green-800';
+    case 'lab':
+      return 'bg-purple-100 text-purple-800';
+    case 'exam':
+      return 'bg-red-100 text-red-800';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-gray-100 text-gray-800';
   }
 };
 

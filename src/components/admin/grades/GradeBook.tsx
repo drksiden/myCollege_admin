@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -15,393 +8,297 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getGrades, createGrade, updateGrade } from '@/lib/firebaseService/gradeService';
-import { getStudents } from '@/lib/firebaseService/studentService';
-import { getSubjects } from '@/lib/firebaseService/subjectService';
-import { getGroups } from '@/lib/firebaseService/groupService';
-import type { Grade, Student, Subject, Group } from '@/types';
-import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { Timestamp } from 'firebase/firestore';
-import BulkGradeInput from './BulkGradeInput';
-import { exportGradesToExcel } from '@/lib/exportService';
-import { exportGradesToPDF } from '@/lib/pdfService';
-import GradeStatistics from './GradeStatistics';
-import GradeImport from './GradeImport';
-import GradeComments from './GradeComments';
-import { getAllJournals } from '@/lib/firebaseService/journalService';
+import { getGrades } from '@/lib/firebaseService/gradeService';
+import { getUsers } from '@/lib/firebaseService/userService';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
+import type { Grade, AppUser } from '@/types';
+import { Download, BarChart2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip
+} from 'recharts';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 interface GradeBookProps {
-  teacherId: string;
+  selectedGroup: string;
+  selectedSubject: string;
+  selectedSemesterId: string;
 }
 
-export default function GradeBook({ teacherId }: GradeBookProps) {
+export function GradeBook({ selectedGroup, selectedSubject, selectedSemesterId }: GradeBookProps) {
   const [grades, setGrades] = useState<Grade[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedSemester, setSelectedSemester] = useState<number>(1);
+  const [students, setStudents] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingGrade, setEditingGrade] = useState<{ studentId: string; type: string } | null>(null);
-  const [gradeValue, setGradeValue] = useState<string>('');
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line
+  }, [selectedGroup, selectedSubject, selectedSemesterId]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const [gradesData, studentsData, subjectsData, groupsData, journalsData] = await Promise.all([
-        getGrades(),
-        getStudents(),
-        getSubjects(),
-        getGroups(),
-        getAllJournals(),
+      const [usersData] = await Promise.all([
+        getUsers({ groupId: selectedGroup, role: 'student' }),
+        getAllSubjects(),
       ]);
-
-      setGrades(gradesData);
-      setStudents(studentsData);
-      setSubjects(subjectsData);
-      setGroups(groupsData);
-
-      // Обрабатываем данные из журналов для получения оценок
-      const journalGrades: Grade[] = [];
-      journalsData.forEach(journal => {
-        if (journal.entries && Array.isArray(journal.entries)) {
-          journal.entries.forEach(entry => {
-            if (entry.grade && entry.studentId) {
-              journalGrades.push({
-                id: `${journal.id}-${entry.date.toMillis()}-${entry.studentId}`,
-                studentId: entry.studentId,
-                subjectId: journal.subjectId,
-                groupId: journal.groupId,
-                teacherId: journal.teacherId,
-                value: entry.grade,
-                type: 'homework',
-                semester: journal.semester,
-                date: entry.date,
-                notes: entry.notes,
-                createdAt: entry.date,
-                updatedAt: entry.date,
-              });
-            }
-          });
-        }
+      setStudents(usersData.users);
+      // Получаем оценки только для студентов этой группы
+      const studentIds = usersData.users.map((u) => u.uid);
+      const gradesData = await getGrades({
+        studentIds,
+        journalId: selectedSubject,
+        semesterId: selectedSemesterId,
       });
-
-      // Объединяем оценки из журналов с существующими оценками
-      setGrades([...gradesData, ...journalGrades]);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load data');
+      setGrades(gradesData);
+    } catch {
+      setGrades([]);
+      setStudents([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGradeChange = async (studentId: string, type: string, value: string) => {
-    if (!selectedGroup || !selectedSubject) return;
+  const getStudentGrades = (studentId: string) => {
+    return grades.filter(g => g.studentId === studentId);
+  };
 
-    try {
-      const gradeData = {
-        studentId,
-        subjectId: selectedSubject,
-        groupId: selectedGroup,
-        teacherId,
-        value: Number(value),
-        type,
-        semester: selectedSemester,
-        date: Timestamp.now(),
-      };
+  const getGradeStats = (studentId: string) => {
+    const studentGrades = getStudentGrades(studentId);
+    const total = studentGrades.length;
+    const excellent = studentGrades.filter(g => Number(g.grade) >= 5).length;
+    const good = studentGrades.filter(g => Number(g.grade) === 4).length;
+    const satisfactory = studentGrades.filter(g => Number(g.grade) === 3).length;
+    const unsatisfactory = studentGrades.filter(g => Number(g.grade) < 3).length;
 
-      const existingGrade = grades.find(
-        g => g.studentId === studentId && 
-        g.subjectId === selectedSubject && 
-        g.type === type && 
-        g.semester === selectedSemester
-      );
+    return {
+      total,
+      excellent,
+      good,
+      satisfactory,
+      unsatisfactory,
+      average: total ? (studentGrades.reduce((sum, g) => sum + Number(g.grade), 0) / total).toFixed(2) : '0'
+    };
+  };
 
-      if (existingGrade) {
-        await updateGrade(existingGrade.id, gradeData as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>);
-      } else {
-        await createGrade(gradeData as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>);
-      }
+  const getGroupStats = () => {
+    const stats = {
+      totalStudents: students.length,
+      totalGrades: grades.length,
+      averageGrade: 0,
+      gradeDistribution: {
+        distribution: {
+          excellent: 0,
+          good: 0,
+          satisfactory: 0,
+          unsatisfactory: 0
+        }
+      },
+      subjectStats: new Map<string, {
+        average: number,
+        total: number,
+        distribution: {
+          excellent: number,
+          good: number,
+          satisfactory: number,
+          unsatisfactory: number
+        }
+      }>()
+    };
 
-      toast.success('Grade saved successfully');
-      loadData();
-    } catch (error) {
-      console.error('Error saving grade:', error);
-      toast.error('Failed to save grade');
+    students.forEach(student => {
+      const studentGrades = getStudentGrades(student.uid);
+      studentGrades.forEach(grade => {
+        const value = Number(grade.grade);
+        stats.averageGrade += value;
+
+        if (value >= 5) stats.gradeDistribution.distribution.excellent++;
+        else if (value === 4) stats.gradeDistribution.distribution.good++;
+        else if (value === 3) stats.gradeDistribution.distribution.satisfactory++;
+        else stats.gradeDistribution.distribution.unsatisfactory++;
+
+        if (!stats.subjectStats.has(grade.journalId)) {
+          stats.subjectStats.set(grade.journalId, {
+            total: 0,
+            average: 0,
+            distribution: {
+              excellent: 0,
+              good: 0,
+              satisfactory: 0,
+              unsatisfactory: 0
+            }
+          });
+        }
+
+        const subjectStat = stats.subjectStats.get(grade.journalId)!;
+        subjectStat.average += value;
+        subjectStat.total++;
+
+        if (value >= 5) subjectStat.distribution.excellent++;
+        else if (value === 4) subjectStat.distribution.good++;
+        else if (value === 3) subjectStat.distribution.satisfactory++;
+        else subjectStat.distribution.unsatisfactory++;
+      });
+    });
+
+    if (stats.totalGrades > 0) {
+      stats.averageGrade = Number((stats.averageGrade / stats.totalGrades).toFixed(2));
+      stats.subjectStats.forEach(stat => {
+        stat.average = Number((stat.average / stat.total).toFixed(2));
+      });
     }
+
+    return stats;
   };
 
-  const getStudentGrade = (studentId: string, type: string) => {
-    return grades.find(
-      g => g.studentId === studentId && 
-      g.subjectId === selectedSubject && 
-      g.type === type && 
-      g.semester === selectedSemester
-    )?.value || '';
+  const getGradeDistributionData = (distribution: { [key: string]: number }) => {
+    return [
+      { name: 'Отлично', value: distribution.excellent },
+      { name: 'Хорошо', value: distribution.good },
+      { name: 'Удовлетворительно', value: distribution.satisfactory },
+      { name: 'Неудовлетворительно', value: distribution.unsatisfactory }
+    ];
   };
 
-  const calculateAverage = (studentId: string) => {
-    const studentGrades = grades.filter(
-      g => g.studentId === studentId && 
-      g.subjectId === selectedSubject && 
-      g.semester === selectedSemester
-    );
-    
-    if (studentGrades.length === 0) return 0;
-    
-    const sum = studentGrades.reduce((acc, g) => acc + g.value, 0);
-    return (sum / studentGrades.length).toFixed(2);
+  const exportToExcel = () => {
+    const data = students.map(student => {
+      const studentGrades = getStudentGrades(student.uid);
+      const stats = getGradeStats(student.uid);
+      return {
+        'ФИО': `${student.lastName} ${student.firstName} ${student.middleName}`,
+        'Средний балл': stats.average,
+        'Всего оценок': stats.total,
+        'Отлично': stats.excellent,
+        'Хорошо': stats.good,
+        'Удовлетворительно': stats.satisfactory,
+        'Неудовлетворительно': stats.unsatisfactory,
+        'Оценки': studentGrades.map(g => g.grade).join(', '),
+        'Даты': studentGrades.map(g => {
+          if (g.date && typeof g.date.toDate === 'function') return g.date.toDate().toLocaleDateString();
+          if (g.date instanceof Date) return g.date.toLocaleDateString();
+          return '';
+        }).join(', '),
+        'Комментарии': studentGrades.map(g => g.comment).join('; ')
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Оценки');
+    XLSX.writeFile(wb, 'Оценки.xlsx');
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Загрузка данных...</p>
+        </div>
+      </div>
+    );
   }
 
-  const filteredStudents = students.filter(student => student.groupId === selectedGroup);
+  const stats = getGroupStats();
+  const gradeDistributionData = getGradeDistributionData(stats.gradeDistribution.distribution);
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Grade Book</h1>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Журнал оценок</h2>
         <div className="flex space-x-4">
-          <BulkGradeInput
-            students={students}
-            subjects={subjects}
-            groups={groups}
-            onSuccess={loadData}
-          />
-          <GradeImport
-            teacherId={teacherId}
-            onSuccess={loadData}
-          />
-          <Button
-            variant="outline"
-            onClick={() => exportGradesToExcel({ grades, students, subjects, groups })}
-          >
-            Export to Excel
+          <Button onClick={() => setIsStatsOpen(true)}>
+            <BarChart2 className="w-4 h-4 mr-2" />
+            Статистика
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => exportGradesToPDF({
-              grades,
-              students,
-              subjects,
-              groups,
-              selectedGroup,
-              selectedSubject,
-              selectedSemester,
-            })}
-          >
-            Export to PDF
+          <Button onClick={exportToExcel}>
+            <Download className="w-4 h-4 mr-2" />
+            Экспорт в Excel
           </Button>
         </div>
       </div>
-
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
-        <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select group" />
-          </SelectTrigger>
-          <SelectContent>
-            {groups.map((group) => (
-              <SelectItem key={group.id} value={group.id}>
-                {group.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select subject" />
-          </SelectTrigger>
-          <SelectContent>
-            {subjects.map((subject) => (
-              <SelectItem key={subject.id} value={subject.id}>
-                {subject.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={selectedSemester.toString()}
-          onValueChange={(value) => setSelectedSemester(Number(value))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select semester" />
-          </SelectTrigger>
-          <SelectContent>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((semester) => (
-              <SelectItem key={semester} value={semester.toString()}>
-                Semester {semester}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Студент</TableHead>
+              <TableHead>Средний балл</TableHead>
+              <TableHead>Оценки</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {students.map((student) => {
+              const stats = getGradeStats(student.uid);
+              return (
+                <TableRow key={student.uid}>
+                  <TableCell>
+                    {student.lastName} {student.firstName} {student.middleName}
+                  </TableCell>
+                  <TableCell>{stats.average}</TableCell>
+                  <TableCell>
+                    {getStudentGrades(student.uid).map(g => g.grade).join(', ')}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </div>
 
-      {selectedGroup && selectedSubject && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Grades</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Exam</TableHead>
-                  <TableHead>Test</TableHead>
-                  <TableHead>Homework</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Average</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell>
-                      {student.firstName} {student.lastName}
-                    </TableCell>
-                    {['exam', 'test', 'homework', 'project'].map((type) => (
-                      <TableCell key={type}>
-                        {editingGrade?.studentId === student.id && editingGrade?.type === type ? (
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={gradeValue}
-                            onChange={(e) => setGradeValue(e.target.value)}
-                            onBlur={() => {
-                              handleGradeChange(student.id, type, gradeValue);
-                              setEditingGrade(null);
-                              setGradeValue('');
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleGradeChange(student.id, type, gradeValue);
-                                setEditingGrade(null);
-                                setGradeValue('');
-                              }
-                            }}
-                            autoFocus
-                          />
-                        ) : (
-                          <div
-                            className="cursor-pointer hover:bg-gray-100 p-2 rounded"
-                            onClick={() => {
-                              setEditingGrade({ studentId: student.id, type });
-                              setGradeValue(getStudentGrade(student.id, type).toString());
-                            }}
-                          >
-                            {getStudentGrade(student.id, type)}
-                          </div>
-                        )}
-                      </TableCell>
-                    ))}
-                    <TableCell className="font-medium">
-                      {calculateAverage(student.id)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      <Tabs defaultValue="statistics" className="mt-6">
-        <TabsList>
-          <TabsTrigger value="statistics">Statistics</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="comments">Comments</TabsTrigger>
-        </TabsList>
-        <TabsContent value="statistics">
-          <Card>
-            <CardHeader>
-              <CardTitle>Grade Statistics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <GradeStatistics
-                grades={grades}
-                subjects={subjects}
-                groups={groups}
-                selectedGroup={selectedGroup}
-                selectedSubject={selectedSubject}
-                selectedSemester={selectedSemester}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle>Grade History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {grades
-                    .filter(g => g.subjectId === selectedSubject && g.semester === selectedSemester)
-                    .sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime())
-                    .map((grade) => {
-                      const student = students.find(s => s.id === grade.studentId);
-                      return (
-                        <TableRow key={grade.id}>
-                          <TableCell>
-                            {format(grade.date.toDate(), 'MMM dd, yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            {student ? `${student.firstName} ${student.lastName}` : grade.studentId}
-                          </TableCell>
-                          <TableCell>{grade.type}</TableCell>
-                          <TableCell>{grade.value}</TableCell>
-                          <TableCell>{grade.notes}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="comments">
-          <Card>
-            <CardHeader>
-              <CardTitle>Grade Comments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedGroup && selectedSubject ? (
-                <GradeComments gradeId={grades.find(g => g.groupId === selectedGroup && g.subjectId === selectedSubject)?.id || ''} />
-              ) : (
-                <div className="text-center text-muted-foreground py-4">
-                  Select a group and subject to view comments
+      <Dialog open={isStatsOpen} onOpenChange={setIsStatsOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Статистика оценок</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">Общая статистика</h3>
+                <div className="space-y-2">
+                  <div>Всего студентов: {stats.totalStudents}</div>
+                  <div>Всего оценок: {stats.totalGrades}</div>
+                  <div>Средний балл по группе: {stats.averageGrade}</div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">Распределение оценок</h3>
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={gradeDistributionData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {gradeDistributionData.map((_, index) => (
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

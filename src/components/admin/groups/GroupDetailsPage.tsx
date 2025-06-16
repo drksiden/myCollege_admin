@@ -18,28 +18,30 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getGroup } from '@/lib/firebaseService/groupService';
-import { getStudentsByGroup } from '@/lib/firebaseService/studentService';
-import { getUsersByRole, getUserById } from '@/lib/firebaseService/userService';
-import { ScheduleTab } from './ScheduleTab';
+import { getUsers, getUserById } from '@/lib/firebaseService/userService';
+import { getGroupSchedule } from '@/lib/firebaseService/scheduleService';
+import ScheduleTab from './ScheduleTab';
 import { ManageTeachersDialog } from './ManageTeachersDialog';
-import type { Group, Student, User } from '@/types';
+import type { Group, StudentUser, TeacherUser, Lesson } from '@/types';
 import { toast } from 'sonner';
-import { db } from '@/lib/firebase';
-
-interface StudentWithUserData extends Student {
-  userData?: User;
-  phone?: string;
-  address?: string;
-}
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export function GroupDetailsPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
-  const [students, setStudents] = useState<StudentWithUserData[]>([]);
-  const [teachers, setTeachers] = useState<User[]>([]);
+  const [students, setStudents] = useState<StudentUser[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const [curator, setCurator] = useState<TeacherUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isManageTeachersOpen, setIsManageTeachersOpen] = useState(false);
+  const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
 
   const loadGroupData = async () => {
     if (!groupId) return;
@@ -53,33 +55,38 @@ export function GroupDetailsPage() {
         navigate('/admin/groups');
         return;
       }
-      console.log('Loaded group data:', groupData);
       setGroup(groupData);
 
-      // Load students
-      console.log('Loading students for group:', groupId);
-      const studentsData = await getStudentsByGroup(groupId);
-      console.log('Loaded students data:', studentsData);
-      
-      // Load user data for each student
-      const studentsWithUserData = await Promise.all(
-        studentsData.map(async (student) => {
-          console.log('Loading user data for student:', student);
-          const userData = await getUserById(db, student.userId);
-          console.log('Loaded user data:', userData);
-          return { 
-            ...student, 
-            userData: userData || undefined 
-          } as StudentWithUserData;
-        })
-      );
-      
-      console.log('Final students with user data:', studentsWithUserData);
-      setStudents(studentsWithUserData);
+      // Load students with groupId filter
+      const { users: studentsData } = await getUsers({ 
+        role: 'student',
+        groupId 
+      });
+      setStudents(studentsData as StudentUser[]);
 
-      // Load teachers
-      const teachersData = await getUsersByRole(db, 'teacher');
-      setTeachers(teachersData);
+      // Load teachers through schedule
+      const lessons = await getGroupSchedule({ 
+        groupId: groupData.id,
+        semesterId: selectedSemesterId
+      });
+      
+      if (lessons && lessons.length > 0) {
+        const uniqueTeacherIds = [...new Set(lessons.map((lesson: Lesson) => lesson.teacherId))]
+          .filter((id): id is string => typeof id === 'string');
+        const teacherPromises = uniqueTeacherIds.map(id => getUserById(id));
+        const teachers = await Promise.all(teacherPromises);
+        setTeachers(teachers.filter((teacher): teacher is TeacherUser => teacher !== null));
+      } else {
+        setTeachers([]);
+      }
+
+      // Load curator if exists
+      if (groupData.curatorId) {
+        const curatorData = await getUserById(groupData.curatorId);
+        if (curatorData) {
+          setCurator(curatorData as TeacherUser);
+        }
+      }
     } catch (error) {
       console.error('Error loading group data:', error);
       toast.error('Не удалось загрузить данные группы');
@@ -87,6 +94,13 @@ export function GroupDetailsPage() {
       setLoading(false);
     }
   };
+
+  // Reload teachers when semester changes
+  useEffect(() => {
+    if (groupId && selectedSemesterId) {
+      loadGroupData();
+    }
+  }, [selectedSemesterId]);
 
   useEffect(() => {
     loadGroupData();
@@ -110,6 +124,11 @@ export function GroupDetailsPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Специализация: {group.specialization}
         </p>
+        {curator && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Куратор: {`${curator.lastName} ${curator.firstName} ${curator.middleName || ''}`}
+          </p>
+        )}
       </div>
 
       <Tabs defaultValue="students" className="space-y-4">
@@ -158,58 +177,37 @@ export function GroupDetailsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>ФИО</TableHead>
-                        <TableHead>Номер студента</TableHead>
-                        <TableHead>Дата зачисления</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Телефон</TableHead>
+                        <TableHead>Номер студенческого</TableHead>
                         <TableHead>Статус</TableHead>
-                        <TableHead>Контакты</TableHead>
                         <TableHead className="text-right">Действия</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {students.map((student) => (
-                        <TableRow key={student.id}>
+                        <TableRow key={student.uid}>
                           <TableCell className="font-medium">
-                            {student.userData ? 
-                              `${student.userData.lastName} ${student.userData.firstName} ${student.userData.middleName || ''}` :
-                              'Загрузка...'
-                            }
+                            {`${student.lastName} ${student.firstName} ${student.middleName || ''}`}
                           </TableCell>
-                          <TableCell>{student.studentCardId}</TableCell>
-                          <TableCell>
-                            {student.enrollmentDate ? 
-                              new Date(student.enrollmentDate.seconds * 1000).toLocaleDateString('ru-RU') :
-                              '-'
-                            }
-                          </TableCell>
+                          <TableCell>{student.email}</TableCell>
+                          <TableCell>{student.phone || '-'}</TableCell>
+                          <TableCell>{student.studentIdNumber || '-'}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                               ${student.status === 'active' ? 'bg-green-100 text-green-800' :
-                                student.status === 'inactive' ? 'bg-red-100 text-red-800' :
+                                student.status === 'suspended' ? 'bg-red-100 text-red-800' :
                                 'bg-gray-100 text-gray-800'}`}>
                               {student.status === 'active' ? 'Активен' :
-                               student.status === 'inactive' ? 'Неактивен' :
-                               'Выпускник'}
+                               student.status === 'suspended' ? 'Неактивен' :
+                               'Ожидает подтверждения'}
                             </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              {student.phone && (
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Тел.:</span> {student.phone}
-                                </div>
-                              )}
-                              {student.address && (
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Адрес:</span> {student.address}
-                                </div>
-                              )}
-                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => navigate(`/admin/students/${student.id}`)}
+                              onClick={() => navigate(`/admin/students/${student.uid}`)}
                             >
                               Просмотр профиля
                             </Button>
@@ -225,7 +223,39 @@ export function GroupDetailsPage() {
         </TabsContent>
 
         <TabsContent value="schedule">
-          <ScheduleTab group={group} />
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Расписание</CardTitle>
+                  <CardDescription>
+                    Расписание занятий группы {group.name}
+                  </CardDescription>
+                </div>
+                <Select
+                  value={selectedSemesterId}
+                  onValueChange={setSelectedSemesterId}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Выберите семестр" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 семестр</SelectItem>
+                    <SelectItem value="2">2 семестр</SelectItem>
+                    <SelectItem value="3">3 семестр</SelectItem>
+                    <SelectItem value="4">4 семестр</SelectItem>
+                    <SelectItem value="5">5 семестр</SelectItem>
+                    <SelectItem value="6">6 семестр</SelectItem>
+                    <SelectItem value="7">7 семестр</SelectItem>
+                    <SelectItem value="8">8 семестр</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ScheduleTab group={group} semesterId={selectedSemesterId} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="teachers">
@@ -235,46 +265,78 @@ export function GroupDetailsPage() {
                 <div>
                   <CardTitle>Преподаватели</CardTitle>
                   <CardDescription>
-                    Преподаватели, работающие с группой {group.name}
+                    Преподаватели, работающие с группой {group.name} в текущем семестре
                   </CardDescription>
                 </div>
-                <Button onClick={() => setIsManageTeachersOpen(true)}>
-                  Управление преподавателями
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedSemesterId}
+                    onValueChange={setSelectedSemesterId}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Выберите семестр" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 семестр</SelectItem>
+                      <SelectItem value="2">2 семестр</SelectItem>
+                      <SelectItem value="3">3 семестр</SelectItem>
+                      <SelectItem value="4">4 семестр</SelectItem>
+                      <SelectItem value="5">5 семестр</SelectItem>
+                      <SelectItem value="6">6 семестр</SelectItem>
+                      <SelectItem value="7">7 семестр</SelectItem>
+                      <SelectItem value="8">8 семестр</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={() => setIsManageTeachersOpen(true)}>
+                    Управление преподавателями
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              {teachers.length === 0 ? (
+              {!selectedSemesterId ? (
                 <div className="text-center py-6 text-muted-foreground">
-                  Нет назначенных преподавателей
+                  Выберите семестр для просмотра списка преподавателей
+                </div>
+              ) : teachers.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  Нет назначенных преподавателей на выбранный семестр
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ФИО</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Действия</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {teachers.map((teacher) => (
-                      <TableRow key={teacher.uid}>
-                        <TableCell>{teacher.lastName} {teacher.firstName} {teacher.middleName || ''}</TableCell>
-                        <TableCell>{teacher.email}</TableCell>
-                        <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/admin/teachers/${teacher.uid}`)}
-                          >
-                            Просмотр профиля
-                          </Button>
-                        </TableCell>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ФИО</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Телефон</TableHead>
+                        <TableHead>Специализация</TableHead>
+                        <TableHead className="text-right">Действия</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {teachers.map((teacher) => (
+                        <TableRow key={teacher.uid}>
+                          <TableCell className="font-medium">
+                            {`${teacher.lastName} ${teacher.firstName} ${teacher.middleName || ''}`}
+                          </TableCell>
+                          <TableCell>{teacher.email}</TableCell>
+                          <TableCell>{teacher.phone || '-'}</TableCell>
+                          <TableCell>{teacher.specialization || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/admin/teachers/${teacher.uid}`)}
+                            >
+                              Просмотр профиля
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -283,12 +345,9 @@ export function GroupDetailsPage() {
 
       <ManageTeachersDialog
         open={isManageTeachersOpen}
+        onOpenChange={setIsManageTeachersOpen}
         group={group}
-        onSuccess={() => {
-          setIsManageTeachersOpen(false);
-          loadGroupData();
-        }}
-        onClose={() => setIsManageTeachersOpen(false)}
+        onSuccess={loadGroupData}
       />
     </div>
   );

@@ -1,643 +1,601 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// src/pages/admin/ManageSchedulesPage.tsx
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
-import { Trash2, Loader2, CalendarPlus, ListChecks, FileText, PlusCircle, MoreHorizontal, Eye, Edit2 } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { getAllSchedules, updateSchedule, getSchedule } from '@/lib/firebaseService/scheduleService';
-import { getAllGroups } from '@/lib/firebaseService/groupService';
-import { getAllTeachers } from '@/lib/firebaseService/teacherService';
-import { getAllSubjects } from '@/services/firestore';
-import { getAllScheduleTemplates, saveScheduleTemplate, deleteScheduleTemplate, updateScheduleTemplate, type ScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
-import { updateDoc, writeBatch, doc, Timestamp } from 'firebase/firestore';
-import type { Schedule, Group, Teacher, Lesson, Subject } from '@/types';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import ScheduleMetadataForm from '@/components/admin/schedules/ScheduleMetadataForm';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { 
+  Plus, 
+  FileText, 
+  Calendar, 
+  Settings, 
+  Download, 
+  Upload,
+  Loader2,
+  BookOpen,
+  Users,
+  MapPin,
+  User,
+  Filter
+} from 'lucide-react';
 import LessonForm from '@/components/admin/schedules/LessonForm';
-import ScheduleCalendar from '@/components/admin/schedules/ScheduleCalendar';
-import ScheduleFilters, { type ScheduleFilters as ScheduleFiltersType } from '@/components/admin/schedules/ScheduleFilters';
 import BulkLessonForm from '@/components/admin/schedules/BulkLessonForm';
 import ScheduleTemplateForm from '@/components/admin/schedules/ScheduleTemplateForm';
-import ScheduleTemplatesList from '@/components/admin/schedules/ScheduleTemplatesList';
-import ScheduleExport from '@/components/admin/schedules/ScheduleExport';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { v4 as uuidv4 } from 'uuid';
+import { ScheduleTemplatesList } from '@/components/admin/schedules/ScheduleTemplatesList';
+import ScheduleCalendar from '@/components/admin/schedules/ScheduleCalendar';
+import { toast } from 'sonner';
+import { Toaster } from '@/components/ui/sonner';
+import { getGroupSchedule, createLesson, updateLesson, deleteLesson } from '@/lib/firebaseService/scheduleService';
+import { saveScheduleTemplate, getAllScheduleTemplates, deleteScheduleTemplate, updateScheduleTemplate } from '@/lib/firebaseService/scheduleTemplateService';
+import { getAllGroups } from '@/lib/firebaseService/groupService';
+import { getUsers } from '@/lib/firebaseService/userService';
+import { getAllSubjects } from '@/lib/firebaseService/subjectService';
+import { getSemesters } from '@/lib/firebaseService/semesterService';
+import type { Lesson, Group, TeacherUser, Subject, Semester, ScheduleTemplate } from '@/types';
+import { Timestamp } from 'firebase/firestore';
+import { motion } from 'framer-motion';
 
-const ManageSchedulesPage: React.FC = () => {
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+export default function ManageSchedulesPage() {
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  
-  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
-  const [metadataFormMode, setMetadataFormMode] = useState<'create' | 'edit'>('create');
-  const [selectedScheduleForMetadata, setSelectedScheduleForMetadata] = useState<Schedule | null>(null);
-
-  const [showManageLessonsDialog, setShowManageLessonsDialog] = useState(false);
-  const [currentManagingSchedule, setCurrentManagingSchedule] = useState<Schedule | null>(null);
-  
-  const [showLessonFormDialog, setShowLessonFormDialog] = useState(false);
-  const [lessonFormMode, setLessonFormMode] = useState<'create' | 'edit'>('create');
-  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
-  const [selectedLessonSchedule, setSelectedLessonSchedule] = useState<Schedule | null>(null);
-
-  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
-  const [lessonToRemove, setLessonToRemove] = useState<{ lessonId: string} | null>(null); // scheduleId is in currentManagingSchedule
-
-  const [isLoading, setIsLoading] = useState(true); // For initial data load
-  const [isSubmitting, setIsSubmitting] = useState(false); // For any submit operation
-
-  const [filters, setFilters] = useState<ScheduleFiltersType>({
-    search: '',
-    groupId: '',
-    course: '',
-    semester: '',
-    year: '',
-  });
-
-  const [showBulkLessonForm, setShowBulkLessonForm] = useState(false);
-
-  const [showTemplateForm, setShowTemplateForm] = useState(false);
-  const [showTemplatesList, setShowTemplatesList] = useState(false);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
-
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
+  const [isLessonFormOpen, setIsLessonFormOpen] = useState(false);
+  const [isBulkLessonFormOpen, setIsBulkLessonFormOpen] = useState(false);
+  const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
+  const [isTemplatesListOpen, setIsTemplatesListOpen] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
 
-  const [showExportDialog, setShowExportDialog] = useState(false);
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      toast.loading('Загрузка данных...', { id: 'initial-load' });
+      
+      try {
+        const [groupsData, subjectsData, semestersData, templatesData] = await Promise.all([
+          getAllGroups(),
+          getAllSubjects(),
+          getSemesters(),
+          getAllScheduleTemplates(),
+        ]);
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [fetchedSchedules, fetchedGroups, fetchedTeachers, fetchedSubjects, fetchedTemplates] = await Promise.all([
-        getAllSchedules(db),
-        getAllGroups(),
-        getAllTeachers(),
-        getAllSubjects(),
-        getAllScheduleTemplates(),
-      ]);
-      setSchedules(fetchedSchedules);
-      setGroups(fetchedGroups);
-      setTeachers(fetchedTeachers);
-      setSubjects(fetchedSubjects);
-      setTemplates(fetchedTemplates);
-    } catch (err) {
-      console.error('Ошибка при загрузке данных:', err);
-      toast.error('Не удалось загрузить данные.');
-    } finally {
-      setIsLoading(false);
-    }
+        // Получаем только преподавателей
+        const { users: teachersData } = await getUsers({ role: 'teacher', limit: 100 });
+
+        setGroups(groupsData);
+        setTeachers(teachersData as TeacherUser[]);
+        setSubjects(subjectsData);
+        setSemesters(semestersData);
+        setTemplates(templatesData);
+
+        if (groupsData.length > 0) {
+          setSelectedGroup(groupsData[0].id);
+        }
+        if (semestersData.length > 0) {
+          setSelectedSemester(semestersData[0].id);
+        }
+
+        toast.success('Данные загружены', { id: 'initial-load' });
+      } catch (error) {
+        console.error('Error loading data:', error);
+        toast.error('Не удалось загрузить данные', { id: 'initial-load' });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const getGroupName = useCallback(
-    (groupId: string) => groups.find(g => g.id === groupId)?.name || 'Unknown Group',
-    [groups]
-  );
-
-  const handleOpenCreateScheduleDialog = () => {
-    setSelectedScheduleForMetadata(null);
-    setMetadataFormMode('create');
-    setShowMetadataDialog(true);
-  };
-
-  const handleOpenEditScheduleMetadataDialog = (schedule: Schedule) => {
-    setSelectedScheduleForMetadata(schedule);
-    setMetadataFormMode('edit');
-    setShowMetadataDialog(true);
-  };
-
-  const handleMetadataFormSuccess = async (scheduleId: string) => {
-    setShowMetadataDialog(false);
-    await fetchData(); 
-    if (metadataFormMode === 'create') {
-      const newSchedule = await getSchedule(db, scheduleId);
-      if (newSchedule) {
-        const groupToUpdate = groups.find(g => g.id === newSchedule.groupId);
-        if (groupToUpdate && !groupToUpdate.scheduleId) {
-          try {
-            await updateDoc(doc(db, 'groups', newSchedule.groupId), { scheduleId: newSchedule.id });
-            toast.info(`Расписание привязано к группе ${getGroupName(newSchedule.groupId)}.`);
-            await fetchData();
-          } catch (error) {
-            console.error('Не удалось привязать расписание к группе:', error);
-            toast.error('Не удалось привязать расписание к группе.');
-          }
-        } else if (groupToUpdate && groupToUpdate.scheduleId) {
-          toast.info(`Группа ${getGroupName(newSchedule.groupId)} уже имеет расписание. Привязка не выполнена.`);
+    const fetchLessons = async () => {
+      if (selectedGroup && selectedSemester) {
+        setScheduleLoading(true);
+        toast.loading('Загрузка расписания...', { id: 'schedule-load' });
+        
+        try {
+          const lessonsData = await getGroupSchedule({ 
+            groupId: selectedGroup,
+            semesterId: selectedSemester
+          });
+          setLessons(lessonsData);
+          toast.success('Расписание загружено', { id: 'schedule-load' });
+        } catch (error) {
+          console.error('Error loading schedule:', error);
+          toast.error('Не удалось загрузить расписание', { id: 'schedule-load' });
+        } finally {
+          setScheduleLoading(false);
         }
-        setCurrentManagingSchedule(newSchedule);
-        setShowManageLessonsDialog(true);
-      } else {
-        toast.error("Не удалось загрузить новое расписание для управления занятиями.");
       }
-    }
-  };
-  
-  const handleDeleteScheduleInitiate = (schedule: Schedule) => setScheduleToDelete(schedule);
+    };
 
-  const confirmDeleteSchedule = async () => {
-    if (!scheduleToDelete) return;
-    setIsSubmitting(true);
+    fetchLessons();
+  }, [selectedGroup, selectedSemester]);
+
+  const handleCreateLesson = async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const createToastId = toast.loading('Создание занятия...', { duration: Infinity });
+    
     try {
-      const batch = writeBatch(db);
-      batch.delete(doc(db, 'schedules', scheduleToDelete.id));
-      const groupToUpdate = groups.find(g => g.scheduleId === scheduleToDelete.id);
-      if (groupToUpdate) {
-        batch.update(doc(db, 'groups', groupToUpdate.id), { scheduleId: "" });
-      }
-      await batch.commit();
-      toast.success(`Расписание для группы ${getGroupName(scheduleToDelete.groupId)} успешно удалено.`);
-      await fetchData();
-    } catch (err) {
-      console.error('Не удалось удалить расписание:', err);
-      toast.error('Не удалось удалить расписание.');
-    } finally {
-      setScheduleToDelete(null);
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleOpenManageLessons = async (schedule: Schedule) => {
-    // Refetch the latest schedule data before opening, in case lessons changed
-    setIsLoading(true);
-    const freshSchedule = await getSchedule(db, schedule.id);
-    if (freshSchedule) {
-        setCurrentManagingSchedule(freshSchedule);
-        setShowManageLessonsDialog(true);
-    } else {
-        toast.error("Could not load schedule details.");
-    }
-    setIsLoading(false);
-  };
-
-  const handleOpenAddLessonDialog = () => {
-    if (!currentManagingSchedule) return;
-    setSelectedLesson(null);
-    setLessonFormMode('create');
-    setShowLessonFormDialog(true);
-  };
-
-  const handleLessonFormSuccess = async () => {
-    if (!currentManagingSchedule && !selectedLessonSchedule) return;
-    setIsSubmitting(true);
-    try {
-      await fetchData();
-      const updatedSchedule = await getSchedule(db, currentManagingSchedule?.id || selectedLessonSchedule?.id || '');
-      if (updatedSchedule) {
-        setCurrentManagingSchedule(updatedSchedule);
-      }
-      toast.success(`Занятие успешно ${lessonFormMode === 'create' ? 'добавлено' : 'обновлено'}.`);
-      setShowLessonFormDialog(false);
-      setSelectedLesson(null);
-      setSelectedLessonSchedule(null);
-    } catch (err) {
-      console.error('Не удалось обновить занятие:', err);
-      toast.error(`Не удалось ${lessonFormMode === 'create' ? 'добавить' : 'обновить'} занятие.`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleBulkAddLessons = async (lessons: Lesson[]) => {
-    if (!currentManagingSchedule) return;
-    setIsSubmitting(true);
-    try {
-      const updatedLessons = [...currentManagingSchedule.lessons, ...lessons];
-      await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedLessons });
-      const freshSchedule = await getSchedule(db, currentManagingSchedule.id);
-      if (freshSchedule) {
-        setCurrentManagingSchedule(freshSchedule);
-        setSchedules(prevSchedules => prevSchedules.map(s => s.id === freshSchedule.id ? freshSchedule : s));
-      }
-      toast.success(`Успешно добавлено ${lessons.length} занятий.`);
+      await createLesson(lesson);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
+      setLessons(updatedLessons);
+      setIsLessonFormOpen(false);
+      toast.success('Занятие успешно создано', { id: createToastId });
     } catch (error) {
-      console.error('Не удалось добавить занятия:', error);
-      toast.error('Не удалось добавить занятия.');
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error creating lesson:', error);
+      toast.error('Не удалось создать занятие', { id: createToastId });
     }
   };
 
-  const handleSaveTemplate = async (template: { name: string; description: string; schedule: Schedule }) => {
-    if (!currentManagingSchedule) return;
-    setIsSubmitting(true);
+  const handleUpdateLesson = async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!editingLesson || !editingLesson.id) {
+      toast.error('Некорректный ID занятия для обновления');
+      return;
+    }
+
+    const updateToastId = toast.loading('Обновление занятия...', { duration: Infinity });
+    
+    try {
+      await updateLesson(editingLesson.id, lesson);
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
+      setLessons(updatedLessons);
+      setEditingLesson(null);
+      toast.success('Занятие успешно обновлено', { id: updateToastId });
+    } catch (error) {
+      console.error('Error updating lesson:', error);
+      toast.error('Не удалось обновить занятие', { id: updateToastId });
+    }
+  };
+
+  const handleDeleteLesson = async (id: string) => {
+    if (!id) {
+      toast.error('Некорректный ID занятия для удаления');
+      return;
+    }
+
+    const deleteToastId = toast.loading('Удаление занятия...', { duration: Infinity });
+    
+    try {
+      await deleteLesson(id);
+      toast.success('Занятие удалено', { id: deleteToastId });
+      // Обновляем список занятий
+      const updatedLessons = await getGroupSchedule({ groupId: selectedGroup, semesterId: selectedSemester });
+      setLessons(updatedLessons || []);
+    } catch (error) {
+      console.error('Failed to delete lesson:', error);
+      toast.error('Не удалось удалить занятие', { id: deleteToastId });
+    }
+  };
+
+  const handleSaveTemplate = async (template: { name: string; description: string; lessons: Lesson[] }) => {
+    const saveToastId = toast.loading(editingTemplate ? 'Обновление шаблона...' : 'Создание шаблона...', { duration: Infinity });
+    
     try {
       if (editingTemplate) {
-        await updateScheduleTemplate(editingTemplate.id, {
-          name: template.name,
-          description: template.description,
-          schedule: template.schedule,
-        });
-        toast.success('Шаблон успешно обновлен.');
+        await updateScheduleTemplate(editingTemplate.id, template);
       } else {
         await saveScheduleTemplate(template);
-        toast.success('Шаблон успешно сохранен.');
       }
       const updatedTemplates = await getAllScheduleTemplates();
       setTemplates(updatedTemplates);
+      setIsTemplateFormOpen(false);
       setEditingTemplate(null);
+      toast.success(`Шаблон успешно ${editingTemplate ? 'обновлен' : 'создан'}`, { id: saveToastId });
     } catch (error) {
-      console.error('Не удалось сохранить шаблон:', error);
-      toast.error(`Не удалось ${editingTemplate ? 'обновить' : 'сохранить'} шаблон.`);
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error saving template:', error);
+      toast.error(`Не удалось ${editingTemplate ? 'обновить' : 'создать'} шаблон`, { id: saveToastId });
     }
   };
 
-  const handleEditTemplate = (template: ScheduleTemplate) => {
-    setEditingTemplate(template);
-    setShowTemplateForm(true);
-  };
-
   const handleDeleteTemplate = async (templateId: string) => {
-    setIsSubmitting(true);
+    const deleteToastId = toast.loading('Удаление шаблона...', { duration: Infinity });
+    
     try {
       await deleteScheduleTemplate(templateId);
       const updatedTemplates = await getAllScheduleTemplates();
       setTemplates(updatedTemplates);
-      toast.success('Шаблон успешно удален.');
+      toast.success('Шаблон успешно удален', { id: deleteToastId });
     } catch (error) {
-      console.error('Не удалось удалить шаблон:', error);
-      toast.error('Не удалось удалить шаблон.');
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error deleting template:', error);
+      toast.error('Не удалось удалить шаблон', { id: deleteToastId });
     }
   };
 
   const handleApplyTemplate = async (template: ScheduleTemplate) => {
-    if (!currentManagingSchedule) return;
-    setIsSubmitting(true);
+    if (!selectedGroup || !selectedSemester) {
+      toast.error('Выберите группу и семестр');
+      return;
+    }
+
+    const applyToastId = toast.loading('Применение шаблона...', { duration: Infinity });
+
     try {
-      // Для каждого занятия из шаблона генерируем новый id
-      const lessonsFromTemplate = template.schedule.lessons.map(lesson => ({ ...lesson, id: uuidv4() }));
-      const updatedLessons = [...currentManagingSchedule.lessons, ...lessonsFromTemplate];
-      await updateSchedule(db, currentManagingSchedule.id, { lessons: updatedLessons });
-      const updatedSchedule = { ...currentManagingSchedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
-      setCurrentManagingSchedule(updatedSchedule);
-      setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success('Шаблон успешно применен.');
-      setShowTemplatesList(false);
+      console.log('Начало применения шаблона:', {
+        templateName: template.name,
+        totalLessons: template.lessons.length,
+        lessons: template.lessons
+      });
+
+      // Создаем новые занятия из шаблона
+      const newLessons = template.lessons
+        .filter(lesson => {
+          // Проверяем наличие обязательных полей
+          const hasRequiredFields = 
+            typeof lesson.subjectId === 'string' &&
+            typeof lesson.dayOfWeek === 'number' &&
+            typeof lesson.startTime === 'string' &&
+            typeof lesson.endTime === 'string' &&
+            typeof lesson.room === 'string' &&
+            typeof lesson.type === 'string';
+
+          if (!hasRequiredFields) {
+            console.warn('Пропущено занятие из-за отсутствия обязательных полей:', {
+              lesson,
+              fields: {
+                subjectId: typeof lesson.subjectId,
+                dayOfWeek: typeof lesson.dayOfWeek,
+                startTime: typeof lesson.startTime,
+                endTime: typeof lesson.endTime,
+                room: typeof lesson.room,
+                type: typeof lesson.type
+              }
+            });
+            return false;
+          }
+          return true;
+        })
+        .map(lesson => {
+          // Убеждаемся, что все обязательные поля имеют значения
+          const fullLesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'> = {
+            semesterId: selectedSemester,
+            groupId: selectedGroup,
+            subjectId: lesson.subjectId as string,
+            teacherId: lesson.teacherId || null,
+            dayOfWeek: lesson.dayOfWeek as number,
+            startTime: lesson.startTime as string,
+            endTime: lesson.endTime as string,
+            room: lesson.room as string,
+            type: lesson.type as Lesson['type'],
+            weekType: lesson.weekType || 'all',
+            topic: lesson.topic || ''
+          };
+          return fullLesson;
+        });
+
+      console.log('После фильтрации и преобразования:', {
+        filteredLessons: newLessons.length,
+        lessons: newLessons
+      });
+
+      if (newLessons.length === 0) {
+        toast.error('В шаблоне нет валидных занятий для применения', { id: applyToastId });
+        return;
+      }
+
+      // Сохраняем все занятия последовательно
+      console.log('Начало сохранения занятий...');
+      for (const lesson of newLessons) {
+        await createLesson(lesson);
+      }
+      console.log('Занятия сохранены');
+
+      // Даем время на обновление индексов
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Обновляем список занятий
+      console.log('Получение обновленного расписания...');
+      const updatedLessons = await getGroupSchedule({ 
+        groupId: selectedGroup,
+        semesterId: selectedSemester
+      });
+      console.log('Получено обновленное расписание:', {
+        totalLessons: updatedLessons.length,
+        lessons: updatedLessons
+      });
+
+      setLessons(updatedLessons);
+      setIsTemplatesListOpen(false);
+      toast.success(`Шаблон успешно применен. Добавлено ${newLessons.length} занятий.`, { id: applyToastId });
     } catch (error) {
-      console.error('Не удалось применить шаблон:', error);
-      toast.error('Не удалось применить шаблон.');
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error applying template:', error);
+      toast.error('Не удалось применить шаблон', { id: applyToastId });
     }
   };
 
-  const confirmRemoveLesson = async () => {
-    const schedule = selectedLessonSchedule || currentManagingSchedule;
-    if (!lessonToRemove || !schedule) return;
-    setIsSubmitting(true);
-    try {
-      const updatedLessons = schedule.lessons.filter(l => l.id !== lessonToRemove.lessonId);
-      await updateSchedule(db, schedule.id, { lessons: updatedLessons });
-      const updatedSchedule = { ...schedule, lessons: updatedLessons, updatedAt: Timestamp.now() };
-      if (selectedLessonSchedule) setSelectedLessonSchedule(updatedSchedule);
-      if (currentManagingSchedule && schedule.id === currentManagingSchedule.id) setCurrentManagingSchedule(updatedSchedule);
-      setSchedules(prevSchedules => prevSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s));
-      toast.success("Занятие успешно удалено.");
-      await fetchData();
-    } catch (err) {
-      console.error('Не удалось удалить занятие:', err);
-      toast.error("Не удалось удалить занятие.");
-    } finally {
-      setLessonToRemove(null);
-      setIsSubmitting(false);
-      setSelectedLessonSchedule(null);
-    }
+  // Статистика
+  const stats = {
+    totalLessons: lessons.length,
+    subjects: new Set(lessons.map(l => l.subjectId)).size,
+    teachers: new Set(lessons.map(l => l.teacherId).filter(Boolean)).size,
+    rooms: new Set(lessons.map(l => l.room)).size,
   };
 
-  const handleLessonClick = (lesson: Lesson, schedule: Schedule) => {
-    setSelectedLesson(lesson);
-    setSelectedLessonSchedule(schedule);
-    setLessonFormMode('edit');
-    setShowLessonFormDialog(true);
+  const pageVariants = {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   };
 
-  const filteredSchedules = React.useMemo(() => {
-    return schedules.filter(schedule => {
-      const group = groups.find(g => g.id === schedule.groupId);
-      const matchesSearch = filters.search === '' || 
-        getGroupName(schedule.groupId).toLowerCase().includes(filters.search.toLowerCase()) ||
-        schedule.lessons.some(lesson => 
-          lesson.subjectId.toLowerCase().includes(filters.search.toLowerCase()) ||
-          lesson.room.toLowerCase().includes(filters.search.toLowerCase())
-        );
-      const matchesGroup = !filters.groupId || filters.groupId === 'all' || schedule.groupId === filters.groupId;
-      const matchesCourse = !filters.course || (group && group.course?.toString() === filters.course);
-      const matchesSemester = !filters.semester || schedule.semester?.toString() === filters.semester;
-      const matchesYear = !filters.year || schedule.year?.toString() === filters.year;
-      return matchesSearch && matchesGroup && matchesCourse && matchesSemester && matchesYear;
-    });
-  }, [schedules, filters, getGroupName, groups]);
+  const cardVariants = {
+    initial: { opacity: 0, scale: 0.95 },
+    animate: { opacity: 1, scale: 1, transition: { duration: 0.3 } },
+  };
 
-  if (isLoading && schedules.length === 0 && groups.length === 0) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading schedules...</span></div>;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Загрузка данных...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <Dialog open={showMetadataDialog} onOpenChange={(open) => { if (!open) setSelectedScheduleForMetadata(null); setShowMetadataDialog(open); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{metadataFormMode === 'create' ? 'Создать новое расписание' : 'Редактировать расписание'}</DialogTitle>
-            <DialogDescription>
-              {metadataFormMode === 'create' 
-                ? 'Выберите группу, семестр и учебный год' 
-                : `Редактирование расписания для группы: ${getGroupName(selectedScheduleForMetadata?.groupId || '')}`}
-            </DialogDescription>
-          </DialogHeader>
-          {showMetadataDialog && (
-            <ScheduleMetadataForm 
-              mode={metadataFormMode} 
-              scheduleId={selectedScheduleForMetadata?.id} 
-              onFormSubmitSuccess={handleMetadataFormSuccess} 
-              onCancel={() => setShowMetadataDialog(false)} 
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="animate"
+      className="container mx-auto py-6 space-y-6"
+    >
+      <Toaster position="top-right" />
 
-      <Dialog open={showManageLessonsDialog} onOpenChange={(open) => { if (!open) setCurrentManagingSchedule(null); setShowManageLessonsDialog(open); }}>
-        <DialogContent className="max-w-3xl lg:max-w-4xl xl:max-w-6xl h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              Управление расписанием: {getGroupName(currentManagingSchedule?.groupId || '')} 
-              ({currentManagingSchedule?.year} г., Семестр {currentManagingSchedule?.semester})
-            </DialogTitle>
-            <DialogDescription>Добавление, редактирование или удаление занятий в расписании.</DialogDescription>
-          </DialogHeader>
-          {currentManagingSchedule && (
-            <>
-              <div className="py-2 border-b mb-2 flex items-center gap-2">
-                <Button onClick={handleOpenAddLessonDialog} size="sm" disabled={isSubmitting}>
-                  <CalendarPlus className="mr-2 h-4 w-4" /> Добавить занятие
-                </Button>
-                <Button onClick={() => setShowBulkLessonForm(true)} size="sm" disabled={isSubmitting}>
-                  <ListChecks className="mr-2 h-4 w-4" /> Массовое добавление
-                </Button>
-                <Button onClick={() => setShowTemplateForm(true)} size="sm" disabled={isSubmitting}>
-                  <FileText className="mr-2 h-4 w-4" /> Сохранить как шаблон
-                </Button>
-                <Button onClick={() => setShowTemplatesList(true)} size="sm" disabled={isSubmitting}>
-                  <FileText className="mr-2 h-4 w-4" /> Применить шаблон
-                </Button>
-              </div>
-              <div className="mb-4 flex-1 min-h-0 overflow-y-auto">
-                <ScheduleCalendar
-                  schedule={currentManagingSchedule}
-                  subjects={subjects}
-                  teachers={teachers}
-                  onLessonClick={(lesson) => handleLessonClick(lesson, currentManagingSchedule)}
-                  hideWeekSwitcher={true}
-                />
-              </div>
-              <DialogFooter className="mt-auto pt-4 border-t">
-                <DialogClose asChild>
-                  <Button type="button" variant="outline">Закрыть</Button>
-                </DialogClose>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showLessonFormDialog} onOpenChange={(open) => { if (!open) setSelectedLesson(null); setShowLessonFormDialog(open); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {lessonFormMode === 'create'
-                ? 'Добавить новое занятие'
-                : `Редактировать занятие: ${selectedLesson ? (subjects.find(s => s.id === selectedLesson.subjectId)?.name || '') : ''}`}
-            </DialogTitle>
-            <DialogDescription>
-              Расписание: {getGroupName(currentManagingSchedule?.groupId || '')}
-              {currentManagingSchedule ? ` (${currentManagingSchedule.year} г., Семестр ${currentManagingSchedule.semester})` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          {showLessonFormDialog && ((currentManagingSchedule && lessonFormMode === 'create') || (selectedLessonSchedule && lessonFormMode === 'edit')) && (
-            <LessonForm
-              mode={lessonFormMode}
-              scheduleId={(lessonFormMode === 'create' ? currentManagingSchedule?.id : selectedLessonSchedule?.id) || ''}
-              lessonId={selectedLesson?.id}
-              subjects={subjects}
-              onFormSubmitSuccess={handleLessonFormSuccess}
-              onCancel={() => { setShowLessonFormDialog(false); setSelectedLessonSchedule(null); }}
-              onRemoveLesson={selectedLesson ? () => setLessonToRemove({ lessonId: selectedLesson.id }) : undefined}
-              groupName={getGroupName((lessonFormMode === 'create' ? currentManagingSchedule?.groupId : selectedLessonSchedule?.groupId) || '')}
-              year={lessonFormMode === 'create' ? currentManagingSchedule?.year || 0 : selectedLessonSchedule?.year || 0}
-              semester={lessonFormMode === 'create' ? currentManagingSchedule?.semester || 0 : selectedLessonSchedule?.semester || 0}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-      
-      {scheduleToDelete && (
-        <AlertDialog open={!!scheduleToDelete} onOpenChange={() => setScheduleToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Удалить расписание для группы {getGroupName(scheduleToDelete.groupId)} 
-                ({scheduleToDelete.year} г., Семестр {scheduleToDelete.semester})? 
-                Это действие нельзя отменить.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={confirmDeleteSchedule} 
-                className="bg-red-600 hover:bg-red-700" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Удаление..." : "Удалить"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-      
-      {lessonToRemove && (
-        <AlertDialog open={!!lessonToRemove} onOpenChange={() => setLessonToRemove(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Удалить занятие?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Вы уверены, что хотите удалить это занятие?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={confirmRemoveLesson} 
-                className="bg-red-600 hover:bg-red-700" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Удаление..." : "Удалить"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-
-      {currentManagingSchedule && (
-        <>
-          <BulkLessonForm
-            open={showBulkLessonForm}
-            onOpenChange={setShowBulkLessonForm}
-            onAddLessons={handleBulkAddLessons}
-            subjects={subjects.map(s => ({ id: s.id, name: s.name, teacherId: s.teacherId }))}
-          />
-          <ScheduleTemplateForm
-            open={showTemplateForm}
-            onOpenChange={(open) => {
-              if (!open) {
-                setEditingTemplate(null);
-              }
-              setShowTemplateForm(open);
-            }}
-            onSaveTemplate={handleSaveTemplate}
-            schedule={currentManagingSchedule}
-            editingTemplate={editingTemplate}
-          />
-        </>
-      )}
-
-      <ScheduleTemplatesList
-        open={showTemplatesList}
-        onOpenChange={setShowTemplatesList}
-        templates={templates}
-        onDeleteTemplate={handleDeleteTemplate}
-        onApplyTemplate={handleApplyTemplate}
-        onEditTemplate={handleEditTemplate}
-      />
-
-      <header className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Управление расписаниями</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Создание и управление учебными расписаниями
-            </p>
-          </div>
-          <Button onClick={handleOpenCreateScheduleDialog} disabled={isLoading}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Создать расписание
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Управление расписанием</h1>
+          <p className="text-muted-foreground">
+            Создавайте и редактируйте расписание занятий
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => setIsTemplatesListOpen(true)} variant="outline" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Шаблоны
+          </Button>
+          <Button onClick={() => setIsTemplateFormOpen(true)} variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Сохранить шаблон
+          </Button>
+          <Button onClick={() => setIsBulkLessonFormOpen(true)} variant="outline" className="gap-2">
+            <Upload className="h-4 w-4" />
+            Массовое добавление
+          </Button>
+          <Button onClick={() => setIsLessonFormOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Добавить занятие
           </Button>
         </div>
-      </header>
+      </div>
 
-      <section>
-        <div className="bg-card shadow sm:rounded-lg">
-          {schedules.length === 0 && !isLoading ? (
-            <div className="p-10 text-center text-muted-foreground">
-              <ListChecks className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium">Расписания не найдены</h3>
-              <p className="mt-1 text-sm">Начните с создания нового расписания.</p>
-            </div>
-          ) : (
-            <>
-              <div className="p-4 border-b">
-                <ScheduleFilters
-                  groups={groups}
-                  onFilterChange={setFilters}
-                  filters={filters}
-                />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { 
+            title: 'Всего занятий', 
+            value: stats.totalLessons, 
+            icon: BookOpen, 
+            color: 'text-blue-600',
+            bgColor: 'bg-blue-100 dark:bg-blue-900',
+            description: 'В текущем расписании'
+          },
+          { 
+            title: 'Предметов', 
+            value: stats.subjects, 
+            icon: BookOpen, 
+            color: 'text-green-600',
+            bgColor: 'bg-green-100 dark:bg-green-900',
+            description: 'Уникальных предметов'
+          },
+          { 
+            title: 'Преподавателей', 
+            value: stats.teachers, 
+            icon: User, 
+            color: 'text-purple-600',
+            bgColor: 'bg-purple-100 dark:bg-purple-900',
+            description: 'Задействованных'
+          },
+          { 
+            title: 'Аудиторий', 
+            value: stats.rooms, 
+            icon: MapPin, 
+            color: 'text-orange-600',
+            bgColor: 'bg-orange-100 dark:bg-orange-900',
+            description: 'Используемых'
+          },
+        ].map((stat, index) => (
+          <motion.div
+            key={stat.title}
+            variants={cardVariants}
+            initial="initial"
+            animate="animate"
+            transition={{ delay: index * 0.1 }}
+          >
+            <Card className="hover:shadow-md transition-all duration-200 hover:-translate-y-1">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                <div className={`h-8 w-8 rounded-lg ${stat.bgColor} flex items-center justify-center`}>
+                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <motion.div variants={cardVariants} initial="initial" animate="animate">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Выбор группы и семестра
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Группа</label>
+                <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите группу" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[200px] overflow-y-auto">
+                    {groups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          {group.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Группа</TableHead>
-                    <TableHead className="text-center">Год</TableHead>
-                    <TableHead className="text-center">Семестр</TableHead>
-                    <TableHead className="text-center">Количество занятий</TableHead>
-                    <TableHead className="text-right">Действия</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSchedules.map(schedule => (
-                    <TableRow key={schedule.id}>
-                      <TableCell className="font-medium">
-                        {getGroupName(schedule.groupId)}
-                      </TableCell>
-                      <TableCell className="text-center">{schedule.year}</TableCell>
-                      <TableCell className="text-center">{schedule.semester}</TableCell>
-                      <TableCell className="text-center">
-                        {schedule.lessons?.length || 0}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <ScheduleExport
-                            schedule={schedule}
-                            subjects={subjects.map(s => ({ id: s.id, name: s.name }))}
-                            teachers={teachers.map(t => ({ id: t.id, firstName: t.firstName, lastName: t.lastName }))}
-                            open={showExportDialog}
-                            onOpenChange={setShowExportDialog}
-                          />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Меню</span>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleOpenManageLessons(schedule)}>
-                                <Eye className="mr-2 h-4 w-4" /> Просмотр/Управление занятиями
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenEditScheduleMetadataDialog(schedule)}>
-                                <Edit2 className="mr-2 h-4 w-4" /> Редактировать детали
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteScheduleInitiate(schedule)}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" /> Удалить расписание
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Семестр</label>
+                <Select value={selectedSemester} onValueChange={setSelectedSemester}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите семестр" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[200px] overflow-y-auto">
+                    {semesters.map(semester => (
+                      <SelectItem key={semester.id} value={semester.id}>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          {semester.name}
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </>
-          )}
-        </div>
-      </section>
-    </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Schedule Content */}
+      {selectedGroup && selectedSemester && (
+        <motion.div
+          variants={cardVariants}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.2 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Редактор расписания
+              </CardTitle>
+              <CardDescription>
+                {scheduleLoading ? 'Загрузка расписания...' : `Расписание для ${groups.find(g => g.id === selectedGroup)?.name}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {scheduleLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <div className="bg-card rounded-lg border shadow-sm">
+                  <ScheduleCalendar
+                    schedule={{
+                      id: `${selectedSemester}_${selectedGroup}`,
+                      semesterId: selectedSemester,
+                      groupId: selectedGroup,
+                      groupName: groups.find(g => g.id === selectedGroup)?.name || '',
+                      lessons,
+                      createdAt: Timestamp.now(),
+                      updatedAt: Timestamp.now(),
+                      semester: 1,
+                      year: 2024,
+                    }}
+                    subjects={subjects}
+                    teachers={teachers.map(teacher => ({
+                      id: teacher.uid,
+                      firstName: teacher.firstName || '',
+                      lastName: teacher.lastName || '',
+                      middleName: teacher.middleName || undefined,
+                    }))}
+                    onLessonClick={(lesson) => {
+                      setEditingLesson(lesson);
+                      setIsLessonFormOpen(true);
+                    }}
+                    className="p-4"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Lesson Form */}
+      <LessonForm
+        open={isLessonFormOpen}
+        onOpenChange={setIsLessonFormOpen}
+        lesson={editingLesson}
+        groupId={selectedGroup}
+        semesterId={selectedSemester}
+        subjects={subjects}
+        teachers={teachers}
+        groups={groups}
+        onSubmit={editingLesson ? handleUpdateLesson : handleCreateLesson}
+        onDelete={handleDeleteLesson}
+      />
+
+      {/* Bulk Lesson Form */}
+      <BulkLessonForm
+        open={isBulkLessonFormOpen}
+        onOpenChange={setIsBulkLessonFormOpen}
+        onSave={handleCreateLesson}
+        groupId={selectedGroup}
+        semesterId={selectedSemester}
+        subjects={subjects}
+        teachers={teachers}
+        groups={groups}
+      />
+
+      {/* Schedule Template Form */}
+      <ScheduleTemplateForm
+        open={isTemplateFormOpen}
+        onOpenChange={setIsTemplateFormOpen}
+        onSaveTemplate={handleSaveTemplate}
+        template={editingTemplate}
+        lessons={lessons}
+      />
+
+      {/* Schedule Templates List */}
+      <ScheduleTemplatesList
+        open={isTemplatesListOpen}
+        onOpenChange={setIsTemplatesListOpen}
+        templates={templates}
+        onApplyTemplate={handleApplyTemplate}
+        onEditTemplate={(template) => {
+          setEditingTemplate(template);
+          setIsTemplateFormOpen(true);
+        }}
+        onDeleteTemplate={handleDeleteTemplate}
+      />
+    </motion.div>
   );
-};
-export default ManageSchedulesPage;
+}

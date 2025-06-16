@@ -19,6 +19,8 @@ export interface CreateUserData {
   academicDegree?: string;
   groupId?: string;
   education?: string;
+  status?: string;
+  experience?: string;
 }
 
 export const createUser = async (request: CallableRequest<CreateUserData>) => {
@@ -96,6 +98,10 @@ export const createUser = async (request: CallableRequest<CreateUserData>) => {
       address: address || null,
       birthDate: birthDate || null,
       enrollmentDate: enrollmentDate || null,
+      status: data.status || 'active',
+      specialization: data.specialization || null,
+      education: data.education || null,
+      experience: data.experience || null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };

@@ -1,4 +1,12 @@
+import type { Subject, Group, GradeValue, GradeType } from '@/types';
+import { Timestamp } from 'firebase/firestore';
+import { useAuth } from '@/lib/auth';
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { createGrade } from '@/lib/firebaseService/gradeService';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,117 +32,99 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import type { Student, Subject, Group } from '@/types';
-import { createGrade } from '@/lib/firebaseService/gradeService';
-import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { Timestamp } from 'firebase/firestore';
 
 const formSchema = z.object({
-  subjectId: z.string().min(1, 'Subject is required'),
-  groupId: z.string().min(1, 'Group is required'),
-  teacherId: z.string().min(1, 'Teacher is required'),
-  type: z.enum(['exam', 'test', 'homework', 'project']),
-  semester: z.coerce.number().min(1).max(8),
-  date: z.string().min(1, 'Date is required'),
-  notes: z.string().optional(),
-  grades: z.array(z.object({
-    studentId: z.string(),
-    value: z.coerce.number().min(0).max(100),
-  })),
+  grade: z.number().min(2).max(5),
+  date: z.string(),
+  semesterId: z.string(),
+  journalId: z.string(),
+  groupId: z.string(),
 });
 
 type BulkGradeFormValues = z.infer<typeof formSchema>;
 
 interface BulkGradeInputProps {
-  students: Student[];
   subjects: Subject[];
   groups: Group[];
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
-export default function BulkGradeInput({ students, subjects, groups, onSuccess }: BulkGradeInputProps) {
+export function BulkGradeInput({ subjects, groups, onSuccess }: BulkGradeInputProps) {
+  const { user } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
   const form = useForm<BulkGradeFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      subjectId: '',
+      grade: 5,
+      date: new Date().toISOString().split('T')[0],
+      semesterId: '',
+      journalId: '',
       groupId: '',
-      teacherId: '',
-      type: 'exam',
-      semester: 1,
-      date: format(new Date(), 'yyyy-MM-dd'),
-      notes: '',
-      grades: [],
     },
   });
 
-  const handleGroupChange = (groupId: string) => {
-    setSelectedGroup(groupId);
-    const groupStudents = students.filter(student => student.groupId === groupId);
-    form.setValue('grades', groupStudents.map(student => ({
-      studentId: student.id,
-      value: 0,
-    })));
-  };
+  const handleSubmit = async (values: BulkGradeFormValues) => {
+    if (!user) {
+      toast.error('Пользователь не авторизован');
+      return;
+    }
 
-  const onSubmit = async (values: BulkGradeFormValues) => {
     try {
-      const promises = values.grades.map(grade => 
-        createGrade({
-          ...values,
-          studentId: grade.studentId,
-          value: grade.value,
-          date: Timestamp.fromDate(new Date(values.date)),
-        })
-      );
-
-      await Promise.all(promises);
-      toast.success('Grades added successfully');
+      setLoading(true);
+      const gradeData = {
+        studentId: values.groupId, // Временно используем groupId как studentId
+        journalId: values.journalId,
+        semesterId: values.semesterId,
+        teacherId: user.uid,
+        grade: values.grade.toString() as GradeValue,
+        gradeType: 'current' as GradeType,
+        date: Timestamp.now(),
+        attendanceStatus: 'present',
+        present: true,
+        topicCovered: 'completed'
+      };
+      await createGrade(gradeData);
+      toast.success('Оценка успешно добавлена');
+      onSuccess?.();
       setIsDialogOpen(false);
-      form.reset();
-      onSuccess();
     } catch (error) {
-      console.error('Error adding grades:', error);
-      toast.error('Failed to add grades');
+      console.error('Error adding grade:', error);
+      toast.error('Ошибка при добавлении оценки');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">Bulk Add Grades</Button>
+        <Button>Добавить оценку</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Grades for Group</DialogTitle>
+          <DialogTitle>Добавить оценку</DialogTitle>
           <DialogDescription>
-            Enter grades for all students in the selected group.
+            Выберите группу и предмет для добавления оценки.
           </DialogDescription>
         </DialogHeader>
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="groupId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Group</FormLabel>
+                  <FormLabel>Группа</FormLabel>
                   <Select
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      handleGroupChange(value);
-                    }}
+                    onValueChange={field.onChange}
                     defaultValue={field.value}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a group" />
+                        <SelectValue placeholder="Выберите группу" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -152,17 +142,17 @@ export default function BulkGradeInput({ students, subjects, groups, onSuccess }
 
             <FormField
               control={form.control}
-              name="subjectId"
+              name="journalId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Subject</FormLabel>
+                  <FormLabel>Предмет</FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a subject" />
+                        <SelectValue placeholder="Выберите предмет" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -180,39 +170,18 @@ export default function BulkGradeInput({ students, subjects, groups, onSuccess }
 
             <FormField
               control={form.control}
-              name="type"
+              name="grade"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Grade Type</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select grade type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="exam">Exam</SelectItem>
-                      <SelectItem value="test">Test</SelectItem>
-                      <SelectItem value="homework">Homework</SelectItem>
-                      <SelectItem value="project">Project</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="semester"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Semester</FormLabel>
+                  <FormLabel>Оценка</FormLabel>
                   <FormControl>
-                    <Input type="number" min={1} max={8} {...field} />
+                    <Input
+                      type="number"
+                      min={2}
+                      max={5}
+                      {...field}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -224,7 +193,7 @@ export default function BulkGradeInput({ students, subjects, groups, onSuccess }
               name="date"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Date</FormLabel>
+                  <FormLabel>Дата</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} />
                   </FormControl>
@@ -235,52 +204,29 @@ export default function BulkGradeInput({ students, subjects, groups, onSuccess }
 
             <FormField
               control={form.control}
-              name="notes"
+              name="semesterId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
+                  <FormLabel>Семестр</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите семестр" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="current_semester">Текущий семестр</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {selectedGroup && (
-              <div className="space-y-4">
-                <h3 className="font-medium">Student Grades</h3>
-                {form.watch('grades').map((grade, index) => {
-                  const student = students.find(s => s.id === grade.studentId);
-                  return (
-                    <div key={grade.studentId} className="flex items-center space-x-4">
-                      <span className="w-48">
-                        {student ? `${student.firstName} ${student.lastName}` : grade.studentId}
-                      </span>
-                      <FormField
-                        control={form.control}
-                        name={`grades.${index}.value`}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <Button type="submit">Add Grades</Button>
+            <Button type="submit" disabled={loading}>Сохранить</Button>
           </form>
         </Form>
       </DialogContent>

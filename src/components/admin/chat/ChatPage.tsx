@@ -10,21 +10,25 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { createChat, deleteChat, sendMessage, deleteMessage, subscribeToChatMessages, subscribeToUserChats, createGroupChat, sendMassMessage } from '@/lib/firebaseService/chatService';
-import { getUsers } from '@/lib/firebaseService/userService';
-import type { Chat, Message, User } from '@/types';
-import { ChatType } from '@/types';
+import { createChat, deleteChat, sendMessage, subscribeToChatMessages, subscribeToUserChats, createGroupChat, sendMassMessage } from '@/lib/firebaseService/chatService';
+import { getUserById } from '@/lib/firebaseService/userService';
+import type { Chat, Message, AppUser } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useAuth } from '@/lib/auth';
-import { Trash2, Send, Users, MessageSquare, Megaphone } from 'lucide-react';
+import { Trash2, Send, Users, MessageSquare, Megaphone, Circle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { notificationService } from '@/lib/firebaseService/notificationService';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { getDocs, collection } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -33,13 +37,19 @@ export default function ChatPage() {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [activeTab, setActiveTab] = useState('direct');
+  const [chatParticipants, setChatParticipants] = useState<Map<string, AppUser>>(new Map());
   const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
       loadUsers();
       const unsubscribe = subscribeToUserChats(user.uid, (updatedChats) => {
-        setChats(updatedChats);
+        // Сортируем чаты по времени последнего сообщения
+        const sortedChats = [...updatedChats].sort((a, b) => {
+          if (!a.lastMessageText || !b.lastMessageText) return 0;
+          return b.updatedAt.toDate().getTime() - a.updatedAt.toDate().getTime();
+        });
+        setChats(sortedChats);
       });
       return () => unsubscribe();
     }
@@ -53,6 +63,31 @@ export default function ChatPage() {
       return () => unsubscribe();
     }
   }, [selectedChat]);
+
+  // Загружаем информацию о пользователях для чатов
+  useEffect(() => {
+    const loadChatParticipants = async () => {
+      const newParticipants = new Map<string, AppUser>();
+      for (const chat of chats) {
+        if (chat.type === 'private') {
+          const participantId = chat.participantIds.find(id => id !== user?.uid);
+          if (participantId && !newParticipants.has(participantId)) {
+            try {
+              const participant = await getUserById(participantId);
+              if (participant) {
+                newParticipants.set(participantId, participant);
+              }
+            } catch (error) {
+              console.error('Error loading participant:', error);
+            }
+          }
+        }
+      }
+      setChatParticipants(newParticipants);
+    };
+
+    loadChatParticipants();
+  }, [chats, user?.uid]);
 
   useEffect(() => {
     // Initialize notifications
@@ -74,12 +109,24 @@ export default function ChatPage() {
 
   const loadUsers = async () => {
     try {
-      const data = await getUsers();
-      // Фильтруем пользователей: исключаем только текущего пользователя
-      const filteredUsers = data.filter(u => u.uid !== user?.uid);
+      const snapshot = await getDocs(collection(db, 'users'));
+      const allUsers = snapshot.docs.map(doc => ({
+        uid: doc.id,
+        ...doc.data(),
+      })) as AppUser[];
+
+      // Проверка структуры
+      allUsers.forEach(u => {
+        if (!u.firstName || !u.lastName || !u.uid) {
+          console.warn('Пользователь с некорректной структурой:', u);
+        }
+      });
+
+      // Исключаем текущего пользователя
+      const filteredUsers = allUsers.filter(u => u.uid !== user?.uid);
       setUsers(filteredUsers);
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('Ошибка при загрузке пользователей:', error);
       toast.error('Failed to load users');
     }
   };
@@ -88,7 +135,7 @@ export default function ChatPage() {
     if (!user || !selectedUser) return;
 
     try {
-      await createChat([user.uid, selectedUser], ChatType.PRIVATE);
+      await createChat([user.uid, selectedUser], 'private');
       setIsNewChatDialogOpen(false);
       setSelectedUser('');
       toast.success('Чат успешно создан');
@@ -127,22 +174,17 @@ export default function ChatPage() {
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    if (window.confirm('Вы уверены, что хотите удалить этот чат?')) {
-      try {
-        await deleteChat(chatId);
-        if (selectedChat?.id === chatId) {
-          setSelectedChat(null);
-          setMessages([]);
-        }
-        toast.success('Чат успешно удален');
-      } catch (error) {
-        console.error('Ошибка при удалении чата:', error);
-        toast.error('Не удалось удалить чат');
-      }
+    try {
+      await deleteChat(chatId);
+      setSelectedChat(null);
+      setMessages([]);
+    } catch {
+      toast.error('Ошибка при удалении чата');
     }
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user || !selectedChat || !newMessage.trim()) return;
 
     try {
@@ -154,23 +196,22 @@ export default function ChatPage() {
     }
   };
 
-  const handleDeleteMessage = async (messageId: string) => {
-    try {
-      await deleteMessage(messageId);
-      toast.success('Сообщение успешно удалено');
-    } catch (error) {
-      console.error('Ошибка при удалении сообщения:', error);
-      toast.error('Не удалось удалить сообщение');
-    }
-  };
-
   const getChatParticipant = (chat: Chat) => {
     if (!user) return null;
-    if (chat.type === ChatType.GROUP) {
+    if (chat.type === 'group') {
       return { firstName: chat.name, lastName: '' };
     }
-    const participantId = chat.participants.find(id => id !== user.uid);
-    return users.find(u => u.uid === participantId);
+    const participantId = chat.participantIds.find(id => id !== user.uid);
+    return participantId ? chatParticipants.get(participantId) : null;
+  };
+
+  const formatLastMessageTime = (date?: Date) => {
+    if (!date) return '';
+    return format(date, 'HH:mm');
+  };
+
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName[0]}${lastName[0]}`.toUpperCase();
   };
 
   const renderNewChatDialog = () => (
@@ -302,44 +343,66 @@ export default function ChatPage() {
               return (
                 <div
                   key={chat.id}
-                  className={`p-4 border-b cursor-pointer hover:bg-accent ${
-                    selectedChat?.id === chat.id ? 'bg-accent' : ''
-                  }`}
+                  className={cn(
+                    "p-4 border-b cursor-pointer hover:bg-accent transition-colors",
+                    selectedChat?.id === chat.id && "bg-accent"
+                  )}
                   onClick={() => setSelectedChat(chat)}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-medium">
-                        {chat.type === ChatType.GROUP ? (
-                          <span className="flex items-center">
-                            <Users className="w-4 h-4 mr-2" />
-                            {chat.name}
-                          </span>
-                        ) : chat.type === ChatType.CHANNEL ? (
-                          <span className="flex items-center">
-                            <Megaphone className="w-4 h-4 mr-2" />
-                            Рассылка
-                          </span>
-                        ) : (
-                          participant ? `${participant.firstName} ${participant.lastName}` : 'Неизвестный пользователь'
-                        )}
-                      </div>
-                      {chat.lastMessage && (
-                        <div className="text-sm text-muted-foreground truncate">
-                          {chat.lastMessage.content}
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex gap-3 flex-1 min-w-0">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={(participant as any)?.photoURL} />
+                        <AvatarFallback>
+                          {chat.type === 'group' ? (
+                            <Users className="h-4 w-4" />
+                          ) : (
+                            getInitials(participant?.firstName || '', participant?.lastName || '')
+                          )}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">
+                          {chat.type === 'group' ? (
+                            <span className="flex items-center">
+                              <Users className="w-4 h-4 mr-2" />
+                              {chat.name}
+                            </span>
+                          ) : (
+                            <span className="flex items-center">
+                              {participant?.firstName} {participant?.lastName}
+                              {(participant as any)?.isOnline && (
+                                <Circle className="w-2 h-2 ml-2 text-green-500 fill-current" />
+                              )}
+                            </span>
+                          )}
                         </div>
-                      )}
+                        <div className="text-sm text-muted-foreground truncate">
+                          {chat.lastMessageText || 'Нет сообщений'}
+                        </div>
+                      </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteChat(chat.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="text-xs text-muted-foreground">
+                        {formatLastMessageTime(chat.updatedAt?.toDate())}
+                      </div>
+                      {(chat as any).unreadCount > 0 && (
+                        <Badge variant="secondary" className="h-5">
+                          {(chat as any).unreadCount}
+                        </Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteChat(chat.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );
@@ -351,79 +414,111 @@ export default function ChatPage() {
           {selectedChat ? (
             <>
               <div className="p-4 border-b">
-                <div className="font-medium">
-                  {selectedChat.type === ChatType.GROUP ? (
-                    <span className="flex items-center">
-                      <Users className="w-4 h-4 mr-2" />
-                      {selectedChat.name}
-                    </span>
-                  ) : selectedChat.type === ChatType.CHANNEL ? (
-                    <span className="flex items-center">
-                      <Megaphone className="w-4 h-4 mr-2" />
-                      Рассылка
-                    </span>
-                  ) : (
-                    getChatParticipant(selectedChat)?.firstName + ' ' +
-                    getChatParticipant(selectedChat)?.lastName
-                  )}
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={(getChatParticipant(selectedChat) as any)?.photoURL} />
+                    <AvatarFallback>
+                      {selectedChat.type === 'group' ? (
+                        <Users className="h-4 w-4" />
+                      ) : (
+                        getInitials(
+                          (getChatParticipant(selectedChat) as any)?.firstName || '',
+                          (getChatParticipant(selectedChat) as any)?.lastName || ''
+                        )
+                      )}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="font-medium">
+                      {selectedChat.type === 'group' ? (
+                        <span className="flex items-center">
+                          <Users className="w-4 h-4 mr-2" />
+                          {selectedChat.name}
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          {(getChatParticipant(selectedChat) as any)?.firstName} {(getChatParticipant(selectedChat) as any)?.lastName}
+                          {(getChatParticipant(selectedChat) as any)?.isOnline && (
+                            <Circle className="w-2 h-2 ml-2 text-green-500 fill-current" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {selectedChat.type === 'private' && (
+                      <div className="text-sm text-muted-foreground">
+                        {(getChatParticipant(selectedChat) as any)?.role === 'student' ? 'Студент' :
+                         (getChatParticipant(selectedChat) as any)?.role === 'teacher' ? 'Преподаватель' : 'Администратор'}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.senderId === user?.uid ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
+                  {messages.map((message, index) => {
+                    const showAvatar = index === 0 || messages[index - 1]?.senderId !== message.senderId;
+                    const isCurrentUser = message.senderId === user?.uid;
+                    return (
                       <div
-                        className={`max-w-[70%] rounded-lg p-3 ${
-                          message.senderId === user?.uid
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                        }`}
+                        key={message.id}
+                        className={cn(
+                          "flex gap-2",
+                          isCurrentUser ? "justify-end" : "justify-start"
+                        )}
                       >
-                        <div className="flex justify-between items-start gap-4">
-                          <div>{message.content}</div>
-                          {message.senderId === user?.uid && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => handleDeleteMessage(message.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                        {!isCurrentUser && showAvatar && (
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={(chatParticipants.get(message.senderId) as any)?.photoURL} />
+                            <AvatarFallback>
+                              {getInitials(
+                                (chatParticipants.get(message.senderId) as any)?.firstName || '',
+                                (chatParticipants.get(message.senderId) as any)?.lastName || ''
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div className={cn(
+                          "flex flex-col gap-1",
+                          isCurrentUser ? "items-end" : "items-start"
+                        )}>
+                          {!isCurrentUser && showAvatar && (
+                            <div className="text-sm font-medium">
+                              {(chatParticipants.get(message.senderId) as any)?.firstName} {(chatParticipants.get(message.senderId) as any)?.lastName}
+                            </div>
                           )}
-                        </div>
-                        <div className="text-xs mt-1 opacity-70">
-                          {format(message.createdAt.toDate(), 'HH:mm')}
+                          <div
+                            className={cn(
+                              "rounded-lg p-3 max-w-[70%]",
+                              isCurrentUser
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            )}
+                          >
+                            <div className="text-sm whitespace-pre-wrap">{message.text}</div>
+                            <div className="text-xs opacity-70 mt-1">
+                              {format(message.createdAt.toDate(), 'HH:mm')}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </ScrollArea>
 
               <div className="p-4 border-t">
-                <div className="flex gap-2">
+                <form onSubmit={handleSendMessage} className="flex gap-2">
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Введите сообщение..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
+                    className="flex-1"
                   />
-                  <Button onClick={handleSendMessage}>
+                  <Button type="submit" disabled={!newMessage.trim()}>
                     <Send className="h-4 w-4" />
                   </Button>
-                </div>
+                </form>
               </div>
             </>
           ) : (

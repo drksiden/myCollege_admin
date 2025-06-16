@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/firebaseService/notificationService';
 import type { Notification } from '@/types';
 import { useAuth } from '@/lib/auth';
@@ -21,7 +22,7 @@ export default function NotificationCenter() {
     if (!user) return;
     const data = await getNotifications(user.uid);
     setNotifications(data);
-    setUnreadCount(data.filter(n => !n.read).length);
+    setUnreadCount(data.filter(n => !n.isRead).length);
   }, [user]);
 
   useEffect(() => {
@@ -57,17 +58,17 @@ export default function NotificationCenter() {
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b">
-          <h4 className="font-medium">Notifications</h4>
+          <h4 className="font-medium">Уведомления</h4>
           {unreadCount > 0 && (
             <Button variant="ghost" size="sm" onClick={handleMarkAllAsRead}>
-              Mark all as read
+              Отметить все как прочитанные
             </Button>
           )}
         </div>
         <ScrollArea className="h-[300px]">
           {notifications.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
-              No notifications
+              Нет уведомлений
             </div>
           ) : (
             <div className="divide-y">
@@ -75,7 +76,7 @@ export default function NotificationCenter() {
                 <div
                   key={notification.id}
                   className={`p-4 hover:bg-muted/50 cursor-pointer ${
-                    !notification.read ? 'bg-muted/30' : ''
+                    !notification.isRead ? 'bg-muted/30' : ''
                   }`}
                   onClick={() => handleMarkAsRead(notification.id)}
                 >
@@ -83,11 +84,11 @@ export default function NotificationCenter() {
                     <div>
                       <p className="font-medium">{notification.title}</p>
                       <p className="text-sm text-muted-foreground">
-                        {notification.message}
+                        {notification.body}
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {format(notification.createdAt.toDate(), 'MMM dd, HH:mm')}
+                      {format(notification.createdAt.toDate(), 'd MMM, HH:mm', { locale: ru })}
                     </span>
                   </div>
                 </div>

@@ -9,21 +9,28 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Импортируем Alert
-import { AlertCircle } from 'lucide-react'; // Иконка для Alert
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  Eye, 
+  EyeOff, 
+  Mail, 
+  Lock, 
+  GraduationCap, 
+  AlertCircle,
+  Loader2
+} from 'lucide-react';
 import { FirebaseError } from 'firebase/app';
 import { doc, getDoc } from 'firebase/firestore';
-
-// ... (useAuth импорт если он тут нужен, но для логина он не обязателен напрямую)
+import { motion } from 'framer-motion';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -32,15 +39,14 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      // Проверяем роль пользователя
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       const userData = userDoc.data();
       
       if (!userData || userData.role !== 'admin') {
-        // Если пользователь не админ, выходим из системы
         await auth.signOut();
         setError('У вас нет прав доступа к административной панели');
         return;
@@ -50,21 +56,14 @@ const LoginPage: React.FC = () => {
     } catch (err: unknown) {
       let errorMessage = 'Произошла неизвестная ошибка при входе.';
       if (err instanceof FirebaseError) {
-        // <--- Проверяем, является ли ошибка экземпляром FirebaseError
-        // Теперь TypeScript знает, что у err есть свойство code
         switch (err.code) {
           case 'auth/invalid-credential':
-            // Firebase может возвращать 'auth/invalid-credential' для нескольких сценариев:
-            // - Пользователь не найден
-            // - Неверный пароль
-            // Поэтому общее сообщение здесь подходит
-            errorMessage =
-              'Неверный email или пароль. Пожалуйста, проверьте введенные данные.';
+            errorMessage = 'Неверный email или пароль. Пожалуйста, проверьте введенные данные.';
             break;
-          case 'auth/user-not-found': // Хотя часто это будет invalid-credential
+          case 'auth/user-not-found':
             errorMessage = 'Пользователь с таким email не найден.';
             break;
-          case 'auth/wrong-password': // Аналогично, часто это будет invalid-credential
+          case 'auth/wrong-password':
             errorMessage = 'Неверный пароль. Пожалуйста, попробуйте еще раз.';
             break;
           case 'auth/invalid-email':
@@ -74,19 +73,14 @@ const LoginPage: React.FC = () => {
             errorMessage = 'Учетная запись этого пользователя отключена.';
             break;
           case 'auth/too-many-requests':
-            errorMessage =
-              'Слишком много неудачных попыток входа. Пожалуйста, попробуйте позже или сбросьте пароль.';
+            errorMessage = 'Слишком много неудачных попыток входа. Пожалуйста, попробуйте позже или сбросьте пароль.';
             break;
-          // Можно добавить другие специфичные коды ошибок Firebase Auth
           default:
-            // Для других ошибок Firebase, которых нет в switch, можно использовать err.message
             errorMessage = `Ошибка входа: ${err.message} (код: ${err.code})`;
         }
       } else if (err instanceof Error) {
-        // Если это другая ошибка, не FirebaseError, но все еще Error
         errorMessage = err.message;
       } else if (typeof err === 'string') {
-        // Если ошибка - просто строка
         errorMessage = err;
       }
       setError(errorMessage);
@@ -96,98 +90,221 @@ const LoginPage: React.FC = () => {
     }
   };
 
+  const pageVariants = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1, transition: { duration: 0.6 } },
+  };
+
+  const cardVariants = {
+    initial: { opacity: 0, y: 50, scale: 0.95 },
+    animate: { 
+      opacity: 1, 
+      y: 0, 
+      scale: 1,
+      transition: { 
+        duration: 0.5,
+        ease: "easeOut"
+      }
+    },
+  };
+
+  const backgroundVariants = {
+    animate: {
+      background: [
+        "linear-gradient(45deg, #667eea 0%, #764ba2 100%)",
+        "linear-gradient(45deg, #f093fb 0%, #f5576c 100%)",
+        "linear-gradient(45deg, #4facfe 0%, #00f2fe 100%)",
+        "linear-gradient(45deg, #667eea 0%, #764ba2 100%)",
+      ],
+      transition: {
+        duration: 10,
+        repeat: Infinity,
+        ease: "linear"
+      }
+    }
+  };
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 to-slate-700 dark:from-gray-900 dark:to-gray-800 p-4">
-      <Card className="w-full max-w-sm shadow-2xl bg-card/80 backdrop-blur-md border-border/20">
-        <CardHeader className="text-center">
-          {/* Можно добавить иконку/логотип */}
-          <CardTitle className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-            Админ-панель
-          </CardTitle>
-          <CardDescription className="text-muted-foreground/80 pt-1">
-            Вход для администраторов системы
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleLogin}>
-          <CardContent className="grid gap-6 py-6">
-            {error && (
-              <Alert
-                variant="destructive"
-                className="animate-in fade-in-50 slide-in-from-bottom-5 duration-500"
-              >
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Ошибка входа</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@example.com"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-background/70 focus:bg-background text-base py-2 px-4"
-              />
+    <motion.div 
+      variants={pageVariants}
+      initial="initial"
+      animate="animate"
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+    >
+      {/* Animated Background */}
+      <motion.div 
+        variants={backgroundVariants}
+        animate="animate"
+        className="absolute inset-0 -z-10"
+      />
+      
+      {/* Background Overlay */}
+      <div className="absolute inset-0 bg-black/20 -z-5" />
+      
+      {/* Floating Elements */}
+      <div className="absolute inset-0 overflow-hidden -z-5">
+        <motion.div
+          animate={{ 
+            x: [0, 100, 0],
+            y: [0, -100, 0],
+            rotate: [0, 180, 360],
+          }}
+          transition={{ 
+            duration: 20,
+            repeat: Infinity,
+            ease: "linear"
+          }}
+          className="absolute top-1/4 left-1/4 w-32 h-32 bg-white/10 rounded-full blur-xl"
+        />
+        <motion.div
+          animate={{ 
+            x: [0, -150, 0],
+            y: [0, 100, 0],
+            rotate: [0, -180, -360],
+          }}
+          transition={{ 
+            duration: 25,
+            repeat: Infinity,
+            ease: "linear"
+          }}
+          className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-white/5 rounded-full blur-2xl"
+        />
+        <motion.div
+          animate={{ 
+            x: [0, 80, 0],
+            y: [0, -80, 0],
+            scale: [1, 1.2, 1],
+          }}
+          transition={{ 
+            duration: 15,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="absolute top-1/2 right-1/3 w-24 h-24 bg-white/8 rounded-full blur-lg"
+        />
+      </div>
+
+      <motion.div
+        variants={cardVariants}
+        initial="initial"
+        animate="animate"
+        className="w-full max-w-md relative"
+      >
+        <Card className="backdrop-blur-xl bg-white/95 dark:bg-gray-900/95 border-white/20 shadow-2xl">
+          <CardHeader className="text-center space-y-6 pb-8">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+              className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg"
+            >
+              <GraduationCap className="w-8 h-8 text-white" />
+            </motion.div>
+            
+            <div>
+              <CardTitle className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                Добро пожаловать
+              </CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-400 mt-2">
+                Войдите в административную панель системы управления колледжем
+              </CardDescription>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password" className="text-muted-foreground">
-                Пароль
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-background/70 focus:bg-background text-base py-2 px-4"
-              />
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mb-4"
+              >
+                <Alert variant="destructive" className="border-red-200 bg-red-50 dark:bg-red-950/50">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-red-800 dark:text-red-200">
+                    {error}
+                  </AlertDescription>
+                </Alert>
+              </motion.div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Email адрес
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="admin@college.kz"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10 h-12 bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-500 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Пароль
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pl-10 pr-10 h-12 bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-500 transition-all duration-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Выполняется вход...
+                  </div>
+                ) : (
+                  'Войти в систему'
+                )}
+              </Button>
+            </form>
+
+            <div className="text-center pt-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Система управления образовательным процессом
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                © 2024 College Management System
+              </p>
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-4 pb-6">
-            <Button
-              type="submit"
-              className="w-full text-base py-6 font-semibold tracking-wider"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>{' '}
-                  Обработка...
-                </>
-              ) : (
-                'Войти'
-              )}
-            </Button>
-            {/* Здесь можно добавить ссылку "Забыли пароль?", если нужно */}
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+        </Card>
+      </motion.div>
+    </motion.div>
   );
 };
 

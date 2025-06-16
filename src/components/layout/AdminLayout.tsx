@@ -8,8 +8,6 @@ import {
   Users,
   LogOut,
   Settings,
-  GraduationCap,
-  UserCog,
   BookOpen,
   ClipboardList,
   BookMarked,
@@ -18,6 +16,7 @@ import {
   CalendarCheck,
   School,
   BookOpenCheck,
+  GraduationCap,
 } from 'lucide-react'; // Иконки от lucide-react
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +27,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const Sidebar: React.FC = () => {
   const { logout } = useAuth();
@@ -59,16 +59,6 @@ const Sidebar: React.FC = () => {
           label: 'Пользователи',
         },
         {
-          to: '/admin/manage/students',
-          icon: <GraduationCap className="h-5 w-5" />,
-          label: 'Студенты',
-        },
-        {
-          to: '/admin/manage/teachers',
-          icon: <UserCog className="h-5 w-5" />,
-          label: 'Преподаватели',
-        },
-        {
           to: '/admin/manage/groups',
           icon: <School className="h-5 w-5" />,
           label: 'Группы',
@@ -77,6 +67,11 @@ const Sidebar: React.FC = () => {
           to: '/admin/manage/subjects',
           icon: <BookOpen className="h-5 w-5" />,
           label: 'Предметы',
+        },
+        {
+          to: '/admin/manage/semesters',
+          icon: <GraduationCap className="h-5 w-5" />,
+          label: 'Семестры',
         },
       ],
     },
@@ -119,7 +114,7 @@ const Sidebar: React.FC = () => {
       title: 'Общение и новости',
       items: [
         {
-          to: '/admin/chat',
+          to: '/admin/chats',
           icon: <Users className="h-5 w-5" />,
           label: 'Чат',
         },
@@ -193,38 +188,41 @@ const Sidebar: React.FC = () => {
 };
 
 const AdminLayout: React.FC = () => {
-  const location = useLocation();
-  const currentPage = location.pathname.split('/').pop() || 'dashboard';
-
   return (
-    <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-      <div className="hidden border-r bg-muted/40 md:block">
-        <Sidebar />
-      </div>
-      <div className="flex flex-col">
-        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6 md:hidden">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0">
-              <SheetHeader className="p-4">
-                <SheetTitle>Админ-панель</SheetTitle>
-              </SheetHeader>
-              <Sidebar />
-            </SheetContent>
-          </Sheet>
-          <span className="font-bold capitalize">{currentPage}</span>
-        </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
-          <Outlet /> {/* Здесь будут рендериться дочерние страницы админки */}
-        </main>
-      </div>
+  <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+    <div className="hidden border-r bg-muted/40 md:block">
+      <Sidebar />
     </div>
-  );
+    <div className="flex flex-col">
+      {/* Header для мобильных устройств */}
+      <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6 md:hidden">
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0">
+            <SheetHeader className="p-4">
+              <SheetTitle>Админ-панель</SheetTitle>
+            </SheetHeader>
+            <Sidebar />
+          </SheetContent>
+        </Sheet>
+      </header>
+
+      {/* Header для десктопа */}
+      <header className="hidden md:flex h-14 items-center justify-end gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+        <ThemeToggle />
+      </header>
+
+      <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
+        <Outlet />
+      </main>
+    </div>
+  </div>
+);
 };
 
 export default AdminLayout;

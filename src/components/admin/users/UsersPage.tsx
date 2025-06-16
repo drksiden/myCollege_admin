@@ -1,31 +1,44 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { UserFormDialog } from './UserFormDialog';
-import { db } from '@/lib/firebase';
-import { getUsersFromFirestore, deleteUserFromFirestore } from '@/lib/firebaseService/userService';
-import type { User } from '@/types';
+import UserList from './UserList';
+import { getUsers, deleteUser, searchUsers } from '@/lib/firebaseService/userService';
+import type { AppUser, UserRole, UserStatus } from '@/types/index';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { DocumentSnapshot, DocumentData } from 'firebase/firestore';
+import EditUserDialog from './EditUserDialog';
 
 export function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | undefined>();
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole | 'all'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<UserStatus | 'all'>('all');
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot<DocumentData> | undefined>(undefined);
 
-  const loadUsers = async () => {
+  const loadUsers = async (reset = false) => {
     try {
-      const fetchedUsers = await getUsersFromFirestore();
-      setUsers(fetchedUsers);
+      setLoading(true);
+      if (reset) {
+        setHasMore(true);
+        setLastDoc(undefined);
+      }
+
+      if (!hasMore) return;
+
+      const { users: fetchedUsers, lastDoc: newLastDoc } = await getUsers({
+        role: selectedRole === 'all' ? undefined : selectedRole,
+        status: selectedStatus === 'all' ? undefined : selectedStatus,
+        limit: 20,
+        startAfterDoc: reset ? undefined : lastDoc,
+      });
+
+      setUsers(prev => reset ? fetchedUsers : [...prev, ...fetchedUsers]);
+      setLastDoc(newLastDoc || undefined);
+      setHasMore(fetchedUsers.length === 20);
     } catch (error) {
       console.error('Error loading users:', error);
       toast.error('Failed to load users');
@@ -35,17 +48,32 @@ export function UsersPage() {
   };
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    loadUsers(true);
+  }, [selectedRole, selectedStatus]);
 
-  const handleDelete = async (user: User) => {
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) {
+      loadUsers(true);
+      return;
+    }
+
+    try {
+      const searchResults = await searchUsers(searchTerm);
+      setUsers(searchResults);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      toast.error('Failed to search users');
+    }
+  };
+
+  const handleDelete = async (user: AppUser) => {
     if (!confirm(`Are you sure you want to delete ${user.firstName} ${user.lastName}?`)) {
       return;
     }
 
     try {
-      await deleteUserFromFirestore(db, user.uid);
-      await loadUsers();
+      await deleteUser(user.uid);
+      await loadUsers(true);
       toast.success('User deleted successfully');
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -53,86 +81,75 @@ export function UsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(user => 
-    user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const matchesRole = selectedRole === 'all' || user.role === selectedRole;
+    const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
+    return matchesRole && matchesStatus;
+  });
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Users</h1>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          Create User
-        </Button>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Users Management</h1>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex gap-4 mb-6">
         <Input
           placeholder="Search users..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           className="max-w-sm"
         />
+        <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole | 'all')}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select role" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="teacher">Teacher</SelectItem>
+            <SelectItem value="student">Student</SelectItem>
+            <SelectItem value="pending_approval">Pending Approval</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as UserStatus | 'all')}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="suspended">Suspended</SelectItem>
+            <SelectItem value="pending_approval">Pending Approval</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredUsers.map((user) => (
-              <TableRow key={user.uid}>
-                <TableCell>{user.firstName} {user.lastName}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell className="capitalize">{user.role}</TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingUser(user)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDelete(user)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-
-      <UserFormDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        onSuccess={loadUsers}
+      <UserList
+        users={filteredUsers}
+        onEdit={setEditingUser}
+        onDelete={handleDelete}
       />
 
-      {editingUser && (
-        <UserFormDialog
-          open={!!editingUser}
-          onOpenChange={(open) => !open && setEditingUser(undefined)}
-          user={editingUser}
-          onSuccess={loadUsers}
-        />
+      {hasMore && (
+        <div className="mt-4 text-center">
+          <Button
+            variant="outline"
+            onClick={() => loadUsers(false)}
+            disabled={loading}
+          >
+            Load More
+          </Button>
+        </div>
       )}
+
+      <EditUserDialog
+        user={editingUser}
+        open={!!editingUser}
+        onOpenChange={(open: boolean) => !open && setEditingUser(null)}
+        onUserUpdated={loadUsers}
+      />
     </div>
   );
 } 

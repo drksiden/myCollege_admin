@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -14,170 +15,127 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, X, Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { getAllTeachers, assignTeacherToGroup, removeTeacherFromGroup } from '@/lib/firebaseService/teacherService';
-import type { Group, Teacher } from '@/types';
+import { getUsers } from '@/lib/firebaseService/userService';
+import { updateGroup } from '@/lib/firebaseService/groupService';
+import type { Group, TeacherUser } from '@/types';
 
 interface ManageTeachersDialogProps {
   open: boolean;
   group: Group;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
 export const ManageTeachersDialog: React.FC<ManageTeachersDialogProps> = ({
   open,
   group,
-  onClose,
+  onOpenChange,
   onSuccess,
 }) => {
-  const [assignedTeachers, setAssignedTeachers] = useState<Teacher[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | undefined>(group.curatorId);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       loadTeachers();
+      setSelectedTeacherId(group.curatorId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, group]);
 
   const loadTeachers = async () => {
     setIsLoading(true);
     try {
-      const allTeachers = await getAllTeachers();
-      
-      // Filter teachers that are already assigned to this group
-      const assigned = allTeachers.filter(teacher => 
-        teacher.groups && teacher.groups.includes(group.id)
-      );
-      setAssignedTeachers(assigned);
-
-      // Filter teachers that are not assigned to this group
-      const available = allTeachers.filter(teacher => 
-        !teacher.groups || !teacher.groups.includes(group.id)
-      );
-      setAvailableTeachers(available);
+      const { users } = await getUsers({ role: 'teacher' });
+      setTeachers(users as TeacherUser[]);
     } catch (error) {
       console.error('Error loading teachers:', error);
-      toast.error('Failed to load teachers');
+      toast.error('Не удалось загрузить преподавателей');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAssignTeacher = async (teacher: Teacher) => {
+  const handleSave = async () => {
     setIsSubmitting(true);
     try {
-      await assignTeacherToGroup(teacher.id, group.id);
-      toast.success('Teacher assigned to group');
-      await loadTeachers();
+      await updateGroup(group.id, { curatorId: selectedTeacherId });
+      toast.success(selectedTeacherId ? 'Куратор назначен' : 'Куратор снят');
       onSuccess();
+      onOpenChange(false);
     } catch (error) {
-      console.error('Error assigning teacher:', error);
-      toast.error('Failed to assign teacher to group');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleRemoveTeacher = async (teacher: Teacher) => {
-    setIsSubmitting(true);
-    try {
-      await removeTeacherFromGroup(teacher.id, group.id);
-      toast.success('Teacher removed from group');
-      await loadTeachers();
-      onSuccess();
-    } catch (error) {
-      console.error('Error removing teacher:', error);
-      toast.error('Failed to remove teacher from group');
+      console.error('Error updating curator:', error);
+      toast.error('Ошибка при обновлении куратора');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Manage Teachers - {group.name}</DialogTitle>
+          <DialogTitle>Назначение куратора для группы: {group.name}</DialogTitle>
         </DialogHeader>
-
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <Loader2 className="h-6 w-6 animate-spin mr-2" />
-            Loading teachers...
+            Загрузка преподавателей...
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Assigned Teachers</h3>
-              <div className="border rounded-md">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Specialization</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {assignedTeachers.map((teacher) => (
-                      <TableRow key={teacher.id}>
-                        <TableCell>{`${teacher.firstName} ${teacher.lastName}`}</TableCell>
-                        <TableCell>{teacher.specialization}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveTeacher(teacher)}
-                            disabled={isSubmitting}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Available Teachers</h3>
-              <div className="border rounded-md">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Specialization</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {availableTeachers.map((teacher) => (
-                      <TableRow key={teacher.id}>
-                        <TableCell>{`${teacher.firstName} ${teacher.lastName}`}</TableCell>
-                        <TableCell>{teacher.specialization}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleAssignTeacher(teacher)}
-                            disabled={isSubmitting}
-                          >
-                            <PlusCircle className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          <div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ФИО</TableHead>
+                  <TableHead>Специализация</TableHead>
+                  <TableHead className="text-right">Статус</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teachers.map((teacher) => (
+                  <TableRow
+                    key={teacher.uid}
+                    className={
+                      selectedTeacherId === teacher.uid
+                        ? 'bg-green-50 dark:bg-green-900/20'
+                        : ''
+                    }
+                    onClick={() => setSelectedTeacherId(teacher.uid)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <TableCell>{`${teacher.lastName} ${teacher.firstName}`}</TableCell>
+                    <TableCell>{teacher.specialization || '-'}</TableCell>
+                    <TableCell className="text-right">
+                      {selectedTeacherId === teacher.uid ? (
+                        <CheckCircle className="text-green-600 inline-block" />
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center gap-2 mt-4">
+              <Button
+                variant={selectedTeacherId === undefined ? 'default' : 'outline'}
+                onClick={() => setSelectedTeacherId(undefined)}
+                disabled={isSubmitting}
+              >
+                <XCircle className="mr-2 h-4 w-4" />Снять куратора
+              </Button>
+              <span className="text-muted-foreground text-sm">Можно оставить группу без куратора</span>
             </div>
           </div>
         )}
+        <DialogFooter>
+          <Button onClick={handleSave} disabled={isSubmitting || isLoading}>
+            {isSubmitting ? 'Сохранение...' : 'Сохранить'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

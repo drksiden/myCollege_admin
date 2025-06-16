@@ -10,6 +10,8 @@ import {
   Timestamp,
   orderBy,
   query,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Journal, JournalEntry } from '@/types';
@@ -19,16 +21,14 @@ export type { Journal, JournalEntry };
 
 /**
  * Creates a new journal in Firestore.
- * @param journalData Object containing groupId, subjectId, teacherId, semester, year.
- *                    'entries' array is initialized as empty.
+ * @param journalData Object containing groupId, subjectId, teacherId, semesterId.
  * @returns Promise<string> The ID of the newly created journal.
  */
 export const createJournal = async (
-  journalData: Pick<Journal, 'groupId' | 'subjectId' | 'teacherId' | 'semester' | 'year'>
+  journalData: Pick<Journal, 'groupId' | 'subjectId' | 'teacherId' | 'semesterId'>
 ): Promise<string> => {
   const dataWithDefaults: Omit<Journal, 'id'> = {
     ...journalData,
-    entries: [], // Initialize with an empty array of entries
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
   };
@@ -53,16 +53,15 @@ export const getJournal = async (
 };
 
 /**
- * Fetches all journals from Firestore, ordered by year, semester, then other fields.
+ * Fetches all journals from Firestore, ordered by semesterId, then other fields.
  * @returns Promise<Journal[]> An array of journals.
  */
 export const getAllJournals = async (): Promise<Journal[]> => {
   const journalsCollection = collection(db, 'journals');
   const q = query(
     journalsCollection, 
-    orderBy('year', 'desc'), 
-    orderBy('semester', 'desc'),
-    orderBy('groupId', 'asc'), // Or subjectId, depending on desired secondary sort
+    orderBy('semesterId', 'desc'),
+    orderBy('groupId', 'asc'),
     orderBy('subjectId', 'asc')
   );
   const querySnapshot = await getDocs(q);
@@ -73,15 +72,14 @@ export const getAllJournals = async (): Promise<Journal[]> => {
 };
 
 /**
- * Updates journal metadata (groupId, subjectId, teacherId, semester, year)
- * or the entire 'entries' array.
+ * Updates journal metadata (groupId, subjectId, teacherId, semesterId).
  * @param journalId The document ID of the journal to update.
  * @param updates Partial data of Journal to update.
  * @returns Promise<void>
  */
 export const updateJournal = async (
   journalId: string,
-  updates: Partial<Omit<Journal, 'id' | 'createdAt' | 'updatedAt'>> // Can include 'entries'
+  updates: Partial<Omit<Journal, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> => {
   const journalRef = doc(db, 'journals', journalId);
   const dataWithTimestamp = {
@@ -104,68 +102,160 @@ export const deleteJournal = async (
 };
 
 /**
- * Adds or updates journal entries for a specific date.
- * Fetches the journal, filters out old entries for the given date,
- * adds the new/updated entries, and updates the journal with the modified 'entries' array.
+ * Fetches all journal entries for a specific journal.
  * @param journalId The document ID of the journal.
- * @param date The specific date (as Firestore Timestamp) for which entries are being updated.
- * @param entriesForDate Array of JournalEntry objects for that date.
+ * @returns Promise<JournalEntry[]> An array of journal entries.
+ */
+export const getJournalEntries = async (journalId: string): Promise<JournalEntry[]> => {
+  const journalEntriesCollection = collection(db, 'journalEntries');
+  const q = query(
+    journalEntriesCollection,
+    where('journalId', '==', journalId),
+    orderBy('date', 'desc')
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(docSnap => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  } as JournalEntry));
+};
+
+/**
+ * Creates a new journal entry.
+ * @param entryData The journal entry data.
+ * @returns Promise<string> The ID of the newly created entry.
+ */
+export const createJournalEntry = async (
+  entryData: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> => {
+  const dataWithDefaults: Omit<JournalEntry, 'id'> = {
+    ...entryData,
+    createdAt: serverTimestamp() as Timestamp,
+    updatedAt: serverTimestamp() as Timestamp,
+  };
+  const docRef = await addDoc(collection(db, 'journalEntries'), dataWithDefaults);
+  return docRef.id;
+};
+
+/**
+ * Updates an existing journal entry.
+ * @param entryId The document ID of the entry to update.
+ * @param updates Partial data of JournalEntry to update.
+ * @returns Promise<void>
+ */
+export const updateJournalEntry = async (
+  entryId: string,
+  updates: Partial<Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<void> => {
+  const entryRef = doc(db, 'journalEntries', entryId);
+  const dataWithTimestamp = {
+    ...updates,
+    updatedAt: serverTimestamp() as Timestamp,
+  };
+  return updateDoc(entryRef, dataWithTimestamp);
+};
+
+/**
+ * Deletes a journal entry.
+ * @param entryId The document ID of the entry to delete.
+ * @returns Promise<void>
+ */
+export const deleteJournalEntry = async (
+  entryId: string
+): Promise<void> => {
+  const entryRef = doc(db, 'journalEntries', entryId);
+  return deleteDoc(entryRef);
+};
+
+/**
+ * Fetches journal entries for a specific date.
+ * @param journalId The document ID of the journal.
+ * @param date The date to fetch entries for.
+ * @returns Promise<JournalEntry[]> An array of journal entries for the date.
+ */
+export const getJournalEntriesByDate = async (
+  journalId: string,
+  date: Timestamp
+): Promise<JournalEntry[]> => {
+  const journalEntriesCollection = collection(db, 'journalEntries');
+  const startOfDay = new Date(date.toDate());
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date.toDate());
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const q = query(
+    journalEntriesCollection,
+    where('journalId', '==', journalId),
+    where('date', '>=', Timestamp.fromDate(startOfDay)),
+    where('date', '<=', Timestamp.fromDate(endOfDay)),
+    orderBy('date', 'desc')
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(docSnap => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  } as JournalEntry));
+};
+
+/**
+ * Adds or updates journal entries for a specific date.
+ * @param journalId The document ID of the journal.
+ * @param date The date for the entries.
+ * @param entries Array of journal entries to add or update.
  * @returns Promise<void>
  */
 export const addOrUpdateJournalEntriesForDate = async (
   journalId: string,
-  date: Timestamp, 
-  entriesForDate: JournalEntry[] 
+  date: Timestamp,
+  entries: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>[]
 ): Promise<void> => {
-  const journal = await getJournal(journalId);
-  if (!journal) {
-    throw new Error("Journal not found");
+  const batch = writeBatch(db);
+  const journalEntriesCollection = collection(db, 'journalEntries');
+
+  // Get existing entries for the date
+  const existingEntries = await getJournalEntriesByDate(journalId, date);
+
+  // Update or create entries
+  for (const entry of entries) {
+    const existingEntry = existingEntries.find(e => e.studentId === entry.studentId);
+    if (existingEntry) {
+      // Update existing entry
+      const entryRef = doc(db, 'journalEntries', existingEntry.id);
+      batch.update(entryRef, {
+        ...entry,
+        updatedAt: serverTimestamp() as Timestamp,
+      });
+    } else {
+      // Create new entry
+      const newEntryRef = doc(journalEntriesCollection);
+      batch.set(newEntryRef, {
+        ...entry,
+        createdAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp() as Timestamp,
+      });
+    }
   }
 
-  // Filter out any existing entries for the given 'date'
-  const otherEntries = journal.entries.filter(entry => 
-    entry.date.toDate().setHours(0,0,0,0) !== date.toDate().setHours(0,0,0,0)
-  );
-
-  // Add the new 'entriesForDate' to the filtered list
-  const normalizedDateEntries = entriesForDate.map(e => ({...e, date}));
-  const updatedEntries = [...otherEntries, ...normalizedDateEntries];
-  
-  // Sort entries by date then by topic for consistency
-  updatedEntries.sort((a, b) => {
-    const dateComparison = a.date.toMillis() - b.date.toMillis();
-    if (dateComparison !== 0) return dateComparison;
-    return a.topic.localeCompare(b.topic);
-  });
-
-  // Sort attendance records by student ID if they exist
-  updatedEntries.forEach(entry => {
-    if ('attendance' in entry && entry.attendance && Array.isArray(entry.attendance)) {
-      entry.attendance.sort((a, b) => a.studentId.localeCompare(b.studentId));
-    }
-  });
-
-  return updateJournal(journalId, { entries: updatedEntries });
+  await batch.commit();
 };
 
 /**
  * Removes all journal entries for a specific date.
  * @param journalId The document ID of the journal.
- * @param date The specific date (as Firestore Timestamp) for which entries should be removed.
+ * @param date The date to remove entries for.
  * @returns Promise<void>
  */
 export const removeJournalEntriesForDate = async (
   journalId: string,
   date: Timestamp
 ): Promise<void> => {
-  const journal = await getJournal(journalId);
-  if (!journal) {
-    throw new Error("Journal not found");
+  const entries = await getJournalEntriesByDate(journalId, date);
+  const batch = writeBatch(db);
+
+  for (const entry of entries) {
+    const entryRef = doc(db, 'journalEntries', entry.id);
+    batch.delete(entryRef);
   }
 
-  const updatedEntries = journal.entries.filter(entry => 
-    entry.date.toDate().setHours(0,0,0,0) !== date.toDate().setHours(0,0,0,0)
-  );
-  
-  return updateJournal(journalId, { entries: updatedEntries });
+  await batch.commit();
 };

@@ -22,6 +22,7 @@ export const getAllLessons = async (groupId: string): Promise<Lesson[]> => {
     const data = doc.data();
     return {
       id: doc.id,
+      semesterId: data.semesterId,
       groupId: data.groupId,
       subjectId: data.subjectId,
       teacherId: data.teacherId,
@@ -31,10 +32,7 @@ export const getAllLessons = async (groupId: string): Promise<Lesson[]> => {
       room: data.room,
       type: data.type,
       weekType: data.weekType,
-      duration: data.duration,
-      isFloating: data.isFloating,
-      semester: data.semester,
-      year: data.year,
+      topic: data.topic,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     } as Lesson;
@@ -50,6 +48,7 @@ export const getLesson = async (lessonId: string): Promise<Lesson | null> => {
   const data = lessonDoc.data();
   return {
     id: lessonDoc.id,
+    semesterId: data.semesterId,
     groupId: data.groupId,
     subjectId: data.subjectId,
     teacherId: data.teacherId,
@@ -59,10 +58,7 @@ export const getLesson = async (lessonId: string): Promise<Lesson | null> => {
     room: data.room,
     type: data.type,
     weekType: data.weekType,
-    duration: data.duration,
-    isFloating: data.isFloating,
-    semester: data.semester,
-    year: data.year,
+    topic: data.topic,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   } as Lesson;

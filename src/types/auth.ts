@@ -1,11 +1,11 @@
-import type { User } from './index';
+import type { AppUser } from './index';
 
 export interface AuthContextType {
-  user: User | null;
-  currentUser: User | null;
+  user: AppUser | null;
+  currentUser: AppUser | null;
   isAdmin: boolean;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   logout: () => Promise<void>;
 } 

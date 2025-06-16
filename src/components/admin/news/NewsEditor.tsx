@@ -1,409 +1,493 @@
-import { useState, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { createNews, updateNews, uploadNewsImage, deleteNewsImage } from '@/lib/firebaseService/newsService';
-import type { News } from '@/types/index';
-import { ArrowLeft, Plus, X, Loader2, Bold, Italic, List, ListOrdered, Link as LinkIcon, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, Undo, Redo } from 'lucide-react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import Placeholder from '@tiptap/extension-placeholder';
-import TextAlign from '@tiptap/extension-text-align';
+// src/components/admin/news/NewsEditor.tsx
+import React, { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { 
+  Save, 
+  Eye, 
+  Plus, 
+  X, 
+  Image, 
+  ArrowLeft,
+  Loader2 
+} from 'lucide-react';
+import { toast } from 'sonner';
+import * as newsService from '@/lib/firebaseService/newsService';
+import { useAuth } from '@/contexts/AuthContext';
+import type { News } from '@/types';
 
 interface NewsEditorProps {
-  news?: News | null;
-  onClose: () => void;
+  mode?: 'create' | 'edit';
+  newsId?: string | null;
+  initialData?: News | null;
+  onSuccess?: () => void;
+  onCancel?: () => void;
 }
 
-export default function NewsEditor({ news, onClose }: NewsEditorProps) {
-  const [title, setTitle] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [newTag, setNewTag] = useState('');
-  const [images, setImages] = useState<{ url: string; alt: string; order: number }[]>([]);
+const NewsEditor: React.FC<NewsEditorProps> = ({ 
+  mode = 'create', 
+  newsId = null, 
+  initialData = null, 
+  onSuccess = () => {},
+  onCancel = () => {}
+}) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-primary hover:underline',
-        },
-      }),
-      Image.configure({
-        HTMLAttributes: {
-          class: 'max-w-full rounded-lg',
-        },
-      }),
-      Placeholder.configure({
-        placeholder: 'Начните писать...',
-      }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-        alignments: ['left', 'center', 'right'],
-        defaultAlignment: 'left',
-      }),
-    ],
-    content: news?.content || '',
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none',
-      },
-    },
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    isPublished: false,
+    tags: [] as string[],
+    images: [] as { url: string; alt?: string; order?: number }[]
   });
+  const [newTag, setNewTag] = useState('');
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [newImageAlt, setNewImageAlt] = useState('');
+  const [previewMode, setPreviewMode] = useState(false);
+  const [imageValidating, setImageValidating] = useState(false);
 
-  useEffect(() => {
-    if (news) {
-      setTitle(news.title);
-      setTags(news.tags);
-      setImages(news.images);
-      editor?.commands.setContent(news.content);
+  const loadNewsData = useCallback(async () => {
+    if (!newsId) return;
+    
+    setLoading(true);
+    try {
+      const news = await newsService.getNewsById(newsId);
+      if (news) {
+        setFormData({
+          title: news.title || '',
+          content: news.content || '',
+          isPublished: news.isPublished || false,
+          tags: news.tags || [],
+          images: news.images || []
+        });
+      }
+    } catch (error) {
+      console.error('Error loading news:', error);
+      toast.error('Не удалось загрузить данные новости');
+    } finally {
+      setLoading(false);
     }
-  }, [news, editor]);
+  }, [newsId]);
 
-  const handleAddTag = () => {
-    if (newTag && !tags.includes(newTag)) {
-      setTags([...tags, newTag]);
+  // Загрузка данных при редактировании
+  useEffect(() => {
+    if (mode === 'edit' && newsId && !initialData) {
+      loadNewsData();
+    } else if (initialData) {
+      setFormData({
+        title: initialData.title || '',
+        content: initialData.content || '',
+        isPublished: initialData.isPublished || false,
+        tags: initialData.tags || [],
+        images: initialData.images || []
+      });
+    }
+  }, [mode, newsId, initialData, loadNewsData]);
+
+  const handleInputChange = (field: string, value: unknown) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const addTag = () => {
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
+      handleInputChange('tags', [...formData.tags, newTag.trim()]);
       setNewTag('');
     }
   };
 
-  const handleDeleteTag = (tagToDelete: string) => {
-    setTags(tags.filter(tag => tag !== tagToDelete));
+  const removeTag = (tagToRemove: string) => {
+    handleInputChange('tags', formData.tags.filter(tag => tag !== tagToRemove));
   };
 
-  const handleImageUpload = async (file: File) => {
-    try {
-      const image = await uploadNewsImage(file, news?.id || 'new', images.length);
-      setImages([...images, image]);
-      
-      // Добавляем изображение в редактор
-      editor?.chain().focus().setImage({ src: image.url, alt: image.alt }).run();
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      setError('Ошибка при загрузке изображения');
-    }
-  };
-
-  const handleDeleteImage = async (imageUrl: string) => {
-    try {
-      await deleteNewsImage(imageUrl);
-      setImages(images.filter(img => img.url !== imageUrl));
-    } catch (error) {
-      console.error('Error deleting image:', error);
-      setError('Ошибка при удалении изображения');
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!title || !editor?.getText().trim()) {
-      setError('Заполните все обязательные поля');
+  const addImage = async () => {
+    if (!newImageUrl.trim()) {
+      toast.error('Введите URL изображения');
       return;
     }
 
+    if (!newsService.validateImageUrl(newImageUrl.trim())) {
+      toast.error('Введите корректный URL изображения');
+      return;
+    }
+
+    setImageValidating(true);
     try {
-      setLoading(true);
-      setError('');
-
-      const newsData = {
-        title,
-        content: editor.getHTML(),
-        tags,
-        images,
-        authorId: 'current-user-id', // TODO: Get from auth context
-        isPublished: false,
-      };
-
-      if (news) {
-        await updateNews(news.id, newsData);
-      } else {
-        await createNews(newsData);
+      const isValidImage = await newsService.getImagePreview(newImageUrl.trim());
+      if (!isValidImage) {
+        toast.error('Не удалось загрузить изображение по указанному URL');
+        return;
       }
 
-      onClose();
+      const newImage = {
+        url: newImageUrl.trim(),
+        alt: newImageAlt.trim() || undefined,
+        order: formData.images.length
+      };
+      
+      handleInputChange('images', [...formData.images, newImage]);
+      setNewImageUrl('');
+      setNewImageAlt('');
+      toast.success('Изображение добавлено');
+    } catch {
+      toast.error('Ошибка при проверке изображения');
+    } finally {
+      setImageValidating(false);
+    }
+  };
+
+  const removeImage = (indexToRemove: number) => {
+    handleInputChange('images', formData.images.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleSave = async (publish = false) => {
+    if (!formData.title.trim() || !formData.content.trim()) {
+      toast.error('Заполните название и содержание новости');
+      return;
+    }
+
+    if (!user) {
+      toast.error('Необходимо войти в систему');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const dataToSave: Omit<News, 'id' | 'createdAt' | 'updatedAt'> = {
+        title: formData.title.trim(),
+        content: formData.content.trim(),
+        isPublished: publish,
+        tags: formData.tags,
+        images: formData.images.map(img => ({
+          url: img.url,
+          alt: img.alt || undefined,
+          order: img.order || 0
+        })),
+        authorId: user.uid
+      };
+
+      // Очищаем undefined значения
+      const cleanData = Object.fromEntries(
+        Object.entries(dataToSave).map(([key, value]) => [
+          key,
+          value === undefined ? null : value
+        ])
+      ) as Omit<News, 'id' | 'createdAt' | 'updatedAt'>;
+
+      if (mode === 'create') {
+        await newsService.createNews(cleanData);
+        toast.success(publish ? 'Новость создана и опубликована' : 'Новость создана как черновик');
+      } else if (newsId) {
+        await newsService.updateNews(newsId, cleanData);
+        toast.success(publish ? 'Новость обновлена и опубликована' : 'Новость обновлена');
+      }
+
+      onSuccess();
     } catch (error) {
       console.error('Error saving news:', error);
-      setError('Ошибка при сохранении новости');
+      toast.error('Не удалось сохранить новость');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const MenuBar = () => {
-    if (!editor) {
-      return null;
-    }
-
+  if (loading) {
     return (
-      <div className="flex flex-wrap gap-2 p-2 border-b">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editor.can().undo()}
-        >
-          <Undo className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editor.can().redo()}
-        >
-          <Redo className="h-4 w-4" />
-        </Button>
-        <div className="w-px h-6 bg-border mx-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          className={editor.isActive('bold') ? 'bg-muted' : ''}
-        >
-          <Bold className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={editor.isActive('italic') ? 'bg-muted' : ''}
-        >
-          <Italic className="h-4 w-4" />
-        </Button>
-        <div className="w-px h-6 bg-border mx-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={editor.isActive('bulletList') ? 'bg-muted' : ''}
-        >
-          <List className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          className={editor.isActive('orderedList') ? 'bg-muted' : ''}
-        >
-          <ListOrdered className="h-4 w-4" />
-        </Button>
-        <div className="w-px h-6 bg-border mx-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const url = window.prompt('URL');
-            if (url) {
-              editor.chain().focus().setLink({ href: url }).run();
-            }
-          }}
-          className={editor.isActive('link') ? 'bg-muted' : ''}
-        >
-          <LinkIcon className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const url = window.prompt('URL изображения');
-            if (url) {
-              editor.chain().focus().setImage({ src: url }).run();
-            }
-          }}
-        >
-          <ImageIcon className="h-4 w-4" />
-        </Button>
-        <div className="w-px h-6 bg-border mx-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().setTextAlign('left').run()}
-          className={editor.isActive({ textAlign: 'left' }) ? 'bg-muted' : ''}
-        >
-          <AlignLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().setTextAlign('center').run()}
-          className={editor.isActive({ textAlign: 'center' }) ? 'bg-muted' : ''}
-        >
-          <AlignCenter className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => editor.chain().focus().setTextAlign('right').run()}
-          className={editor.isActive({ textAlign: 'right' }) ? 'bg-muted' : ''}
-        >
-          <AlignRight className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Загрузка...</span>
       </div>
     );
-  };
+  }
 
-  return (
-    <ScrollArea className="h-[calc(100vh-200px)]">
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
+  if (previewMode) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-between">
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
+            variant="outline"
+            onClick={() => setPreviewMode(false)}
+            className="flex items-center gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
+            Вернуться к редактированию
           </Button>
-          <h2 className="text-2xl font-bold">
-            {news ? 'Редактирование новости' : 'Создание новости'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <Badge variant={formData.isPublished ? "default" : "secondary"}>
+              {formData.isPublished ? "Опубликовано" : "Черновик"}
+            </Badge>
+          </div>
         </div>
 
+        <Card>
+          <CardContent className="p-6">
+            <h1 className="text-3xl font-bold mb-4">{formData.title}</h1>
+            
+            {formData.images.length > 0 && (
+              <div className="mb-6">
+                <div className="grid gap-4">
+                  {formData.images.map((image, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={image.url}
+                        alt={image.alt || 'Изображение'}
+                        className="w-full h-64 object-cover rounded-lg"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="prose max-w-none">
+              {formData.content.split('\n').map((paragraph, index) => (
+                <p key={index} className="mb-4">{paragraph}</p>
+              ))}
+            </div>
+
+            {formData.tags.length > 0 && (
+              <div className="mt-6 pt-4 border-t">
+                <div className="flex flex-wrap gap-2">
+                  {formData.tags.map((tag, index) => (
+                    <Badge key={index} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">
+          {mode === 'create' ? 'Создание новости' : 'Редактирование новости'}
+        </h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setPreviewMode(true)}
+            className="flex items-center gap-2"
+          >
+            <Eye className="h-4 w-4" />
+            Предпросмотр
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-6">
+        {/* Основная информация */}
         <Card>
           <CardHeader>
             <CardTitle>Основная информация</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input
-              placeholder="Заголовок"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
+            <div>
+              <Label htmlFor="title">Заголовок новости</Label>
+              <Input
+                id="title"
+                value={formData.title}
+                onChange={(e) => handleInputChange('title', e.target.value)}
+                placeholder="Введите заголовок новости"
+                className="mt-1"
+              />
+            </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Содержание</label>
-              <div className="border rounded-lg">
-                <MenuBar />
-                <EditorContent editor={editor} className="p-4 min-h-[300px]" />
-              </div>
+            <div>
+              <Label htmlFor="content">Содержание</Label>
+              <Textarea
+                id="content"
+                value={formData.content}
+                onChange={(e) => handleInputChange('content', e.target.value)}
+                placeholder="Введите содержание новости"
+                rows={8}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="published"
+                checked={formData.isPublished}
+                onCheckedChange={(checked) => handleInputChange('isPublished', checked)}
+              />
+              <Label htmlFor="published">Опубликовать новость</Label>
             </div>
           </CardContent>
         </Card>
 
+        {/* Изображения */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Image className="h-5 w-5" />
+              Изображения
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="imageUrl">URL изображения</Label>
+                <Input
+                  id="imageUrl"
+                  value={newImageUrl}
+                  onChange={(e) => setNewImageUrl(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="imageAlt">Описание изображения</Label>
+                <Input
+                  id="imageAlt"
+                  value={newImageAlt}
+                  onChange={(e) => setNewImageAlt(e.target.value)}
+                  placeholder="Альтернативный текст"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={addImage}
+              disabled={!newImageUrl.trim() || imageValidating}
+              className="flex items-center gap-2"
+            >
+              {imageValidating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Добавить изображение
+            </Button>
+
+            {formData.images.length > 0 && (
+              <div className="space-y-2">
+                <Label>Добавленные изображения:</Label>
+                {formData.images.map((image, index) => (
+                  <div key={index} className="flex items-center gap-3 p-3 border rounded-lg">
+                    <img
+                      src={image.url}
+                      alt={image.alt || 'Изображение'}
+                      className="w-16 h-16 object-cover rounded"
+                      onError={(e) => {
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0NEE0NEgyMFYyMFoiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+                      }}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium truncate">{image.alt || 'Изображение'}</p>
+                      <p className="text-xs text-muted-foreground truncate">{image.url}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeImage(index)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Теги */}
         <Card>
           <CardHeader>
             <CardTitle>Теги</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex gap-2">
               <Input
-                placeholder="Новый тег"
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                placeholder="Введите тег"
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                className="flex-1"
               />
               <Button
-                variant="outline"
-                onClick={handleAddTag}
+                type="button"
+                onClick={addTag}
+                disabled={!newTag.trim()}
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Добавить
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex flex-wrap gap-2 mt-4">
-              {tags.map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {tag}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 p-0 hover:bg-transparent"
-                    onClick={() => handleDeleteTag(tag)}
+
+            {formData.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {formData.tags.map((tag, index) => (
+                  <Badge
+                    key={index}
+                    variant="secondary"
+                    className="flex items-center gap-1"
                   >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              ))}
-            </div>
+                    {tag}
+                    <X
+                      className="h-3 w-3 cursor-pointer"
+                      onClick={() => removeTag(tag)}
+                    />
+                  </Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
+      </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Изображения</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  handleImageUpload(file);
-                }
-              }}
-              className="hidden"
-              id="image-upload"
-            />
-            <label htmlFor="image-upload">
-              <Button
-                variant="outline"
-                className="mb-4"
-                asChild
-              >
-                <span>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Добавить изображение
-                </span>
-              </Button>
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {images.map((image) => (
-                <div
-                  key={image.url}
-                  className="relative aspect-square group"
-                >
-                  <img
-                    src={image.url}
-                    alt={image.alt}
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => handleDeleteImage(image.url)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <Separator />
 
-        {error && (
-          <div className="text-sm text-destructive">
-            {error}
-          </div>
-        )}
+      {/* Кнопки действий */}
+      <div className="flex justify-between">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Отмена
+        </Button>
 
-        <div className="flex justify-end gap-4">
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={onClose}
-            disabled={loading}
+            onClick={() => handleSave(false)}
+            disabled={saving}
+            className="flex items-center gap-2"
           >
-            Отмена
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Сохранить как черновик
           </Button>
           <Button
-            onClick={handleSubmit}
-            disabled={loading}
+            onClick={() => handleSave(true)}
+            disabled={saving}
+            className="flex items-center gap-2"
           >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {news ? 'Сохранить' : 'Создать'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Опубликовать
           </Button>
         </div>
       </div>
-    </ScrollArea>
+    </div>
   );
-} 
+};
+
+export default NewsEditor;

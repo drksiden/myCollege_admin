@@ -1,13 +1,38 @@
-import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import NewsList from '@/components/admin/news/NewsList';
+// src/pages/admin/NewsPage.tsx
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { PlusCircle } from 'lucide-react';
 import NewsEditor from '@/components/admin/news/NewsEditor';
-import type { News } from '@/types/index';
+import NewsList from '@/components/admin/news/NewsList';
+import type { News } from '@/types';
+import { getNews } from '@/lib/firebaseService/newsService';
+import { toast } from 'sonner';
 
-export default function NewsPage() {
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+const NewsPage: React.FC = () => {
   const [selectedNews, setSelectedNews] = useState<News | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [newsItems, setNewsItems] = useState<News[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadNews = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedNews = await getNews({});
+      setNewsItems(fetchedNews);
+    } catch (error) {
+      console.error("Failed to load news:", error);
+      toast.error("Не удалось загрузить новости");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isEditorOpen) {
+      loadNews();
+    }
+  }, [isEditorOpen]);
 
   const handleCreateNews = () => {
     setSelectedNews(null);
@@ -19,34 +44,52 @@ export default function NewsPage() {
     setIsEditorOpen(true);
   };
 
-  const handleCloseEditor = () => {
-    setIsEditorOpen(false);
+  const handleEditorSuccess = () => {
     setSelectedNews(null);
+    setIsEditorOpen(false);
+    loadNews();
+  };
+
+  const handleEditorCancel = () => {
+    setSelectedNews(null);
+    setIsEditorOpen(false);
   };
 
   return (
-    <div className="container py-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-2xl font-bold">Управление новостями</CardTitle>
-          <Button
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Управление новостями</h1>
+        {!isEditorOpen && (
+          <Button 
             onClick={handleCreateNews}
-            disabled={isEditorOpen}
+            className="flex items-center gap-2"
           >
+            <PlusCircle className="h-4 w-4" />
             Создать новость
           </Button>
-        </CardHeader>
-        <CardContent>
-          {isEditorOpen ? (
-            <NewsEditor
-              news={selectedNews}
-              onClose={handleCloseEditor}
-            />
-          ) : (
-            <NewsList onEditNews={handleEditNews} />
-          )}
-        </CardContent>
+        )}
+      </div>
+
+      <Card>
+        {isEditorOpen ? (
+          <NewsEditor 
+            mode={selectedNews ? 'edit' : 'create'}
+            newsId={selectedNews?.id}
+            initialData={selectedNews}
+            onSuccess={handleEditorSuccess}
+            onCancel={handleEditorCancel}
+          />
+        ) : (
+          <NewsList
+            news={newsItems}
+            onEditNews={handleEditNews}
+            onNewsUpdate={loadNews}
+            loading={isLoading}
+          />
+        )}
       </Card>
     </div>
   );
-} 
+};
+
+export default NewsPage;
